@@ -9,7 +9,7 @@ RUN apt-get update \
     fpc \
     fpc-source \
     lazarus \
-    python3-pippython3-pip \
+    python3-pip \
     build-essential \
     libgtk2.0-dev \
     libcairo2-dev \
