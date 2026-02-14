@@ -1154,7 +1154,7 @@ object EditorTableDataForm: TEditorTableDataForm
       end
     end
   end
-  object OutputQry: TSQLQuery
+  object OutputQry: TSQLDataSet
     Params = <>
     Left = 100
     Top = 138
