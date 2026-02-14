@@ -21,6 +21,14 @@ type
   QRgb = LongWord;
   QEventType = type Integer;
 
+  // Key event record for LCL key event synthesis
+  PKeyEventRec = ^TKeyEventRec;
+  TKeyEventRec = record
+    EventType: Integer;
+    Key: Integer;
+    ShiftState: Integer;
+  end;
+
   // Page size enum (CLX/Qt paper sizes)
   TPageSize = (psA0, psA1, psA2, psA3, psA4, psA5, psA6, psA7, psA8, psA9,
     psB0, psB1, psB2, psB3, psB4, psB5, psB6, psB7, psB8, psB9, psB10,
@@ -89,6 +97,8 @@ const
   // CLX event types
   QEventType_KeyPress = LM_KEYDOWN;
   QEventType_KeyRelease = LM_KEYUP;
+  QEventType_WindowActivate = LM_USER + 200;
+  QEventType_WindowDeactivate = LM_USER + 201;
 
   // Arrow/special key constants
   Key_Left = VK_LEFT;
@@ -164,6 +174,7 @@ procedure QOpenWidget_setWFlags(widget: QOpenWidgetH; flags: Cardinal);
 
 function QScrollView_visibleWidth(sv: QScrollViewH): Integer;
 
+function QKeyEvent_create(eventType: Integer; key: Integer; shiftState: Integer): QKeyEventH;
 function QKeyEvent_key(event: QKeyEventH): Integer;
 function QKeyEvent_stateAfter(event: QKeyEventH): Integer;
 
@@ -193,6 +204,14 @@ begin
   if (ButtonState and $100) <> 0 then Include(Result, ssShift);
   if (ButtonState and $200) <> 0 then Include(Result, ssCtrl);
   if (ButtonState and $400) <> 0 then Include(Result, ssAlt);
+end;
+
+function ShiftStateToButtonState(Shift: TShiftState): Integer;
+begin
+  Result := 0;
+  if ssShift in Shift then Result := Result or $100;
+  if ssCtrl in Shift then Result := Result or $200;
+  if ssAlt in Shift then Result := Result or $400;
 end;
 
 // Event functions - store event type and data in allocated memory blocks
@@ -309,14 +328,31 @@ begin
   Result := 0;
 end;
 
+function QKeyEvent_create(eventType: Integer; key: Integer; shiftState: Integer): QKeyEventH;
+var
+  P: PKeyEventRec;
+begin
+  New(P);
+  P^.EventType := eventType;
+  P^.Key := key;
+  P^.ShiftState := shiftState;
+  Result := QKeyEventH(P);
+end;
+
 function QKeyEvent_key(event: QKeyEventH): Integer;
 begin
-  Result := 0;
+  if event <> nil then
+    Result := PKeyEventRec(event)^.Key
+  else
+    Result := 0;
 end;
 
 function QKeyEvent_stateAfter(event: QKeyEventH): Integer;
 begin
-  Result := 0;
+  if event <> nil then
+    Result := PKeyEventRec(event)^.ShiftState
+  else
+    Result := 0;
 end;
 
 procedure QClipboard_clear;

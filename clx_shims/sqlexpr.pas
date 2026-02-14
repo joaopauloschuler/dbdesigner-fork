@@ -114,13 +114,17 @@ begin
 end;
 
 function TSQLDataSet.GetQuoteChar: string;
+var
+  LowerDriver: string;
 begin
   // Return the identifier quote character for the database
-  // Most databases use '"', MySQL uses '`'
+  Result := '"';
   if Assigned(Database) and (Database is TSQLConnection) then
-    Result := '"'
-  else
-    Result := '"';
+  begin
+    LowerDriver := LowerCase(TSQLConnection(Database).FDriverName);
+    if Pos('mysql', LowerDriver) > 0 then
+      Result := '`';
+  end;
 end;
 
 function TSQLDataSet.ExecSQL(ExecDirect: Boolean): Integer;
