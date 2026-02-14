@@ -39,9 +39,9 @@ unit PaletteNav;
 interface
 
 uses
-  SysUtils, Types, Classes, QGraphics, QControls, QForms, QDialogs,
-  QStdCtrls, QExtCtrls, QComCtrls, QButtons, EERModel, Qt, StrUtils, QTypes,
-  QMenus, EERDM;
+  SysUtils, Types, Classes, Graphics, Controls, Forms, Dialogs,
+  StdCtrls, ExtCtrls, ComCtrls, Buttons, EERModel, Qt, StrUtils, LCLType,
+  Menus, EERDM;
 
 type
   TPaletteNavForm = class(TForm)
@@ -158,7 +158,7 @@ implementation
 
 uses MainDM, Main, EER;
 
-{$R *.xfm}
+{$R *.lfm}
 
 procedure TPaletteNavForm.FormCreate(Sender: TObject);
 begin
@@ -279,7 +279,7 @@ procedure TPaletteNavForm.ZoomEdKeyDown(Sender: TObject; var Key: Word;
   Shift: TShiftState);
 var theNewZoomFac: double;
 begin
-  if(Key=Key_Return)or(Key=Key_Enter)then
+  if(Key=VK_RETURN)or(Key=VK_RETURN)then
   begin
     ZoomEdExit(self);
 
@@ -297,7 +297,7 @@ begin
 
   end;
 
-  if(Key=Key_Escape)then
+  if(Key=VK_ESCAPE)then
   begin
     ZoomEdExit(self);
   end;
@@ -438,7 +438,7 @@ procedure TPaletteNavForm.NameEditKeyDown(Sender: TObject; var Key: Word;
   Shift: TShiftState);
 begin
   if(Assigned(EERObj))and
-    ((Key=Key_Return)or(Key=Key_Enter))then
+    ((Key=VK_RETURN)or(Key=VK_RETURN))then
   begin
     if(NameEdit.Text<>EERObj.ObjName)then
     begin
@@ -621,7 +621,7 @@ procedure TPaletteNavForm.LeftEditKeyDown(Sender: TObject; var Key: Word;
   Shift: TShiftState);
 begin
   if(Assigned(EERObj))and
-    ((Key=Key_Return)or(Key=Key_Enter))then
+    ((Key=VK_RETURN)or(Key=VK_RETURN))then
   begin
     LeftEditExit(self);
   end;
@@ -656,7 +656,7 @@ procedure TPaletteNavForm.WidthEdKeyDown(Sender: TObject; var Key: Word;
   Shift: TShiftState);
 begin
   if(Assigned(EERObj))and
-    ((Key=Key_Return)or(Key=Key_Enter))then
+    ((Key=VK_RETURN)or(Key=VK_RETURN))then
   begin
     WidthEdExit(self);
   end;

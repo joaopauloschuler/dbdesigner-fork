@@ -39,14 +39,14 @@ unit GlobalSysFunctions;
 
 interface
 
-uses QForms,
+uses Forms,
   IniFiles,
   SysUtils,
   {$IFDEF MSWINDOWS}
   Windows, Messages,
   ActiveX, ShellAPI, ShlObj, // for SHGetSpecialFolderLocation() und SHGetPathFromIDList()
   {$ENDIF}
-  QGraphics;
+  Graphics;
 
 procedure LoadApplicationFont;
 {$IFDEF MSWINDOWS}
@@ -145,31 +145,31 @@ begin
   try
     try
 {$IFDEF LINUX}
-      Application.Font.Name:=theIni.ReadString('GeneralSettings', 'ApplicationFontName', 'Nimbus Sans L');
-      Application.Font.Size:=StrToInt(theIni.ReadString('GeneralSettings', 'ApplicationFontSize', '11'));
+      Screen.SystemFont.Name:=theIni.ReadString('GeneralSettings', 'ApplicationFontName', 'Nimbus Sans L');
+      Screen.SystemFont.Size:=StrToInt(theIni.ReadString('GeneralSettings', 'ApplicationFontSize', '11'));
 {$ELSE}
-      Application.Font.Name:=theIni.ReadString('GeneralSettings', 'ApplicationFontName', 'MS Sans Serif');
-      Application.Font.Size:=StrToInt(theIni.ReadString('GeneralSettings', 'ApplicationFontSize', '8'));
+      Screen.SystemFont.Name:=theIni.ReadString('GeneralSettings', 'ApplicationFontName', 'MS Sans Serif');
+      Screen.SystemFont.Size:=StrToInt(theIni.ReadString('GeneralSettings', 'ApplicationFontSize', '8'));
 {$ENDIF}
       s:=theIni.ReadString('GeneralSettings', 'ApplicationFontStyle', '');
-      Application.Font.Style:=[];
+      Screen.SystemFont.Style:=[];
       if(Pos('bold', lowercase(s))>0)then
-        Application.Font.Style:=Application.Font.Style+[fsBold]
+        Screen.SystemFont.Style:=Screen.SystemFont.Style+[fsBold]
       else if(Pos('italic', lowercase(s))>0)then
-        Application.Font.Style:=Application.Font.Style+[fsItalic]
+        Screen.SystemFont.Style:=Screen.SystemFont.Style+[fsItalic]
       else if(Pos('underline', lowercase(s))>0)then
-        Application.Font.Style:=Application.Font.Style+[fsUnderline]
+        Screen.SystemFont.Style:=Screen.SystemFont.Style+[fsUnderline]
       else if(Pos('strikeout', lowercase(s))>0)then
-        Application.Font.Style:=Application.Font.Style+[fsStrikeOut];
+        Screen.SystemFont.Style:=Screen.SystemFont.Style+[fsStrikeOut];
     except
 {$IFDEF LINUX}
-      Application.Font.Name:='Nimbus Sans L';
-      Application.Font.Size:=11;
-      Application.Font.Style:=[];
+      Screen.SystemFont.Name:='Nimbus Sans L';
+      Screen.SystemFont.Size:=11;
+      Screen.SystemFont.Style:=[];
 {$ELSE}
-      Application.Font.Name:='MS Sans Serif';
-      Application.Font.Size:=8;
-      Application.Font.Style:=[];
+      Screen.SystemFont.Name:='MS Sans Serif';
+      Screen.SystemFont.Size:=8;
+      Screen.SystemFont.Style:=[];
 {$ENDIF}
     end;
   finally

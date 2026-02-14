@@ -6,8 +6,8 @@ unit PrinterSettings;
 interface
 
 uses
-  SysUtils, Types, Classes, QGraphics, QControls, QForms, QDialogs,
-  QStdCtrls, QPrinters;
+  SysUtils, Types, Classes, Graphics, Controls, Forms, Dialogs,
+  StdCtrls, Printers;
 
 type
   TPrinterSettingsForm = class(TForm)
@@ -28,7 +28,7 @@ var
 
 implementation
 
-{$R *.xfm}
+{$R *.lfm}
 
 procedure TPrinterSettingsForm.FormCreate(Sender: TObject);
 begin

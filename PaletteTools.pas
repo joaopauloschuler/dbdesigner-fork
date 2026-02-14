@@ -39,8 +39,8 @@ unit PaletteTools;
 interface
 
 uses
-  SysUtils, Types, Classes, QGraphics, QControls, QForms, QDialogs,
-  QStdCtrls, QExtCtrls, QButtons, Qt;
+  SysUtils, Types, Classes, Graphics, Controls, Forms, Dialogs,
+  StdCtrls, ExtCtrls, Buttons, Qt;
 
 type
   TPaletteToolsForm = class(TForm)
@@ -111,7 +111,7 @@ implementation
 
 uses MainDM, Main, EERDM;
 
-{$R *.xfm}
+{$R *.lfm}
 
 procedure TPaletteToolsForm.FormCreate(Sender: TObject);
 begin

@@ -42,8 +42,8 @@ unit EERSynchronisation;
 interface
 
 uses
-  Qt, SysUtils, Types, Classes, QGraphics, QControls, QForms, QDialogs,
-  QStdCtrls, QExtCtrls, QButtons, EERModel, QComCtrls;
+  LCLType, Qt, SysUtils, Types, Classes, Graphics, Controls, Forms, Dialogs,
+  StdCtrls, ExtCtrls, Buttons, EERModel, ComCtrls;
 
 type
   TEERSynchronisationForm = class(TForm)
@@ -97,7 +97,7 @@ implementation
 
 uses MainDM, EERDM, DBDM, DBEERDM;
 
-{$R *.xfm}
+{$R *.lfm}
 
 procedure TEERSynchronisationForm.FormCreate(Sender: TObject);
 begin
@@ -216,7 +216,7 @@ end;
 procedure TEERSynchronisationForm.FormKeyDown(Sender: TObject;
   var Key: Word; Shift: TShiftState);
 begin
-  if(Key=Key_F1)then
+  if(Key=VK_F1)then
     DMMain.ShowHelp('db', 'dbsync');
 end;
 

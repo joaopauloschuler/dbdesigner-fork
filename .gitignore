@@ -1,0 +1,25 @@
+# Compiled units
+lib/
+*.o
+*.ppu
+*.compiled
+*.res
+
+# Binary output
+bin/DBDesignerFork
+bin/*.exe
+
+# Lazarus backup files
+backup/
+*.bak
+*.lps
+
+# Editor files
+*.swp
+*~
+
+# Build logs
+build-errors-*.log
+
+# Environment
+.env

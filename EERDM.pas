@@ -50,8 +50,8 @@ unit EERDM;
 interface
 
 uses
-  SysUtils, Classes, QTypes, QForms, Qt, QControls,
-  IniFiles, QDialogs, QExtCtrls, QMenus, Types, EERModel;
+  SysUtils, Classes, LCLType, Forms, Qt, Controls,
+  IniFiles, Dialogs, ExtCtrls, Menus, Types, EERModel;
 
 type
   TDMEER = class(TDataModule)
@@ -256,7 +256,7 @@ implementation
 
 uses MainDM;
 
-{$R *.xfm}
+{$R *.lfm}
 
 procedure TDMEER.DataModuleCreate(Sender: TObject);
 begin

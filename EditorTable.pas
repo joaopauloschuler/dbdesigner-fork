@@ -44,10 +44,10 @@ unit EditorTable;
 interface
 
 uses
-  SysUtils, Types, Classes, QGraphics, QControls, QForms, QDialogs,
-  QStdCtrls, QImgList, QComCtrls, QGrids, Qt, EERModel, QExtCtrls,
-  QCheckLst, QButtons, Math, QMenus, QTypes, StrUtils, QClipbrd,
-  EditorTableFieldDatatypeInplace, QMask;
+  SysUtils, Types, Classes, Graphics, Controls, Forms, Dialogs,
+  StdCtrls, ImgList, ComCtrls, Grids, Qt, EERModel, ExtCtrls,
+  CheckLst, Buttons, Math, Menus, LCLType, StrUtils, Clipbrd,
+  EditorTableFieldDatatypeInplace, MaskEdit;
 
 type
   TEditorTableForm = class(TForm)
@@ -246,7 +246,7 @@ implementation
 
 uses MainDM, EERDM, GUIDM, EditorTableField;
 
-{$R *.xfm}
+{$R *.lfm}
 
 procedure TEditorTableForm.FormCreate(Sender: TObject);
 begin
@@ -1005,7 +1005,7 @@ end;
 procedure TEditorTableForm.TableNameEdKeyDown(Sender: TObject;
   var Key: Word; Shift: TShiftState);
 begin
-  if(Key=Key_Return)then
+  if(Key=VK_RETURN)then
   begin
     ColumnGrid.SetFocus;
     EditCellStr;
@@ -1015,11 +1015,11 @@ end;
 procedure TEditorTableForm.ColumnGridKeyDown(Sender: TObject;
   var Key: Word; Shift: TShiftState);
 begin
-  if(Key=Key_Tab)or(Key=Key_Right)then
+  if(Key=VK_TAB)or(Key=VK_RIGHT)then
   begin
-    if(ColumnGrid.Col=8)and(Key=Key_Right)then
+    if(ColumnGrid.Col=8)and(Key=VK_RIGHT)then
       ColumnGrid.Col:=1
-    else if(ColumnGrid.Col=8)and(Key=Key_Tab)then
+    else if(ColumnGrid.Col=8)and(Key=VK_TAB)then
     begin
       ColumnGrid.Col:=1;
       //Go down one row
@@ -1028,7 +1028,7 @@ begin
 
       //When in last row, cursor one down and edit, to create new
       if(ColumnGrid.Row=ColumnGrid.RowCount-1)then
-        Key:=Key_Return;
+        Key:=VK_RETURN;
     end
     else if(ColumnGrid.Col=3)then
     begin
@@ -1039,7 +1039,7 @@ begin
       ColumnGrid.Col:=3;
   end;
 
-  if(Key=Key_Left)then
+  if(Key=VK_LEFT)then
   begin
     if(ColumnGrid.Col=3)then
       ColumnGrid.Col:=1
@@ -1053,7 +1053,7 @@ begin
   end;
 
   //Use StringEditor
-  if(Key=Key_Return)or(Key=Key_Enter)then
+  if(Key=VK_RETURN)or(Key=VK_RETURN)then
   begin
     if(ColumnGrid.Col=1)or(ColumnGrid.Col=7)or(ColumnGrid.Col=8)then
       EditCellStr;
@@ -1073,12 +1073,12 @@ begin
         EditCellStr(Chr(Key-Ord('A')+Ord('a')));
   end;
 
-  if(Key=Key_Delete)then
+  if(Key=VK_DELETE)then
   begin
     DeleteColumnMIClick(self);
   end;
 
-  if(Key=Key_Insert)then
+  if(Key=VK_INSERT)then
   begin
     InsertColumn;
   end;
@@ -1798,10 +1798,10 @@ end;
 procedure TEditorTableForm.FormKeyDown(Sender: TObject; var Key: Word;
   Shift: TShiftState);
 begin
-  if(Key=Key_F1)then
+  if(Key=VK_F1)then
     DMMain.ShowHelp('editors', 'table');
 
-  if(Key=Key_Escape)then
+  if(Key=VK_ESCAPE)then
   begin
     if(ActiveControl=EditorTableFieldEdit)or
       (ActiveControl=EditorTableFieldDatatypeInplaceEditor.DatatypeCBox)then

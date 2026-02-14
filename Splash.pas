@@ -41,8 +41,8 @@ unit Splash;
 interface
 
 uses
-  SysUtils, Types, Classes, QGraphics, QControls, QForms, QDialogs,
-  QStdCtrls, QExtCtrls, QButtons, QTypes;
+  SysUtils, Types, Classes, Graphics, Controls, Forms, Dialogs,
+  StdCtrls, ExtCtrls, Buttons, LCLType;
 
 type
   TSplashForm = class(TForm)
@@ -79,7 +79,7 @@ implementation
 
 uses Main;
 
-{$R *.xfm}
+{$R *.lfm}
 
 procedure TSplashForm.FormCreate(Sender: TObject);
 begin

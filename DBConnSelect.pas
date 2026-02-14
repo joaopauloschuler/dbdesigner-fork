@@ -42,9 +42,9 @@ unit DBConnSelect;
 interface
 
 uses
-  Qt, SysUtils, Types, Classes, QGraphics, QControls, QForms, QDialogs,
-  QStdCtrls, QImgList, QComCtrls, DBDM, QGrids, QButtons, SqlExpr,
-  QExtCtrls, IniFiles, QMenus, QTypes, StrUtils, Contnrs;
+  Qt, SysUtils, Types, Classes, Graphics, Controls, Forms, Dialogs,
+  StdCtrls, ImgList, ComCtrls, DBDM, Grids, Buttons, SqlExpr,
+  ExtCtrls, IniFiles, Menus, LCLType, StrUtils, Contnrs;
 
 type
   TDBConnSelectForm = class(TForm)
@@ -153,7 +153,7 @@ implementation
 
 uses DBConnLogin, DBConnEditor, MainDM;
 
-{$R *.xfm}
+{$R *.lfm}
 
 procedure TDBConnSelectForm.FormCreate(Sender: TObject);
 begin
@@ -1425,7 +1425,7 @@ end;
 procedure TDBConnSelectForm.FormKeyDown(Sender: TObject; var Key: Word;
   Shift: TShiftState);
 begin
-  if(Key=Key_F1)then
+  if(Key=VK_F1)then
     DMMain.ShowHelp('db', 'dbconn');
 end;
 

@@ -81,9 +81,9 @@ unit EERModel;
 interface
 
 uses
-  SysUtils, Types, Classes, QGraphics, QControls, QForms, QDialogs,
-  QStdCtrls, QExtCtrls, QImgList, QMenus, QTypes, IniFiles, Math, StrUtils,
-  QPrinters, QClipbrd, QComCtrls, Qt,
+  SysUtils, Types, Classes, Graphics, Controls, Forms, Dialogs,
+  StdCtrls, ExtCtrls, ImgList, Menus, LCLType, IniFiles, Math, StrUtils,
+  Printers, Clipbrd, ComCtrls, Qt,
   {$IFDEF USE_IXMLDBMODELType}
   XMLDoc,
   EERModel_XML,
@@ -270,8 +270,8 @@ type
     procedure DoMouseMove(Sender: TObject; Shift: TShiftState; X, Y: Integer);
     procedure DoMouseUp(Sender: TObject; Button: TMouseButton; Shift: TShiftState; X, Y: Integer);
 
-    procedure MouseEnter(AControl: TControl); override;
-    procedure MouseLeave(AControl: TControl); override;
+    procedure MouseEnter; override;
+    procedure MouseLeave; override;
 
     //Load needed images
     procedure AddImgToPopupImgList(fname: string);
@@ -1628,13 +1628,13 @@ begin
   end;
 end;
 
-procedure TEERModel.MouseEnter(AControl: TControl);
+procedure TEERModel.MouseEnter;
 begin
   // set Screen.Cursor
   //DMEER.SetWorkToolCurser(DMEER.CurrentWorkTool);
 end;
 
-procedure TEERModel.MouseLeave(AControl: TControl);
+procedure TEERModel.MouseLeave;
 begin
   // restore the cursor
   //Screen.Cursor:=crDefault;
@@ -8973,7 +8973,7 @@ begin
   if CreateLastChage then
   begin
     s := s + ', '+ sLineBreak;
-    s := s + '  '+LastChangeDateCol + ' VARCHAR(15), ' + sLineBreak; //confirmar se é varchar(12)
+    s := s + '  '+LastChangeDateCol + ' VARCHAR(15), ' + sLineBreak; //confirmar se Ã© varchar(12)
     s := s + '  '+LastChangeUserCol + ' INTEGER ';
   end;
 

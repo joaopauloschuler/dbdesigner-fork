@@ -57,12 +57,12 @@ uses
   ActiveX, ShellAPI, ShlObj, // for SHGetSpecialFolderLocation() und SHGetPathFromIDList()
   {$ENDIF}
   SysUtils, Classes, DBXpress, DB, SqlExpr, FMTBcd, Provider, DBClient,
-  DBLocal, QDialogs, QComCtrls, IniFiles, QForms, Qt,
-  QButtons, QControls, QMenus,
+  DBLocal, Dialogs, ComCtrls, IniFiles, Forms, Qt,
+  Buttons, Controls, Menus,
   {$IFDEF USE_IXMLDBMODELType}
   xmldom, XMLIntf, XMLDoc,
   {$ENDIF}
-  QTypes, QExtCtrls, Types, Math, QStdCtrls, QGraphics,
+  LCLType, ExtCtrls, Types, Math, StdCtrls, Graphics,
   GlobalSysFunctions;
 
 type
@@ -300,10 +300,10 @@ type
 
 implementation
 
-uses {$IFDEF LINUX}Libc, {$ENDIF}
+uses {$IFDEF LINUX}BaseUnix, Unix, {$ENDIF}
   EditorString, StrUtils;
 
-{$R *.xfm}
+{$R *.lfm}
 
 procedure TDMMain.DataModuleCreate(Sender: TObject);
 var i: integer;
@@ -339,9 +339,9 @@ begin
 
   LoadApplicationFont;
 
-  Application.Font.Name:=ApplicationFontName;
-  Application.Font.Size:=ApplicationFontSize;
-  Application.Font.Style:=ApplicationFontStyle;
+  Screen.SystemFont.Name:=ApplicationFontName;
+  Screen.SystemFont.Size:=ApplicationFontSize;
+  Screen.SystemFont.Style:=ApplicationFontStyle;
 end;
 
 //Destructor of the DataModule
@@ -1862,9 +1862,9 @@ begin
 {$ENDIF}
     end;
 
-    Application.Font.Name:=ApplicationFontName;
-    Application.Font.Size:=ApplicationFontSize;
-    Application.Font.Style:=ApplicationFontStyle;
+    Screen.SystemFont.Name:=ApplicationFontName;
+    Screen.SystemFont.Size:=ApplicationFontSize;
+    Screen.SystemFont.Style:=ApplicationFontStyle;
   finally
     theIni.Free;
   end;

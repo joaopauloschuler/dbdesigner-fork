@@ -39,8 +39,8 @@ unit PaletteDataTypesReplace;
 interface
 
 uses
-  SysUtils, Types, Classes, QGraphics, QControls, QForms, QDialogs,
-  QStdCtrls, QButtons, QExtCtrls, EERModel;
+  SysUtils, Types, Classes, Graphics, Controls, Forms, Dialogs,
+  StdCtrls, Buttons, ExtCtrls, EERModel;
 
 type
   TPaletteDataTypesReplaceForm = class(TForm)
@@ -82,7 +82,7 @@ implementation
 
 uses EditorTableFieldParam, MainDM;
 
-{$R *.xfm}
+{$R *.lfm}
 
 procedure TPaletteDataTypesReplaceForm.FormCreate(Sender: TObject);
 begin

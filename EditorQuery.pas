@@ -40,12 +40,12 @@ unit EditorQuery;
 interface
 
 uses
-  SysUtils, Types, Classes, Variants, QTypes, QGraphics, QControls, QForms,
-  QDialogs, QStdCtrls, FMTBcd, DB, DBClient, Provider, SqlExpr, QButtons,
-  QExtCtrls, QDBCtrls, QGrids, QDBGrids, QComCtrls, EERModel, IniFiles,
-  QMenus, QClipbrd, {$IFDEF USE_SYNEDIT}QSynEdit, QSynHighlighterSQL, {$ENDIF}
+  SysUtils, Types, Classes, Variants, LCLType, Graphics, Controls, Forms,
+  Dialogs, StdCtrls, FMTBcd, DB, DBClient, Provider, SqlExpr, Buttons,
+  ExtCtrls, DBCtrls, Grids, DBGrids, ComCtrls, EERModel, IniFiles,
+  Menus, Clipbrd, {$IFDEF USE_SYNEDIT}QSynEdit, QSynHighlighterSQL, {$ENDIF}
   {$IFDEF MSWINDOWS}Windows, ShellAPI, {$ENDIF}
-  Qt, QImgList, EmbeddedPdfDB;
+  Qt, ImgList, EmbeddedPdfDB;
 
 type
   TEditorQueryForm = class(TForm)
@@ -343,7 +343,7 @@ implementation
 
 uses DBDM, MainDM, GUIDM, EERDM, EER;
 
-{$R *.xfm}
+{$R *.lfm}
 
 procedure TEditorQueryForm.FormCreate(Sender: TObject);
 begin
@@ -2509,7 +2509,7 @@ end;
 procedure TEditorQueryForm.FormKeyDown(Sender: TObject; var Key: Word;
   Shift: TShiftState);
 begin
-  if(Key=Key_F1)then
+  if(Key=VK_F1)then
     DMMain.ShowHelp('editors', 'queryed');
 end;
 

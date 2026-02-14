@@ -38,7 +38,7 @@ unit EERExportImportDM;
 interface
 
 uses
-  SysUtils, Classes, QTypes, IniFiles, QDialogs, EERModel;
+  SysUtils, Classes, LCLType, IniFiles, Dialogs, EERModel;
 
 type
   TDMEERExportImport = class(TDataModule)
@@ -55,7 +55,7 @@ var
 
 implementation
 
-{$R *.xfm}
+{$R *.lfm}
 
 uses  MainDM,
 {$IFDEF USE_IXMLDBMODELType}

@@ -42,9 +42,9 @@ unit EERStoreInDatabase;
 interface
 
 uses
-  SysUtils, Types, Classes, QGraphics, QControls, QForms, QDialogs,
-  QStdCtrls, QButtons, QExtCtrls, EERModel, SqlExpr, QImgList, QComCtrls,
-  DB, QMenus, QTypes, DBDM;
+  SysUtils, Types, Classes, Graphics, Controls, Forms, Dialogs,
+  StdCtrls, Buttons, ExtCtrls, EERModel, SqlExpr, ImgList, ComCtrls,
+  DB, Menus, LCLType, DBDM;
 
 type
   TEERStoreInDatabaseForm = class(TForm)
@@ -113,7 +113,7 @@ implementation
 
 uses MainDM;
 
-{$R *.xfm}
+{$R *.lfm}
 
 procedure TEERStoreInDatabaseForm.FormCreate(Sender: TObject);
 begin

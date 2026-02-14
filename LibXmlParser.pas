@@ -515,7 +515,7 @@ FUNCTION  StrSFPas    (Start, Finish : PChar) : STRING;                    // Co
 FUNCTION  TrimWs      (Source : STRING) : STRING;                          // Trim Whitespace
 
 FUNCTION  AnsiToUtf8  (Source : ANSISTRING) : STRING;                            // Convert Win-1252 to UTF-8
-FUNCTION  Utf8ToAnsi  (Source : STRING; UnknownChar : CHAR = '¿') : ANSISTRING;  // Convert UTF-8 to Win-1252
+FUNCTION  Utf8ToAnsi  (Source : STRING; UnknownChar : CHAR = #191) : ANSISTRING;  // Convert UTF-8 to Win-1252
 
 
 (*
@@ -720,7 +720,7 @@ BEGIN
 END;
 
 
-FUNCTION  Utf8ToAnsi (Source : STRING; UnknownChar : CHAR = '¿') : ANSISTRING;
+FUNCTION  Utf8ToAnsi (Source : STRING; UnknownChar : CHAR = #191) : ANSISTRING;
           (* Converts the given UTF-8 String to Windows ANSI (Win-1252).
              If a character can not be converted, the "UnknownChar" is inserted. *)
 VAR

@@ -39,8 +39,8 @@ unit EditorNote;
 interface
 
 uses
-  SysUtils, Types, Classes, QGraphics, QControls, QForms, QDialogs,
-  QStdCtrls, EERModel, Qt, QButtons, QExtCtrls;
+  LCLType, SysUtils, Types, Classes, Graphics, Controls, Forms, Dialogs,
+  StdCtrls, EERModel, Qt, Buttons, ExtCtrls;
 
 type
   TEditorNoteForm = class(TForm)
@@ -81,7 +81,7 @@ implementation
 
 uses MainDM, EERDM, GUIDM;
 
-{$R *.xfm}
+{$R *.lfm}
 
 procedure TEditorNoteForm.FormCreate(Sender: TObject);
 begin
@@ -153,10 +153,10 @@ end;
 procedure TEditorNoteForm.FormKeyDown(Sender: TObject; var Key: Word;
   Shift: TShiftState);
 begin
-  if(Key=Key_F1)then
+  if(Key=VK_F1)then
     DMMain.ShowHelp('editors', 'note');
 
-  if(Key=Key_Escape)then
+  if(Key=VK_ESCAPE)then
     AbortBtnClick(self);
 end;
 

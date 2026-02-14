@@ -39,8 +39,8 @@ unit EditorTableFieldParam;
 interface
 
 uses
-  SysUtils, Types, Classes, QGraphics, QControls, QForms, QDialogs,
-  QStdCtrls, EERModel, QMask, QExtCtrls, Qt, EERDM;
+  LCLType, SysUtils, Types, Classes, Graphics, Controls, Forms, Dialogs,
+  StdCtrls, EERModel, MaskEdit, ExtCtrls, Qt, EERDM;
 
 type
   TEditorTableFieldParamForm = class(TForm)
@@ -79,7 +79,7 @@ implementation
 
 uses MainDM, EditorTable;
 
-{$R *.xfm}
+{$R *.lfm}
 
 procedure TEditorTableFieldParamForm.FormCreate(Sender: TObject);
 begin
@@ -152,10 +152,10 @@ end;
 procedure TEditorTableFieldParamForm.FormKeyDown(Sender: TObject;
   var Key: Word; Shift: TShiftState);
 begin
-  if(Key=Key_Return)or(Key=Key_Enter)then
+  if(Key=VK_RETURN)or(Key=VK_RETURN)then
     ModalResult:=mrOK;
 
-  if(Key=Key_Escape)then
+  if(Key=VK_ESCAPE)then
     ModalResult:=mrAbort;
 end;
 

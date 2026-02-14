@@ -41,8 +41,8 @@ unit EER;
 interface
 
 uses
-  SysUtils, Types, Classes, QGraphics, QControls, QForms, QDialogs,
-  QStdCtrls, QExtCtrls, QImgList, QMenus, QTypes, EERModel, Qt, IniFiles;
+  SysUtils, Types, Classes, Graphics, Controls, Forms, Dialogs,
+  StdCtrls, ExtCtrls, ImgList, Menus, LCLType, EERModel, Qt, IniFiles;
 
 type
   TEERForm = class(TForm)
@@ -86,7 +86,7 @@ implementation
 
 uses MainDM, EERDM;
 
-{$R *.xfm}
+{$R *.lfm}
 
 
 procedure TEERForm.FormCreate(Sender: TObject);

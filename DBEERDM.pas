@@ -57,7 +57,7 @@ unit DBEERDM;
 interface
 
 uses
-  SysUtils, Classes, QTypes, SqlExpr, DB, QForms, QStdCtrls, QDialogs,
+  SysUtils, Classes, LCLType, SqlExpr, DB, Forms, StdCtrls, Dialogs,
   EERModel, DBXpress, RegExpr;
 
 type
@@ -100,7 +100,7 @@ implementation
 
 uses MainDM, DBDM, EERDM;
 
-{$R *.xfm}
+{$R *.lfm}
 
 
 

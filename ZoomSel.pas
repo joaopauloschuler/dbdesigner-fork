@@ -39,8 +39,8 @@ unit ZoomSel;
 interface
 
 uses
-  SysUtils, Types, Classes, QGraphics, QControls, QForms, QDialogs,
-  QStdCtrls, QExtCtrls, QT;
+  LCLType, SysUtils, Types, Classes, Graphics, Controls, Forms, Dialogs,
+  StdCtrls, ExtCtrls, QT;
 
 type
   TZoomSelForm = class(TForm)
@@ -65,7 +65,7 @@ implementation
 
 uses MainDM;
 
-{$R *.xfm}
+{$R *.lfm}
 
 procedure TZoomSelForm.FormCreate(Sender: TObject);
 begin
@@ -88,7 +88,7 @@ end;
 procedure TZoomSelForm.FormKeyDown(Sender: TObject; var Key: Word;
   Shift: TShiftState);
 begin
-  if(Key=Key_Escape)then
+  if(Key=VK_ESCAPE)then
     ModalResult:=mrAbort;
 end;
 

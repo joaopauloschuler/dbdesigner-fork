@@ -69,10 +69,10 @@ unit Main;
 interface
 
 uses
-  SysUtils, Types, Classes, QGraphics, QControls, QForms, QDialogs,
-  QStdCtrls, QExtCtrls, QMenus, QTypes, QComCtrls, QGrids, QDBGrids,
-  DBXpress, DB, SqlExpr, QImgList, QButtons, QDBCtrls, QT, QPrinters,
-  QClipbrd, QStyle,
+  SysUtils, Types, Classes, Graphics, Controls, Forms, Dialogs,
+  StdCtrls, ExtCtrls, Menus, LCLType, ComCtrls, Grids, DBGrids,
+  DBXpress, DB, SqlExpr, ImgList, Buttons, DBCtrls, QT, Printers,
+  Clipbrd, QStyle,
 {$IFDEF USE_QTheming}QThemed,{$ENDIF}
   EERModel;
 
@@ -462,7 +462,7 @@ var
 
 implementation
 
-{$R *.xfm}
+{$R *.lfm}
 
 uses MainDM, ZoomSel, EER,
   PaletteTools, PaletteModel, PaletteDatatypes, OptionsModel, Options,
@@ -2756,7 +2756,7 @@ begin
     theShiftState:=ButtonStateToShiftState(QKeyEvent_stateAfter(QKeyEventH(Event)));
 
     // Space
-    if(Not(TypingInMemo))and(Key=Key_Space)then
+    if(Not(TypingInMemo))and(Key=VK_SPACE)then
     begin
       if(Not(SpaceDown))and
         (DMEER.CurrentWorkTool<>wtHand)and
@@ -2783,7 +2783,7 @@ begin
     end
 
     //Tab
-    else if(Not(TypingInMemo))and(Key=Key_Tab)and
+    else if(Not(TypingInMemo))and(Key=VK_TAB)and
       (theShiftState=[ssCtrl, ssShift])then
     begin
       if(TabHasBeenPressed)then
@@ -2793,7 +2793,7 @@ begin
 
       Handled:=True;
     end
-    else if(Key=Key_Tab)and
+    else if(Key=VK_TAB)and
       (theShiftState=[ssCtrl])then
     begin
       if(DMEER.WorkMode=wmDesign)then
@@ -2805,7 +2805,7 @@ begin
     end
 
     //F11
-    else if(Key=Key_F11)then
+    else if(Key=VK_F11)then
     begin
       WindowState:=wsNormal;
       Top:=1;
@@ -2874,7 +2874,7 @@ begin
     if(DMEER.WorkMode=wmDesign)and(Handled=False)then
     begin
       // Del
-      if(Key=Key_Delete)and
+      if(Key=VK_DELETE)and
         (theShiftState=[ssCtrl])then
       begin
         DeleteMIClick(self);
@@ -2994,8 +2994,8 @@ begin
         Handled:=True;
       end
 
-      else if(Key=Key_Up)or(Key=Key_Down)or
-        (Key=Key_Left)or(Key=Key_Right)then
+      else if(Key=VK_UP)or(Key=VK_DOWN)or
+        (Key=VK_LEFT)or(Key=VK_RIGHT)then
       begin
         try
           if(Not(EditorIsActive))then
@@ -3003,10 +3003,10 @@ begin
               if(ActiveMDIChild.Classname='TEERForm')then
               begin
                 TEERForm(ActiveMDIChild).EERModel.MoveSelectedEERObjects(
-                  (Ord(Key=Key_right)-Ord(Key=Key_Left))*
+                  (Ord(Key=Key_right)-Ord(Key=VK_LEFT))*
                     (1+9*Ord(theShiftState=[ssShift]))*
                     (1+49*Ord(theShiftState=[ssCtrl, ssShift])),
-                  (Ord(Key=Key_Down)-Ord(Key=Key_Up))*
+                  (Ord(Key=VK_DOWN)-Ord(Key=VK_UP))*
                     (1+9*Ord(theShiftState=[ssShift]))*
                     (1+49*Ord(theShiftState=[ssCtrl, ssShift])));
 
@@ -3022,7 +3022,7 @@ begin
     else if(DMEER.WorkMode=wmQuery)and(Handled=False)then
     begin
       //F9
-      if(Key=Key_F9)then
+      if(Key=VK_F9)then
       begin
         TEditorQueryForm(DockedEditorQueryForm).ExecSQLBtnClick(self);
       end;
@@ -3107,7 +3107,7 @@ begin
   begin
     Key:=QKeyEvent_key(QKeyEventH(Event));
 
-    if(Key=Key_Space)then
+    if(Key=VK_SPACE)then
     begin
       SpaceDown:=False;
 {$IFDEF MSWINDOWS}
@@ -3183,7 +3183,7 @@ end;
 procedure TMainForm.FormKeyDown(Sender: TObject; var Key: Word;
   Shift: TShiftState);
 begin
-  if(Key=Key_F1)then
+  if(Key=VK_F1)then
   begin
     if(DMEER.WorkMode=wmDesign)then
       DMMain.ShowHelp('modelling', '')

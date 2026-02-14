@@ -52,8 +52,8 @@ unit OptionsModel;
 interface
 
 uses
-  SysUtils, Types, Classes, QGraphics, QControls, QForms, QDialogs,
-  QStdCtrls, QExtCtrls, EERModel, QComCtrls, QButtons, QCheckLst, QGrids,
+  LCLType, SysUtils, Types, Classes, Graphics, Controls, Forms, Dialogs,
+  StdCtrls, ExtCtrls, EERModel, ComCtrls, Buttons, CheckLst, Grids,
   Qt, EERDM;
 
 type
@@ -169,7 +169,7 @@ implementation
 
 uses MainDM;
 
-{$R *.xfm}
+{$R *.lfm}
 
 procedure TOptionsModelForm.FormCreate(Sender: TObject);
 begin
@@ -507,7 +507,7 @@ end;
 procedure TOptionsModelForm.FormKeyDown(Sender: TObject; var Key: Word;
   Shift: TShiftState);
 begin
-  if(Key=Key_Escape)then
+  if(Key=VK_ESCAPE)then
     AbortBtnClick(self);
 end;
 

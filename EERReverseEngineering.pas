@@ -41,9 +41,9 @@ unit EERReverseEngineering;
 interface
 
 uses
-  SysUtils, Types, Classes, QGraphics, QControls, QForms, QDialogs,
-  QStdCtrls, QButtons, QExtCtrls, QComCtrls, EERModel, QCheckLst, Qt, IniFiles,
-  QMenus, QTypes;
+  SysUtils, Types, Classes, Graphics, Controls, Forms, Dialogs,
+  StdCtrls, Buttons, ExtCtrls, ComCtrls, EERModel, CheckLst, Qt, IniFiles,
+  Menus, LCLType;
 
 type
   TEERReverseEngineeringForm = class(TForm)
@@ -137,7 +137,7 @@ implementation
 
 uses MainDM, EERDM, DBDM, DBEERDM;
 
-{$R *.xfm}
+{$R *.lfm}
 
 procedure TEERReverseEngineeringForm.FormCreate(Sender: TObject);
 begin
@@ -416,11 +416,11 @@ end;
 procedure TEERReverseEngineeringForm.FormKeyDown(Sender: TObject;
   var Key: Word; Shift: TShiftState);
 begin
-  if((Key=Key_Return)or(Key=Key_Enter))and
+  if((Key=VK_RETURN)or(Key=VK_RETURN))and
     (ActiveControl<>SubstMemo)then
     SubmitBtnClick(self);
 
-  if(Key=Key_F1)then
+  if(Key=VK_F1)then
     DMMain.ShowHelp('db', 'reveng');
 end;
 

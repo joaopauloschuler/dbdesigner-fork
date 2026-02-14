@@ -39,8 +39,8 @@ unit EditorString;
 interface
 
 uses
-  SysUtils, Types, Classes, QGraphics, QControls, QForms, QDialogs,
-  QStdCtrls, QButtons, QExtCtrls, Qt;
+  LCLType, SysUtils, Types, Classes, Graphics, Controls, Forms, Dialogs,
+  StdCtrls, Buttons, ExtCtrls, Qt;
 
 type
   TEditorStringForm = class(TForm)
@@ -70,7 +70,7 @@ implementation
 
 uses MainDM;
 
-{$R *.xfm}
+{$R *.lfm}
 
 
 procedure TEditorStringForm.FormCreate(Sender: TObject);
@@ -106,7 +106,7 @@ end;
 procedure TEditorStringForm.FormKeyDown(Sender: TObject; var Key: Word;
   Shift: TShiftState);
 begin
-  if(Key=Key_Return)then
+  if(Key=VK_RETURN)then
     OKBtnClick(self);
 end;
 

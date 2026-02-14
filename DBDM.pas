@@ -41,8 +41,8 @@ unit DBDM;
 interface
 
 uses
-  SysUtils, Classes, QTypes, DBXpress, FMTBcd, DBClient, Provider, SqlExpr,
-  DB, IniFiles, QForms, QControls, Qt, QDialogs, Contnrs;
+  SysUtils, Classes, LCLType, DBXpress, FMTBcd, DBClient, Provider, SqlExpr,
+  DB, IniFiles, Forms, Controls, Qt, Dialogs, Contnrs;
 
 type
   // Class storing a Database-Connection
@@ -141,7 +141,7 @@ var
 
 implementation
 
-{$R *.xfm}
+{$R *.lfm}
 
 uses DBConnSelect, MainDM;
 

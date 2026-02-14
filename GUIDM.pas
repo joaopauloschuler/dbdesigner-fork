@@ -41,8 +41,8 @@ unit GUIDM;
 interface
 
 uses
-  SysUtils, Classes, QTypes, IniFiles, QForms, QStyle, QMenus, QExtCtrls,
-  Qt, QGraphics;
+  SysUtils, Classes, LCLType, IniFiles, Forms, QStyle, Menus, ExtCtrls,
+  Qt, Graphics;
 
 type
   TDMGUI = class(TDataModule)
@@ -130,7 +130,7 @@ implementation
 
 uses Main, MainDM, DBDM;
 
-{$R *.xfm}
+{$R *.lfm}
 
 
 procedure TDMGUI.DataModuleCreate(Sender: TObject);

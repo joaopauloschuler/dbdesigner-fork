@@ -6,8 +6,8 @@ unit Tips;
 interface
 
 uses
-  SysUtils, Types, Classes, Variants, QTypes, QGraphics, QControls, QForms, 
-  QDialogs, QStdCtrls, QButtons, QExtCtrls, IniFiles;
+  SysUtils, Types, Classes, Variants, LCLType, Graphics, Controls, Forms, 
+  Dialogs, StdCtrls, Buttons, ExtCtrls, IniFiles;
 
 type
   TTipsForm = class(TForm)
@@ -33,7 +33,7 @@ implementation
 
 uses MainDM, GUIDM;
 
-{$R *.xfm}
+{$R *.lfm}
 
 procedure TTipsForm.FormCreate(Sender: TObject);
 begin

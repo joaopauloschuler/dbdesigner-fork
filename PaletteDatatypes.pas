@@ -39,9 +39,9 @@ unit PaletteDatatypes;
 interface
 
 uses
-  SysUtils, Types, Classes, QGraphics, QControls, QForms, QDialogs,
-  QStdCtrls, QExtCtrls, QComCtrls, QImgList, EERModel, StrUtils, QButtons,
-  QMenus, QTypes, Qt, EERDM;
+  SysUtils, Types, Classes, Graphics, Controls, Forms, Dialogs,
+  StdCtrls, ExtCtrls, ComCtrls, ImgList, EERModel, StrUtils, Buttons,
+  Menus, LCLType, Qt, EERDM;
 
 type
   TPaletteDataTypesForm = class(TForm)
@@ -128,7 +128,7 @@ implementation
 
 uses EditorDatatype, Main, MainDM, PaletteDataTypesReplace;
 
-{$R *.xfm}
+{$R *.lfm}
 
 procedure TPaletteDataTypesForm.FormCreate(Sender: TObject);
 var theSize: TSize;

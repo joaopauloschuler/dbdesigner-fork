@@ -43,9 +43,9 @@ unit EERExportSQLScript;
 interface
 
 uses
-  SysUtils, Types, Classes, QGraphics, QControls, QForms, QDialogs,
-  QStdCtrls, QButtons, EERModel, QClipbrd, QExtCtrls, QComCtrls,
-  IniFiles, QCheckLst;
+  SysUtils, Types, Classes, Graphics, Controls, Forms, Dialogs,
+  StdCtrls, Buttons, EERModel, Clipbrd, ExtCtrls, ComCtrls,
+  IniFiles, CheckLst;
 
 type
   TEERExportSQLScriptFrom = class(TForm)
@@ -133,7 +133,7 @@ implementation
 
 uses MainDM, EERDM, GUIDM, StrUtils;
 
-{$R *.xfm}
+{$R *.lfm}
 
 procedure TEERExportSQLScriptFrom.FormCreate(Sender: TObject);
 begin

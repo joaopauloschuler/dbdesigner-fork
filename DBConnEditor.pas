@@ -42,8 +42,8 @@ unit DBConnEditor;
 interface
 
 uses
-  Qt, SysUtils, Types, Classes, QGraphics, QControls, QForms, QDialogs,
-  QStdCtrls, QGrids, QButtons, DBDM, SqlExpr, IniFiles, QExtCtrls, QComCtrls, StrUtils;
+  LCLType, Qt, SysUtils, Types, Classes, Graphics, Controls, Forms, Dialogs,
+  StdCtrls, Grids, Buttons, DBDM, SqlExpr, IniFiles, ExtCtrls, ComCtrls, StrUtils;
 
 type
   TDBConnEditorForm = class(TForm)
@@ -116,7 +116,7 @@ implementation
 
 uses MainDM, DBConnSelect;
 
-{$R *.xfm}
+{$R *.lfm}
 
 procedure TDBConnEditorForm.FormCreate(Sender: TObject);
 begin
@@ -287,7 +287,7 @@ end;
 procedure TDBConnEditorForm.FormKeyDown(Sender: TObject; var Key: Word;
   Shift: TShiftState);
 begin
-  if(Key=Key_F1)then
+  if(Key=VK_F1)then
     DMMain.ShowHelp('db', 'dbconnparamdlg');
 end;
 

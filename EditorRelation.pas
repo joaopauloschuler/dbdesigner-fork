@@ -39,8 +39,8 @@ unit EditorRelation;
 interface
 
 uses
-  Qt, SysUtils, Types, Classes, QGraphics, QControls, QForms, QDialogs,
-  QStdCtrls, EERModel, QGrids, QComCtrls, QExtCtrls, QButtons;
+  LCLType, Qt, SysUtils, Types, Classes, Graphics, Controls, Forms, Dialogs,
+  StdCtrls, EERModel, Grids, ComCtrls, ExtCtrls, Buttons;
 
 type
   TEditorRelationForm = class(TForm)
@@ -110,7 +110,7 @@ implementation
 
 uses MainDM, EERDM, GUIDM;
 
-{$R *.xfm}
+{$R *.lfm}
 
 procedure TEditorRelationForm.FormCreate(Sender: TObject);
 begin
@@ -300,10 +300,10 @@ end;
 procedure TEditorRelationForm.FormKeyDown(Sender: TObject; var Key: Word;
   Shift: TShiftState);
 begin
-  if(Key=Key_F1)then
+  if(Key=VK_F1)then
     DMMain.ShowHelp('editors', 'relation');
 
-  if(Key=Key_Escape)then
+  if(Key=VK_ESCAPE)then
     AbortBtnClick(self);
 end;
 

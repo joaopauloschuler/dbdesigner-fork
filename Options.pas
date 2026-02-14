@@ -44,8 +44,8 @@ unit Options;
 interface
 
 uses
-  SysUtils, Types, Classes, QGraphics, QControls, QForms, QDialogs,
-  QStdCtrls, QComCtrls, QExtCtrls, QButtons, IniFiles, Qt;
+  LCLType, SysUtils, Types, Classes, Graphics, Controls, Forms, Dialogs,
+  StdCtrls, ComCtrls, ExtCtrls, Buttons, IniFiles, Qt;
 
 type
   TOptionsForm = class(TForm)
@@ -173,7 +173,7 @@ implementation
 
 uses MainDM, EERDM, DBDM, GUIDM, EER, EditorQuery;
 
-{$R *.xfm}
+{$R *.lfm}
 
 procedure TOptionsForm.FormCreate(Sender: TObject);
 var theIni: TMemIniFile;
@@ -573,7 +573,7 @@ end;
 procedure TOptionsForm.FormKeyDown(Sender: TObject; var Key: Word;
   Shift: TShiftState);
 begin
-  if(Key=Key_Escape)then
+  if(Key=VK_ESCAPE)then
     AbortBtnClick(self);
 end;
 
@@ -590,9 +590,9 @@ begin
       DMMain.ApplicationFontSize:=theDlg.Font.Size;
       DMMain.ApplicationFontStyle:=theDlg.Font.Style;
 
-      Application.Font.Name:=DMMain.ApplicationFontName;
-      Application.Font.Size:=DMMain.ApplicationFontSize;
-      Application.Font.Style:=DMMain.ApplicationFontStyle;
+      Screen.SystemFont.Name:=DMMain.ApplicationFontName;
+      Screen.SystemFont.Size:=DMMain.ApplicationFontSize;
+      Screen.SystemFont.Style:=DMMain.ApplicationFontStyle;
 
       FontEdit.Text:=DMMain.ApplicationFontName+', '+
         IntToStr(DMMain.ApplicationFontSize);

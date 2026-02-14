@@ -41,8 +41,8 @@ unit DBConnLogin;
 interface
 
 uses
-  SysUtils, Types, Classes, QGraphics, QControls, QForms, QDialogs,
-  QStdCtrls, QButtons;
+  SysUtils, Types, Classes, Graphics, Controls, Forms, Dialogs,
+  StdCtrls, Buttons;
 
 type
   TDBConnLoginForm = class(TForm)
@@ -75,7 +75,7 @@ implementation
 
 uses MainDM;
 
-{$R *.xfm}
+{$R *.lfm}
 
 procedure TDBConnLoginForm.FormCreate(Sender: TObject);
 begin

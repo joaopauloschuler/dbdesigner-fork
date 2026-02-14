@@ -1,6 +1,0 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<CONFIG>
-  <Compiler Value="/usr/bin/fpc" Date="1704440408"/>
-  <Params Value=" -MDelphi -Scghi -Cg -Ciot -O1 -gw3 -gl -l -vewnhibq -Fi/home/sroot/app/dbdesigner-fork/lib/x86_64-linux -Fu/home/sroot/app/dbdesigner-fork/clx_shims -Fu/home/sroot/app/dbdesigner-fork/EmbeddedPDF -Fu/home/sroot/.lazarus/lib/SynEdit/units/x86_64-linux/gtk2 -Fu/home/sroot/.lazarus/lib/units/x86_64-linux/gtk2 -Fu/home/sroot/.lazarus/lib/LCLBase/units/x86_64-linux -Fu/home/sroot/.lazarus/lib/freetypelaz/lib/x86_64-linux -Fu/usr/lib/lazarus/3.0/components/lazutils/lib/x86_64-linux -Fu/usr/lib/lazarus/3.0/packager/units/x86_64-linux -Fu/home/sroot/app/dbdesigner-fork/ -FU/home/sroot/app/dbdesigner-fork/lib/x86_64-linux/ -FE/home/sroot/app/dbdesigner-fork/bin/ -o/home/sroot/app/dbdesigner-fork/bin/DBDesignerFork -dLCL -dLCLgtk2 -dUseCThreads DBDesignerFork.lpr"/>
-  <Complete Value="False"/>
-</CONFIG>

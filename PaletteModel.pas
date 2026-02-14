@@ -39,9 +39,9 @@ unit PaletteModel;
 interface
 
 uses
-  SysUtils, Types, Classes, QGraphics, QControls, QForms, QDialogs,
-  QStdCtrls, QExtCtrls, QComCtrls, QImgList, QButtons, EERModel, QMenus,
-  QTypes, Qt;
+  SysUtils, Types, Classes, Graphics, Controls, Forms, Dialogs,
+  StdCtrls, ExtCtrls, ComCtrls, ImgList, Buttons, EERModel, Menus,
+  LCLType, Qt;
 
 type
   TPaletteModelFrom = class(TForm)
@@ -130,7 +130,7 @@ implementation
 
 uses EditorDatatype, Main, EditorTable, MainDM, EER, EERDM;
 
-{$R *.xfm}
+{$R *.lfm}
 
 procedure TPaletteModelFrom.FormCreate(Sender: TObject);
 var theSize: tSize;

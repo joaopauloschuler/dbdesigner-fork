@@ -39,8 +39,8 @@ unit EditorTableFieldDatatypeInplace;
 interface
 
 uses
-  SysUtils, Types, Classes, QGraphics, QControls, QForms, QDialogs,
-  QStdCtrls, EERModel, QMask, QExtCtrls, Qt;
+  LCLType, SysUtils, Types, Classes, Graphics, Controls, Forms, Dialogs,
+  StdCtrls, EERModel, MaskEdit, ExtCtrls, Qt;
 
 type
   TEditorTableFieldDatatypeInplaceEditor = class(TPanel)
@@ -154,16 +154,16 @@ end;
 procedure TEditorTableFieldDatatypeInplaceEditor.DoKeyDown(Sender: TObject;
   var Key: Word; Shift: TShiftState);
 begin
-  if(Key=Key_Return)or(Key=Key_Enter)then
+  if(Key=VK_RETURN)or(Key=VK_RETURN)then
     ApplyChanges;
 
-  if(Key=Key_Up)then
+  if(Key=VK_UP)then
     ApplyChanges(goUp);
 
-  if(Key=Key_Down)then
+  if(Key=VK_DOWN)then
     ApplyChanges(goDown);
 
-  if(Key=Key_Escape)then
+  if(Key=VK_ESCAPE)then
     HideEdit;
 
   //If the user presses ( he want's to accept the autocompletion

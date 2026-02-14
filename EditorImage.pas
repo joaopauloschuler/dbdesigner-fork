@@ -41,8 +41,8 @@ unit EditorImage;
 interface
 
 uses
-  Qt, SysUtils, Types, Classes, QGraphics, QControls, QForms, QDialogs,
-  QStdCtrls, QButtons, EERModel, QExtCtrls;
+  LCLType, Qt, SysUtils, Types, Classes, Graphics, Controls, Forms, Dialogs,
+  StdCtrls, Buttons, EERModel, ExtCtrls;
 
 type
   TEditorImageForm = class(TForm)
@@ -83,7 +83,7 @@ implementation
 
 uses MainDM, EERDM, GUIDM;
 
-{$R *.xfm}
+{$R *.lfm}
 
 procedure TEditorImageForm.FormCreate(Sender: TObject);
 begin
@@ -214,7 +214,7 @@ end;
 procedure TEditorImageForm.FormKeyDown(Sender: TObject; var Key: Word;
   Shift: TShiftState);
 begin
-  if(Key=Key_F1)then
+  if(Key=VK_F1)then
     DMMain.ShowHelp('editors', 'imageed');
 end;
 
