@@ -400,7 +400,6 @@ type
     procedure DoApplicationEvent(Sender: QObjectH; Event: QEventH; var Handled: Boolean);
     {$IFDEF FPC}
     procedure LCLAppKeyDown(Sender: TObject; var Key: Word; Shift: TShiftState);
-    procedure LCLAppKeyUp(Sender: TObject; var Key: Word; Shift: TShiftState);
     {$ENDIF}
 
     procedure KylixSpaceUpTimerTimer(Sender: TObject);
@@ -481,9 +480,8 @@ begin
   {$IFDEF FPC}
   // Register this form's EventFilter as the global Qt-style event handler
   RegisterQtEventHandler(EventFilter);
-  // Register global keyboard handlers for DoApplicationEvent
+  // Register global keyboard handler for DoApplicationEvent (key-up uses KylixSpaceUpTimer)
   Application.AddOnKeyDownHandler(LCLAppKeyDown);
-  Application.AddOnKeyUpHandler(LCLAppKeyUp);
   {$ELSE}
   Application.OnEvent:=DoApplicationEvent;
   {$ENDIF}
@@ -3185,23 +3183,7 @@ begin
   Event := QKeyEvent_create(QEventType_KeyPress, Key, ShiftStateToButtonState(Shift));
   try
     Handled := False;
-    DoApplicationEvent(nil, QEventH(Event), Handled);
-    if Handled then
-      Key := 0;
-  finally
-    Dispose(PKeyEventRec(Event));
-  end;
-end;
-
-procedure TMainForm.LCLAppKeyUp(Sender: TObject; var Key: Word; Shift: TShiftState);
-var
-  Event: QKeyEventH;
-  Handled: Boolean;
-begin
-  Event := QKeyEvent_create(QEventType_KeyRelease, Key, ShiftStateToButtonState(Shift));
-  try
-    Handled := False;
-    DoApplicationEvent(nil, QEventH(Event), Handled);
+    DoApplicationEvent(HWND(0), QEventH(Event), Handled);
     if Handled then
       Key := 0;
   finally

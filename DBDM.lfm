@@ -28,7 +28,7 @@ object DMDB: TDMDB
     Left = 342
     Top = 88
   end
-  object OutputQry: TSQLQuery
+  object OutputQry: TSQLDataSet
     Params = <>
     Database = SQLConn
     Left = 40
@@ -40,14 +40,11 @@ object DMDB: TDMDB
     Top = 88
   end
   object OutputClientDataSet: TClientDataSet
-    Aggregates = <>
-    Params = <>
-    ProviderName = 'OutputDataSetProvider'
     ReadOnly = True
     Left = 248
     Top = 88
   end
-  object SchemaSQLQuery: TSQLQuery
+  object SchemaSQLQuery: TSQLDataSet
     Params = <>
     Database = SQLConn
     Left = 132

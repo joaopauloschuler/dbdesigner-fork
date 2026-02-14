@@ -174,6 +174,7 @@ procedure QOpenWidget_setWFlags(widget: QOpenWidgetH; flags: Cardinal);
 
 function QScrollView_visibleWidth(sv: QScrollViewH): Integer;
 
+function ShiftStateToButtonState(Shift: TShiftState): Integer;
 function QKeyEvent_create(eventType: Integer; key: Integer; shiftState: Integer): QKeyEventH;
 function QKeyEvent_key(event: QKeyEventH): Integer;
 function QKeyEvent_stateAfter(event: QKeyEventH): Integer;
