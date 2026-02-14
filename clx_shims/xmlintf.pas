@@ -13,6 +13,7 @@ type
     ['{E8E6E801-0000-0001-0000-000000000001}']
     function GetNodeName: DOMString;
     function GetNodeValue: Variant;
+    procedure SetNodeValue(const Value: Variant);
     function GetText: DOMString;
     procedure SetText(const Value: DOMString);
     function GetChildNodes: IXMLNodeList;
@@ -20,8 +21,10 @@ type
     procedure SetAttributes(const Name: DOMString; const Value: DOMString);
     function AddChild(const TagName: DOMString): IXMLNode;
     function GetDOMNode: TDOMNode;
+    function GetOwnerDocument: IXMLDocument;
     property NodeName: DOMString read GetNodeName;
-    property NodeValue: Variant read GetNodeValue;
+    property NodeValue: Variant read GetNodeValue write SetNodeValue;
+    property OwnerDocument: IXMLDocument read GetOwnerDocument;
     property Text: DOMString read GetText write SetText;
     property ChildNodes: IXMLNodeList read GetChildNodes;
     property Attributes[const Name: DOMString]: DOMString read GetAttributes write SetAttributes; default;
@@ -41,6 +44,7 @@ type
     function GetDOMDocument: TDOMDocument;
     procedure LoadFromFile(const FileName: string);
     procedure SaveToFile(const FileName: string);
+    procedure SaveToXml(var XML: string);
     function CreateElement(const TagName: DOMString): IXMLNode;
     function GetDocBinding(const TagName: DOMString; AClass: TClass; const NS: DOMString): IXMLNode;
     property DocumentElement: IXMLNode read GetDocumentElement;
@@ -67,6 +71,7 @@ type
     procedure AfterConstruction; override;
     function GetNodeName: DOMString;
     function GetNodeValue: Variant;
+    procedure SetNodeValue(const Value: Variant);
     function GetText: DOMString;
     procedure SetText(const Value: DOMString);
     function GetChildNodes: IXMLNodeList;
@@ -74,6 +79,7 @@ type
     procedure SetAttributes(const Name: DOMString; const Value: DOMString);
     function AddChild(const TagName: DOMString): IXMLNode;
     function GetDOMNode: TDOMNode;
+    function GetOwnerDocument: IXMLDocument;
     // Delphi XML Data Binding support
     procedure RegisterChildNode(const TagName: DOMString; ChildNodeClass: TClass);
     procedure SetAttribute(const AttrName: DOMString; const Value: DOMString); overload;
@@ -109,6 +115,8 @@ type
 
   // Concrete implementations
   TXMLNodeWrapper = class(TInterfacedObject, IXMLNode)
+  public
+    function GetOwnerDocument: IXMLDocument;
   private
     FNode: TDOMNode;
     FOwnerDoc: TDOMDocument;
@@ -116,6 +124,7 @@ type
     constructor Create(ANode: TDOMNode; AOwnerDoc: TDOMDocument);
     function GetNodeName: DOMString;
     function GetNodeValue: Variant;
+    procedure SetNodeValue(const Value: Variant);
     function GetText: DOMString;
     procedure SetText(const Value: DOMString);
     function GetChildNodes: IXMLNodeList;
@@ -147,12 +156,14 @@ type
     function GetDOMDocument: TDOMDocument;
     procedure LoadFromFile(const FileName: string);
     procedure SaveToFile(const FileName: string);
+    procedure SaveToXml(var XML: string);
     function CreateElement(const TagName: DOMString): IXMLNode;
     function GetDocBinding(const TagName: DOMString; AClass: TClass; const NS: DOMString): IXMLNode;
   end;
 
 function NewXMLDocument: IXMLDocument;
 function LoadXMLDocument(const FileName: string): IXMLDocument;
+function LoadXMLData(const XMLData: string): IXMLDocument;
 
 implementation
 
@@ -173,6 +184,11 @@ end;
 function TXMLNodeWrapper.GetNodeValue: Variant;
 begin
   Result := String(FNode.NodeValue);
+end;
+
+procedure TXMLNodeWrapper.SetNodeValue(const Value: Variant);
+begin
+  FNode.NodeValue := DOMString(VarToStr(Value));
 end;
 
 function TXMLNodeWrapper.GetText: DOMString;
@@ -216,6 +232,11 @@ end;
 function TXMLNodeWrapper.GetDOMNode: TDOMNode;
 begin
   Result := FNode;
+end;
+
+function TXMLNodeWrapper.GetOwnerDocument: IXMLDocument;
+begin
+  Result := TXMLDocumentWrapper.CreateFromDoc(FOwnerDoc, False);
 end;
 
 { TXMLNodeListWrapper }
@@ -320,6 +341,11 @@ begin
   Result := String(FNode.NodeValue);
 end;
 
+procedure TXMLNode.SetNodeValue(const Value: Variant);
+begin
+  FNode.NodeValue := DOMString(VarToStr(Value));
+end;
+
 function TXMLNode.GetText: DOMString;
 begin
   Result := FNode.TextContent;
@@ -361,6 +387,11 @@ end;
 function TXMLNode.GetDOMNode: TDOMNode;
 begin
   Result := FNode;
+end;
+
+function TXMLNode.GetOwnerDocument: IXMLDocument;
+begin
+  Result := TXMLDocumentWrapper.CreateFromDoc(FOwnerDoc, False);
 end;
 
 procedure TXMLNode.RegisterChildNode(const TagName: DOMString; ChildNodeClass: TClass);
@@ -528,6 +559,19 @@ begin
   WriteXMLFile(TXMLDocument(FDoc), FileName);
 end;
 
+procedure TXMLDocumentWrapper.SaveToXml(var XML: string);
+var
+  SS: TStringStream;
+begin
+  SS := TStringStream.Create('');
+  try
+    WriteXMLFile(TXMLDocument(FDoc), SS);
+    XML := SS.DataString;
+  finally
+    SS.Free;
+  end;
+end;
+
 function TXMLDocumentWrapper.CreateElement(const TagName: DOMString): IXMLNode;
 var
   elem: TDOMElement;
@@ -551,6 +595,20 @@ function LoadXMLDocument(const FileName: string): IXMLDocument;
 begin
   Result := TXMLDocumentWrapper.Create;
   Result.LoadFromFile(FileName);
+end;
+
+function LoadXMLData(const XMLData: string): IXMLDocument;
+var
+  SS: TStringStream;
+  Doc: TXMLDocument;
+begin
+  SS := TStringStream.Create(XMLData);
+  try
+    ReadXMLFile(Doc, SS);
+    Result := TXMLDocumentWrapper.CreateFromDoc(Doc, True);
+  finally
+    SS.Free;
+  end;
 end;
 
 end.

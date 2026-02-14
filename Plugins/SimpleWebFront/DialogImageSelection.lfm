@@ -280,7 +280,7 @@ object ImageSelectionForm: TImageSelectionForm
 
   end
 
-  object DirectoryTreeView: TDirectoryTreeView
+  object DirectoryTreeView: TShellTreeView
 
     Left = 34
 

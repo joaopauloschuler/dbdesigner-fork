@@ -3,8 +3,8 @@ unit Main;
 interface
 
 uses
-  SysUtils, Types, Classes, Variants, QTypes, QGraphics, QControls, QForms, 
-  QDialogs, QStdCtrls, QExtCtrls;
+  SysUtils, Types, Classes, Variants, Graphics, Controls, Forms, 
+  Dialogs, StdCtrls, ExtCtrls;
 
 type
   TMainForm = class(TForm)
@@ -28,7 +28,7 @@ implementation
 
 uses MainDM, DBImportData, DBDM;
 
-{$R *.xfm}
+{$R *.lfm}
 
 procedure TMainForm.FormCreate(Sender: TObject);
 var i: integer;

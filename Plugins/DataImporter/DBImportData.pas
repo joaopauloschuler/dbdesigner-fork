@@ -3,9 +3,9 @@ unit DBImportData;
 interface
 
 uses
-  SysUtils, Types, Classes, Variants, QTypes, QGraphics, QControls, QForms,
-  QDialogs, QStdCtrls, QCheckLst, QButtons, QGrids, QComCtrls, QExtCtrls,
-  Qt, IniFiles, SqlExpr, DBXpress, FMTBcd, DB, MainDM, DBDM;
+  SysUtils, Types, Classes, Variants, Graphics, Controls, Forms,
+  Dialogs, StdCtrls, CheckLst, Buttons, Grids, ComCtrls, ExtCtrls,
+  LCLType, Qt, IniFiles, SqlExpr, DBXpress, FMTBcd, DB, MainDM, DBDM;
 
 type
   PTableImportOptions = ^TTableImportOptions;
@@ -194,7 +194,7 @@ implementation
 
 uses EditorString, Progress;
 
-{$R *.xfm}
+{$R *.lfm}
 
 function SortStringListWithInts(List: TStringList; Index1, Index2: Integer): Integer;
 begin
@@ -282,7 +282,7 @@ begin
   begin
     ModePageControl.ActivePage:=TextImportSheet;
 
-    //Wenn keine Filename sondern Dir übergeben wurde...
+    //Wenn keine Filename sondern Dir Ã¼bergeben wurde...
     if(ExtractFileName(DirOrDBConn)='')then
     begin
       SourceDir:=DirOrDBConn;
@@ -612,7 +612,7 @@ begin
 
     TextGrid.RowCount:=theTblOpt.TextTestLines.Count;
 
-    //Preview Grid mit TestLines auffüllen
+    //Preview Grid mit TestLines auffÃ¼llen
     if(Not(theTblOpt.TextImportWithSep))then
     begin
       //get max length
@@ -629,7 +629,7 @@ begin
         for j:=0 to Length(theTblOpt.TextTestLines[i])-1 do
           TextGrid.Cells[j, i]:=theTblOpt.TextTestLines[i][j+1];
 
-      //sicherstellen, daß erste und letzte Row in der ColumnList
+      //sicherstellen, daÃŸ erste und letzte Row in der ColumnList
       if(theTblOpt.TextColumns.IndexOf('1')=-1)then
         theTblOpt.TextColumns.Insert(0, '1');
       if(theTblOpt.TextColumns.IndexOf(IntToStr(maxlen+1))=-1)then
@@ -651,7 +651,7 @@ begin
       end;
       ColumnsEd.Text:=s;
 
-      //Überflüssige ColNames löschen
+      //ÃœberflÃ¼ssige ColNames lÃ¶schen
       while(theTblOpt.ColumnNames.Count>=theTblOpt.TextColumns.Count)and
         (theTblOpt.ColumnNames.Count>0)do
         theTblOpt.ColumnNames.Delete(theTblOpt.ColumnNames.Count-1);

@@ -9,6 +9,7 @@ type
 
 function NewXMLDocument: IXMLDocument;
 function LoadXMLDocument(const FileName: string): IXMLDocument;
+function LoadXMLData(const XMLData: string): IXMLDocument;
 
 implementation
 
@@ -20,6 +21,11 @@ end;
 function LoadXMLDocument(const FileName: string): IXMLDocument;
 begin
   Result := XMLIntf.LoadXMLDocument(FileName);
+end;
+
+function LoadXMLData(const XMLData: string): IXMLDocument;
+begin
+  Result := XMLIntf.LoadXMLData(XMLData);
 end;
 
 end.

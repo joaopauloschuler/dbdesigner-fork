@@ -206,7 +206,7 @@ object DialogDirectorySelectForm: TDialogDirectorySelectForm
 
   end
 
-  object DirectoryTreeView: TDirectoryTreeView
+  object DirectoryTreeView: TShellTreeView
 
     Left = 23
 
