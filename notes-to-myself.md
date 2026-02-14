@@ -1,53 +1,75 @@
 # Notes to Myself — DBDesigner Fork Lazarus Port
 
-## Current Status (Latest Update)
-- **Project compiles successfully** with only 2 unavoidable warnings (ScanLine portability)
-- Binary: `bin/DBDesignerFork` (42MB ELF x86-64)
-- **Cannot test runtime** in headless container (no X11 display, Xvfb causes hangs)
+## Current Status (Latest)
 
-## Build Command
+**ALL projects compile successfully under Lazarus/FPC!**
+
+| Project | Lines | Time | Binary |
+|---------|-------|------|--------|
+| Main App (DBDesignerFork) | 56,608 | 4.4s | bin/DBDesignerFork |
+| Demo Plugin | 21,793 | 2.3s | bin/DBDplugin_Demo |
+| HTMLReport Plugin | 22,258 | 3.5s | bin/DBDplugin_HTMLReport |
+| DataImporter Plugin | 8,836 | 3.0s | bin/DBDplugin_DataImporter |
+| SimpleWebFront Plugin | 40,096 | 3.7s | bin/DBDplugin_SimpleWebFront |
+| **Total** | **149,591** | | |
+
+## Architecture: Shim Layer Approach
+
+Instead of rewriting all source files, we created **compatibility shim units** in `clx_shims/`:
+
+### CLX → LCL Shims
+Simple re-exports: `QForms→Forms`, `QControls→Controls`, `QGraphics→Graphics`, `QDialogs→Dialogs`, `QStdCtrls→StdCtrls`, `QExtCtrls→ExtCtrls`, `QMenus→Menus`, `QComCtrls→ComCtrls`, `QButtons→Buttons`, `QCheckLst→CheckLst`, `QImgList→ImgList`, `QClipbrd→Clipbrd`, `QPrinters→Printers`, `QMask→MaskEdit`, `QGrids→Grids`, `QDBGrids→DBGrids`, `QFileCtrls→FileUtil`
+
+### Qt Shim (`qt.pas`)
+Maps Qt widget types (QObjectH, QEventH, etc.) to LCL equivalents. Provides `ButtonStateToShiftState`, `Key_*` constants, `QEvent_type`, `QKeyEvent_key` functions. Application event handling maps to LCL `OnKeyDown`.
+
+### Database Shims
+- **`sqlexpr.pas`**: `TSQLConnection` wraps `TSQLConnector`, maps DriverName→ConnectorType. `TSQLDataSet` wraps `SQLDB.TSQLQuery` with `SetSchemaInfo` for stTables/stColumns/stIndexes.
+- **`dbclient.pas`**: `TClientDataSet` wraps `TBufDataset` with ProviderName chain support.
+- **`provider.pas`**: `TDataSetProvider` bridges datasets.
+- **`dbxpress.pas`**: Schema type constants (stNoSchema, stTables, etc.)
+- **`FMTBcd.pas`**: Stub types.
+
+### XML Shims
+- **`xmlintf.pas`** (~600 lines): Full interface wrappers (`IXMLDocument`, `IXMLNode`, `IXMLNodeList`, `TXMLNode`, `TXMLNodeCollection`, `TXMLNodeIndexed`, `TXMLDocumentWrapper`) over `laz2_DOM`.
+- **`xmldoc.pas`**: `NewXMLDocument`, `LoadXMLDocument`, `LoadXMLData` functions.
+- **`xmldom.pas`**: `IDOMDocument`, `IDOMNode` etc. mapped to laz2_DOM types.
+
+## Key Technical Decisions
+
+1. **Plugins are standalone executables** — not shared libraries. The existing `FindFirst('DBDplugin_*')` + `CreateProcess` mechanism works as-is.
+
+2. **`USE_IXMLDBMODELType` is NOT defined** — Core XML uses `LibXmlParser` (TXmlParser), not DOM interfaces. The DOM interfaces are only used by `EERModel_XML.pas`, `EERModel_XML_ERwin41_Import.pas`, and `SWF_XML_Binding.pas`.
+
+3. **TDirectoryTreeView → TShellTreeView** — CLX's `TDirectoryTreeView` replaced with LCL's `TShellTreeView` from `ShellCtrls`. Property mapping: `RootDirectory→Root`, `Directory→Path`.
+
+4. **Conditional compilation** — `{$ELSEIF LINUX}` / `{$IFEND}` are Delphi-only; FPC uses `{$ELSE}` / `{$ENDIF}`.
+
+## Known Runtime Risks
+
+1. Some stubs are no-ops (SaveBitmap, custom cursor loading)
+2. TPanel.Bitmap usage commented out
+3. TTreeNode.SubItems via class helper (global dictionary) — untested
+4. TSQLConnection shim wraps TSQLConnector — DB connectivity untested
+5. LoadApplicationFont writes to Screen.SystemFont — may need adjustment
+6. ScanLine portability warnings in EmbeddedPdfImages.pas (expected)
+
+## Remaining Work
+
+- **Runtime testing** (requires X11/display)
+- Open each .lfm in Lazarus IDE to check for unknown properties
+- Test DB connections (MySQL, PostgreSQL, SQLite)
+- Test PDF export
+- Code cleanup (optional: remove clx_shims, replace Q* with direct LCL names)
+- Update README with Lazarus build instructions
+
+## Build Commands
 ```bash
+# Main app
 cd /workspaces/dbdesigner-fork && rm -rf lib/ && lazbuild DBDesignerFork.lpi
+
+# All plugins
+for p in Demo HTMLReport DataImporter SimpleWebFront; do
+  rm -rf Plugins/$p/lib/ && lazbuild Plugins/$p/DBDplugin_$p.lpi
+done
 ```
-
-## Git History (latest first)
-- `f8d371a` - Fix remaining compiler warnings: WideString→string, TTreeView custom draw (2 warnings left)
-- `6b3ae0a` - Fix compiler warnings: destructor/constructor visibility, uninitialized vars, reintroduce (49→21)
-- `b67a57a` - Remove CLX OnCanResize from EditorTable.lfm
-- `95930f1` - Replace Windows-specific fonts with cross-platform alternatives in .lfm files
-- `910ec86` - Remove CLX Bitmap.Data from .lfm files and TextHeight/TextWidth
-- `26892db` - Fix deprecation warnings (DecimalSeparator, Thread.Resume)
-- `1814934` - Fix .lfm files: remove CLX-specific properties
-- Earlier commits: Phase 0 setup, bulk CLX→LCL replacements, compilation fixes, SynEdit
-
-## Architecture
-- **Shim approach**: `clx_shims/` has 30+ compatibility units mapping CLX Q* → LCL
-- Key shims: `Qt.pas`, `SqlExpr.pas` (wraps SQLDB), `DBClient.pas` (wraps BufDataset), `Provider.pas` (stub)
-- `PanelBitmap.pas` and `TreeNodeSubItems.pas` class helpers
-- `USE_SYNEDIT` enabled (uses Lazarus SynEdit package)
-- `USE_IXMLDBMODELType` disabled (XML model loading uses TXmlParser instead, which works)
-
-## What's Working
-1. Full compilation with 2 warnings
-2. All .lfm files cleaned for LCL compatibility
-3. SynEdit integration enabled
-4. Font names use cross-platform alternatives
-
-## Known Runtime Risks (untestable without X11)
-1. Some stubs are no-ops (SaveBitmap, Application.OnEvent, custom cursor loading)
-2. TPanel.Bitmap usage commented out in EditorQueryDragTarget.pas
-3. TTreeNode.SubItems via class helper (uses global dictionary) - untested
-4. TSQLConnection shim wraps TSQLConnector - DB connectivity untested
-5. LoadApplicationFont writes to Screen.SystemFont - may need adjustment
-
-## What Remains (Priority Order)
-1. **Phase 3 forms** - All forms compile but need runtime verification
-2. **Phase 2 DB layer** - Shims compile but actual DB ops need real testing/fixing
-3. **Phase 1.5 XML** - USE_IXMLDBMODELType disabled, XML loading uses TXmlParser (works)
-4. **Phase 4 SynEdit** - Enabled and compiling, may have API diffs at runtime
-5. **Phase 5 Plugins** - Compile but untested
-6. **Phase 0.4** - Should verify all .lfm files load correctly at runtime
-
-## Remaining 2 Warnings
-- `EmbeddedPDF/EmbeddedPdfImages.pas(202)` - ScanLine not portable (expected)
-- `EmbeddedPDF/EmbeddedPdfImages.pas(211)` - ScanLine not portable (expected)
