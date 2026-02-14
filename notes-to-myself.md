@@ -119,3 +119,16 @@ This is a **harmless** GTK warning. The app uses GTK2 (LCL default), but only th
 version of the canberra sound module is installed. To silence it:
   sudo apt install libcanberra-gtk-module
 This has zero impact on application functionality - it's only about UI sound effects.
+
+## Embedded Image Data Fixed for LCL (commit 0c23bb7)
+Two issues fixed:
+
+1. **Icon.Data BMP→ICO conversion**: Main.lfm and Plugins/Demo/Main.lfm had BMP data
+   in Icon.Data, but LCL's TCustomIcon.ReadData expects ICO format. Converted to valid
+   ICO files (ICONDIR header + ICONDIRENTRY + BMP info header + AND mask).
+
+2. **Glyph.Data/Picture.Data size prefix fix**: 217 fixes across 29 .lfm files.
+   Delphi stores size = BMP_size + 4 (includes size field), LCL expects size = BMP_size.
+   Subtracted 4 from each size prefix.
+
+App runs clean with no errors.
