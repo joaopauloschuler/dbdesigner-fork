@@ -185,7 +185,7 @@ begin
   try
     Item.Click;
     Application.ProcessMessages;
-    Sleep(500);
+    Sleep(2000);
     Application.ProcessMessages;
     Result.Result := trPass;
   except
@@ -238,7 +238,7 @@ begin
     else if Btn is TBitBtn then
       TBitBtn(Btn).Click;
     Application.ProcessMessages;
-    Sleep(500);
+    Sleep(2000);
     Application.ProcessMessages;
     Result.Result := trPass;
   except
@@ -324,6 +324,35 @@ begin
     Log('Started: ' + DateTimeToStr(StartTime));
     Log('Form: ' + AMainForm.Name + ' (' + AMainForm.ClassName + ')');
     LogSeparator;
+    Log('');
+
+    // =====================================================
+    // PHASE 0: Close any Tips/startup dialogs
+    // =====================================================
+    Log('--- Phase 0: Closing startup dialogs ---');
+    Log('');
+    WriteLn('[DEBUG] Phase 0: Closing startup dialogs...');
+    for I := Screen.FormCount - 1 downto 0 do
+    begin
+      if (Screen.Forms[I] <> AMainForm) and Screen.Forms[I].Visible then
+      begin
+        if (Pos('Tips', Screen.Forms[I].ClassName) > 0) or
+           (Pos('Tips', Screen.Forms[I].Name) > 0) then
+        begin
+          Log('Closing: ' + Screen.Forms[I].Name + ' (' + Screen.Forms[I].ClassName + ')');
+          WriteLn('[DEBUG] Closing Tips form: ' + Screen.Forms[I].Name);
+          try
+            Screen.Forms[I].Close;
+            Application.ProcessMessages;
+            Sleep(500);
+            Application.ProcessMessages;
+          except
+            on E: Exception do
+              Log('WARNING: Could not close ' + Screen.Forms[I].Name + ': ' + E.Message);
+          end;
+        end;
+      end;
+    end;
     Log('');
 
     // =====================================================

@@ -553,7 +553,7 @@ begin
   if HasSelfTestParam then
   begin
     SelfTestTmr := TTimer.Create(Self);
-    SelfTestTmr.Interval := 1000; // 1 second delay for full init
+    SelfTestTmr.Interval := 2000; // 2 second delay for full init
     SelfTestTmr.Enabled := True;
     SelfTestTmr.OnTimer := SelfTestTmrTimer;
   end;
@@ -812,13 +812,15 @@ end;
 procedure TMainForm.DatatypesMIClick(Sender: TObject);
 begin
   DatatypesMI.Checked:=Not(DatatypesMI.Checked);
-  PaletteDataTypesForm.Visible:=DatatypesMI.Checked;
+  if Assigned(PaletteDataTypesForm) then
+    PaletteDataTypesForm.Visible:=DatatypesMI.Checked;
 end;
 
 procedure TMainForm.DBModelMIClick(Sender: TObject);
 begin
   DBModelMI.Checked:=Not(DBModelMI.Checked);
-  PaletteModelFrom.Visible:=DBModelMI.Checked;
+  if Assigned(PaletteModelFrom) then
+    PaletteModelFrom.Visible:=DBModelMI.Checked;
 end;
 
 procedure TMainForm.CloseMIClick(Sender: TObject);
@@ -958,6 +960,11 @@ end;
 
 procedure TMainForm.ResetPalettePositionsMIClick(Sender: TObject);
 begin
+  if not Assigned(PaletteToolsForm) then Exit;
+  if not Assigned(PaletteNavForm) then Exit;
+  if not Assigned(PaletteDataTypesForm) then Exit;
+  if not Assigned(PaletteModelFrom) then Exit;
+
   PaletteToolsForm.Top:=60;
   PaletteToolsForm.Left:=8;
 
@@ -2569,6 +2576,11 @@ end;
 
 procedure TMainForm.DockPalettesMIClick(Sender: TObject);
 begin
+  // Guard: all palette forms must be created before docking/undocking
+  if not Assigned(PaletteNavForm) then Exit;
+  if not Assigned(PaletteDataTypesForm) then Exit;
+  if not Assigned(PaletteModelFrom) then Exit;
+
   if(Not(DockPalettesMI.Checked))then
   begin
     PaletteDockPnl.Visible:=True;
