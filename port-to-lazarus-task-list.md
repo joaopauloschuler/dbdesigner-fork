@@ -336,11 +336,11 @@
 ### Code Cleanup
 - [ ] Remove `clx_shims/` folder — replace all `Q*` references with direct LCL unit names
 - [ ] Remove or archive the bundled `SynEdit/` folder
-- [ ] Remove unused Delphi-specific files (`.dpr`, `.dof`, `.dsk`, `.dsm`, `.cfg`)
+- [X] Archive unused Delphi-specific files (`.dof`, `.dsk`, `.dsm`, `.cfg`) to `archive/`
 - [ ] Update `DBDesigner4.inc` — remove obsolete defines
 - [ ] Review and clean up any remaining `{$IFDEF}` blocks for Delphi/Kylix
 - [X] Update `README.md` with new build instructions for Lazarus
-- [ ] Update `port-to-lazarus.md` with any lessons learned
+- [X] Update `port-to-lazarus.md` with lessons learned
 - [ ] Final commit and tag release
 
 ---

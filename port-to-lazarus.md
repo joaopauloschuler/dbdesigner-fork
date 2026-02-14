@@ -837,3 +837,35 @@ git commit -m "Phase 5: Port plugins and EmbeddedPDF to FPC"
 5. **Use Lazarus's Delphi Converter** (`Tools → Convert Delphi Project/Package/Unit`) as a helper — it can automate some mechanical replacements, but always review its output.
 6. **Watch for `WideString` vs `UTF8String`.** FPC/Lazarus uses UTF-8 internally. Most string operations are transparent, but if the code does byte-level string manipulation (common in XML and PDF code), you may need to be explicit about encoding.
 7. **The `bin/` folder structure should remain unchanged** — it contains runtime data (config, graphics, docs) that the application expects at specific relative paths.
+
+
+## Lessons Learned from the Port
+
+### What Worked Well
+1. **Shim/compatibility unit approach** — Creating 31 thin shim units in `clx_shims/` that map CLX names to LCL equivalents was extremely effective. It minimized changes to original source files and allowed incremental compilation.
+2. **FPC's `{$mode delphi}`** — This mode handled most Delphi syntax differences (string types, implicit Result, etc.) automatically.
+3. **`LibXmlParser` as XML backbone** — The core XML handling uses `LibXmlParser` (not DOM interfaces), which is pure Pascal and compiled without any changes. This avoided a massive rewrite of `EERModel.pas`.
+4. **Plugin architecture as executables** — Since plugins are standalone executables (not DLLs), they compiled and linked independently with minimal coupling.
+5. **Lazarus's built-in SynEdit package** — Dropped the bundled SynEdit source and used the system package directly.
+
+### Key Challenges and Solutions
+1. **FPC doesn't transitively export types** — Each unit must directly reference the defining unit for types it uses. The initial shim approach of `unit QForms; uses Forms; end.` doesn't re-export Forms types in FPC mode. Solution: Add direct LCL unit references to source files where needed.
+2. **TSQLConnector driver mapping** — Delphi's DBExpress uses `DriverName` strings and separate driver libraries. Our `TSQLConnection` shim maps `DriverName` → `ConnectorType` (e.g., `'MySQL'` → `'MySQL 5.7'`, `'SQLite'` → `'SQLite3'`).
+3. **Transaction management** — SQLDB requires explicit `TSQLTransaction` between connection and queries. Delphi's DBExpress auto-commits. Our shim creates an auto-transaction and commits after `ExecuteDirect`.
+4. **MDI forms** — LCL has limited MDI support. Changed `fsMDIForm`/`fsMDIChild` to `fsNormal`.
+5. **`{$ELSEIF}` syntax** — FPC doesn't support `{$ELSEIF}` in `{$IFDEF}` blocks. Changed to `{$ELSE}` + nested `{$IFDEF}`. Similarly `{$IFEND}` → `{$ENDIF}`.
+6. **`TDirectoryTreeView`** — CLX component not available in LCL. Replaced with `TShellTreeView` from `ShellCtrls` package.
+7. **Qt event handling** — Delphi/CLX's direct Qt API calls (`QApplication_postEvent`, `QKeyEvent_key`) were replaced with LCL equivalents using `Application.AddOnKeyDownHandler` and a custom shim layer.
+
+### Schema/Metadata Compatibility
+The `SetSchemaInfo` implementation provides Delphi-compatible field layouts:
+- **stTables**: RECNO, CATALOG_NAME, SCHEMA_NAME, TABLE_NAME, TABLE_TYPE (TABLE_NAME at field[3])
+- **stColumns**: 14 fields matching Delphi's layout (TABLE_NAME, COLUMN_NAME, COLUMN_POSITION, COLUMN_TYPE, etc.)
+- **stIndexes**: 11 fields matching Delphi's layout (TABLE_NAME, INDEX_NAME, COLUMN_NAME, etc.)
+
+All three verified working with SQLite. MySQL and PostgreSQL queries use INFORMATION_SCHEMA equivalents.
+
+### Build Environment
+- **Lazarus 3.0** with **FPC 3.2.2** on Linux x86-64
+- Compile time: ~14 seconds for all 5 projects (149,591 lines total)
+- Only 2 compiler warnings (ScanLine portability in EmbeddedPdfImages.pas)
