@@ -3007,7 +3007,6 @@ object MainForm: TMainForm
     Visible = False
   end
   object MainMenu: TMainMenu
-    AutoHotkeys = maManual
     Left = 166
     Top = 48
     object FileMI: TMenuItem
