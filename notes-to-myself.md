@@ -1,85 +1,96 @@
 # Notes to Myself — DBDesigner Fork Lazarus Port
 
-## Current Status (Latest)
+## Project Status: ✅ SUCCESS — All 5 Projects Compile and Launch
 
-**ALL projects compile successfully under Lazarus/FPC!**
-
+### Build Results (from clean build)
 | Project | Lines | Time | Binary |
 |---------|-------|------|--------|
 | Main App (DBDesignerFork) | 56,608 | 4.4s | bin/DBDesignerFork |
-| Demo Plugin | 21,793 | 2.3s | bin/DBDplugin_Demo |
-| HTMLReport Plugin | 22,258 | 3.5s | bin/DBDplugin_HTMLReport |
-| DataImporter Plugin | 8,836 | 3.0s | bin/DBDplugin_DataImporter |
-| SimpleWebFront Plugin | 40,096 | 3.7s | bin/DBDplugin_SimpleWebFront |
-| **Total** | **149,591** | | |
+| Demo Plugin | 21,793 | 2.8s | bin/DBDplugin_Demo |
+| HTMLReport Plugin | 22,258 | 2.3s | bin/DBDplugin_HTMLReport |
+| DataImporter Plugin | 8,836 | 2.2s | bin/DBDplugin_DataImporter |
+| SimpleWebFront Plugin | 40,096 | 2.6s | bin/DBDplugin_SimpleWebFront |
+| **Total** | **149,591** | **14.3s** | |
 
-## Architecture: Shim Layer Approach
+### Runtime Test Results (via xvfb-run)
+✅ Main app: launches, runs without crash (exit 124 = killed by timeout)
+✅ Demo plugin: launches, runs without crash
+✅ HTMLReport plugin: launches, runs without crash
+✅ DataImporter plugin: launches, runs without crash
+✅ SimpleWebFront plugin: launches, runs without crash
+✅ XML model loading: 14 tables parsed correctly from order.xml (TestModelLoad program)
 
-Instead of rewriting all source files, we created **compatibility shim units** in `clx_shims/`:
+### Compiler Warnings (only 2, both expected)
+- `EmbeddedPDF/EmbeddedPdfImages.pas` lines 202, 211: ScanLine not portable (known limitation)
 
-### CLX → LCL Shims
-Simple re-exports: `QForms→Forms`, `QControls→Controls`, `QGraphics→Graphics`, `QDialogs→Dialogs`, `QStdCtrls→StdCtrls`, `QExtCtrls→ExtCtrls`, `QMenus→Menus`, `QComCtrls→ComCtrls`, `QButtons→Buttons`, `QCheckLst→CheckLst`, `QImgList→ImgList`, `QClipbrd→Clipbrd`, `QPrinters→Printers`, `QMask→MaskEdit`, `QGrids→Grids`, `QDBGrids→DBGrids`, `QFileCtrls→FileUtil`
+## Architecture: Shim Layer (`clx_shims/`, 31 files)
 
-### Qt Shim (`qt.pas`)
-Maps Qt widget types (QObjectH, QEventH, etc.) to LCL equivalents. Provides `ButtonStateToShiftState`, `Key_*` constants, `QEvent_type`, `QKeyEvent_key` functions. Application event handling maps to LCL `OnKeyDown`.
+### CLX→LCL Shims
+Map Delphi/Kylix Qt-based CLX units to Lazarus LCL:
+- `QForms`→`Forms`, `QControls`→`Controls`, `QGraphics`→`Graphics`, etc.
+- `Qt.pas`: Maps Qt types/constants (QObjectH, Key_*, QEvent_type) to LCL equivalents
 
 ### Database Shims
-- **`sqlexpr.pas`**: `TSQLConnection` wraps `TSQLConnector`, maps DriverName→ConnectorType. `TSQLDataSet` wraps `SQLDB.TSQLQuery` with `SetSchemaInfo` for stTables/stColumns/stIndexes.
-- **`dbclient.pas`**: `TClientDataSet` wraps `TBufDataset` with ProviderName chain support.
-- **`provider.pas`**: `TDataSetProvider` bridges datasets.
-- **`dbxpress.pas`**: Schema type constants (stNoSchema, stTables, etc.)
-- **`FMTBcd.pas`**: Stub types.
+- `sqlexpr.pas` (354 lines): TSQLConnection wraps TSQLConnector with DriverName→ConnectorType mapping; TSQLDataSet wraps SQLDB.TSQLQuery with SQLConnection property and SetSchemaInfo for MySQL/PostgreSQL/SQLite
+- `dbclient.pas` (102 lines): TClientDataSet wraps TBufDataset with ProviderName chain
+- `provider.pas` (30 lines): TDataSetProvider bridges datasets
+- `dbxpress.pas`: Schema type constants (stTables, stColumns, stIndexes)
 
 ### XML Shims
-- **`xmlintf.pas`** (~600 lines): Full interface wrappers (`IXMLDocument`, `IXMLNode`, `IXMLNodeList`, `TXMLNode`, `TXMLNodeCollection`, `TXMLNodeIndexed`, `TXMLDocumentWrapper`) over `laz2_DOM`.
-- **`xmldoc.pas`**: `NewXMLDocument`, `LoadXMLDocument`, `LoadXMLData` functions.
-- **`xmldom.pas`**: `IDOMDocument`, `IDOMNode` etc. mapped to laz2_DOM types.
+- `xmlintf.pas` (614 lines): IXMLDocument, IXMLNode, IXMLNodeList over laz2_DOM
+- `xmldoc.pas`: NewXMLDocument, LoadXMLDocument, LoadXMLData
+- `xmldom.pas`: IDOMDocument, IDOMNode type mappings
 
 ## Key Technical Decisions
 
-1. **Plugins are standalone executables** — not shared libraries. The existing `FindFirst('DBDplugin_*')` + `CreateProcess` mechanism works as-is.
-
-2. **`USE_IXMLDBMODELType` is NOT defined** — Core XML uses `LibXmlParser` (TXmlParser), not DOM interfaces. The DOM interfaces are only used by `EERModel_XML.pas`, `EERModel_XML_ERwin41_Import.pas`, and `SWF_XML_Binding.pas`.
-
-3. **TDirectoryTreeView → TShellTreeView** — CLX's `TDirectoryTreeView` replaced with LCL's `TShellTreeView` from `ShellCtrls`. Property mapping: `RootDirectory→Root`, `Directory→Path`.
-
-4. **Conditional compilation** — `{$ELSEIF LINUX}` / `{$IFEND}` are Delphi-only; FPC uses `{$ELSE}` / `{$ENDIF}`.
-
-## Runtime Test Results (via xvfb-run)
-
-✅ Main app: launches, runs for 10+ seconds, no crash (exit 124 = timeout)
-✅ Demo plugin: launches, runs for 3+ seconds, no crash
-✅ HTMLReport plugin: launches, runs for 3+ seconds, no crash  
-✅ DataImporter plugin: launches, runs for 3+ seconds, no crash
-✅ SimpleWebFront plugin: launches, runs for 3+ seconds, no crash
-✅ XML model loading: 14 tables parsed from order.xml (TestModelLoad program)
+1. **Plugins are standalone executables** (not shared libraries) — existing mechanism works
+2. **`USE_IXMLDBMODELType` NOT defined** — core XML uses LibXmlParser, not DOM interfaces
+3. **`TDirectoryTreeView` → `TShellTreeView`** (from ShellCtrls)
+4. **`fsMDIForm`/`fsMDIChild` → `fsNormal`** (LCL MDI support limited)
+5. **Conditional compilation**: `{$ELSEIF}`→`{$ELSE}`, `{$IFEND}`→`{$ENDIF}` for FPC
+6. **SynEdit**: Uses Lazarus built-in SynEdit package (not bundled copy)
 
 ## Known Runtime Risks
+1. Some stubs are no-ops: SaveBitmap partially implemented, custom cursor loading via LoadACursor
+2. TPanel.Bitmap usage commented out in EditorQueryDragTarget.pas
+3. TTreeNode.SubItems via class helper (global dictionary) — functional but untested at scale
+4. TSQLConnection shim wraps TSQLConnector — DB connectivity untested with live databases
+5. TClientDataSet → TBufDataset: ApplyUpdates/ChangeCount may behave differently
+6. ScanLine portability warnings in EmbeddedPdfImages.pas (PDF export may have issues)
 
-1. Some stubs are no-ops (SaveBitmap, custom cursor loading)
-2. TPanel.Bitmap usage commented out
-3. TTreeNode.SubItems via class helper (global dictionary) — untested
-4. TSQLConnection shim wraps TSQLConnector — DB connectivity untested
-5. LoadApplicationFont writes to Screen.SystemFont — may need adjustment
-6. ScanLine portability warnings in EmbeddedPdfImages.pas (expected)
-
-## Remaining Work
-
-- **Runtime testing** — basic launch test PASSED via xvfb-run (all 5 apps launch without crash)
-- **Interactive UI testing** (requires actual display)
-- Open each .lfm in Lazarus IDE to check for unknown properties
-- Test DB connections (MySQL, PostgreSQL, SQLite)
-- Test PDF export
-- Code cleanup (optional: remove clx_shims, replace Q* with direct LCL names)
-- Update README with Lazarus build instructions
+## Remaining Work (lower priority)
+- Interactive UI testing (requires actual X11 display)
+- Database connectivity testing (requires MySQL/PostgreSQL/SQLite server)
+- PDF export testing
+- SQL script export verification
+- Cross-platform testing (Windows, macOS)
+- Code cleanup: could replace Q* shims with direct LCL unit names in source files
 
 ## Build Commands
 ```bash
 # Main app
-cd /workspaces/dbdesigner-fork && rm -rf lib/ && lazbuild DBDesignerFork.lpi
+cd /workspaces/dbdesigner-fork && lazbuild DBDesignerFork.lpi
 
 # All plugins
 for p in Demo HTMLReport DataImporter SimpleWebFront; do
-  rm -rf Plugins/$p/lib/ && lazbuild Plugins/$p/DBDplugin_$p.lpi
+  lazbuild Plugins/$p/DBDplugin_$p.lpi
 done
+
+# XML model load test
+fpc -FuEmbeddedPDF -Fuclx_shims -dFPC TestModelLoad.pas -obin/TestModelLoad
+./bin/TestModelLoad
+```
+
+## Git Log (recent)
+```
+5ea8f9b Update notes with runtime test results
+9ea2c5b Update task list: runtime testing progress (200/229 tasks done)
+41f9b1a Fix EditorTableData: TSQLQuery → TSQLDataSet for SQLConnection compatibility
+e2e6f80 Add XML model load test
+8bd8eb6 Replace QDialogs/QForms with Dialogs/Forms in DataImporter/MainDM.pas
+8f08c0c Fix remaining LFM and resource issues
+5d2dbce Update README with Lazarus build instructions and porting status
+279e42a Update task list and notes: all 5 projects compile successfully
+62d083e Port SimpleWebFront and DataImporter plugins to Lazarus/LCL
+0da97fc Port Demo and HTMLReport plugins to Lazarus/FPC
 ```
