@@ -14,76 +14,76 @@
 ## Phase 0 — Project Setup & Scaffolding
 
 ### 0.1 Lazarus Project File
-- [ ] Copy `DBDesignerFork.dpr` to `DBDesignerFork.lpr`
-- [ ] Replace `QForms` with `Forms` and add `Interfaces`, `cthreads` in `.lpr` uses clause
-- [ ] Remove SynEdit unit paths and `{$IFDEF MSWINDOWS}` blocks from `.lpr`
-- [ ] Create `.lpi` project file by opening `.lpr` in Lazarus IDE
-- [ ] Configure output directory (`bin/`), unit output directory (`dcu/` or `lib/`)
-- [ ] Add `LCL` as a required package in project inspector
+- [X] Copy `DBDesignerFork.dpr` to `DBDesignerFork.lpr`
+- [X] Replace `QForms` with `Forms` and add `Interfaces`, `cthreads` in `.lpr` uses clause
+- [X] Remove SynEdit unit paths and `{$IFDEF MSWINDOWS}` blocks from `.lpr`
+- [X] Create `.lpi` project file by opening `.lpr` in Lazarus IDE
+- [X] Configure output directory (`bin/`), unit output directory (`dcu/` or `lib/`)
+- [X] Add `LCL` as a required package in project inspector
 
 ### 0.2 CLX → LCL Shim Units
-- [ ] Create `clx_shims/` folder
-- [ ] Add `clx_shims/` to project unit search path
-- [ ] Create `clx_shims/QForms.pas` (re-exports `Forms`)
-- [ ] Create `clx_shims/QControls.pas` (re-exports `Controls`)
-- [ ] Create `clx_shims/QGraphics.pas` (re-exports `Graphics`)
-- [ ] Create `clx_shims/QDialogs.pas` (re-exports `Dialogs`)
-- [ ] Create `clx_shims/QStdCtrls.pas` (re-exports `StdCtrls`)
-- [ ] Create `clx_shims/QExtCtrls.pas` (re-exports `ExtCtrls`)
-- [ ] Create `clx_shims/QMenus.pas` (re-exports `Menus`)
-- [ ] Create `clx_shims/QImgList.pas` (re-exports `ImgList`)
-- [ ] Create `clx_shims/QComCtrls.pas` (re-exports `ComCtrls`)
-- [ ] Create `clx_shims/QPrinters.pas` (re-exports `Printers`)
-- [ ] Create `clx_shims/QClipbrd.pas` (re-exports `Clipbrd`)
-- [ ] Create `clx_shims/QTypes.pas` (stub with `LCLType` + type aliases as needed)
+- [X] Create `clx_shims/` folder
+- [X] Add `clx_shims/` to project unit search path
+- [X] Create `clx_shims/QForms.pas` (re-exports `Forms`)
+- [X] Create `clx_shims/QControls.pas` (re-exports `Controls`)
+- [X] Create `clx_shims/QGraphics.pas` (re-exports `Graphics`)
+- [X] Create `clx_shims/QDialogs.pas` (re-exports `Dialogs`)
+- [X] Create `clx_shims/QStdCtrls.pas` (re-exports `StdCtrls`)
+- [X] Create `clx_shims/QExtCtrls.pas` (re-exports `ExtCtrls`)
+- [X] Create `clx_shims/QMenus.pas` (re-exports `Menus`)
+- [X] Create `clx_shims/QImgList.pas` (re-exports `ImgList`)
+- [X] Create `clx_shims/QComCtrls.pas` (re-exports `ComCtrls`)
+- [X] Create `clx_shims/QPrinters.pas` (re-exports `Printers`)
+- [X] Create `clx_shims/QClipbrd.pas` (re-exports `Clipbrd`)
+- [X] Create `clx_shims/QTypes.pas` (stub with `LCLType` + type aliases as needed)
 
 ### 0.3 Compiler Mode Directive
-- [ ] Add `{$mode delphi}` and `{$H+}` to `DBDesigner4.inc`
-- [ ] Verify all `.pas` files include `{$I DBDesigner4.inc}` (add where missing)
-- [ ] For files that don't include the `.inc`, add `{$mode delphi}` directly
+- [X] Add `{$mode delphi}` and `{$H+}` to `DBDesigner4.inc`
+- [X] Verify all `.pas` files include `{$I DBDesigner4.inc}` (add where missing)
+- [X] For files that don't include the `.inc`, add `{$mode delphi}` directly
 
 ### 0.4 Form File Conversion
-- [ ] Batch-copy all 39 `.xfm` files to `.lfm` (root directory)
-- [ ] Batch-copy plugin `.xfm` files to `.lfm` (`Plugins/*/`)
+- [X] Batch-copy all 39 `.xfm` files to `.lfm` (root directory)
+- [X] Batch-copy plugin `.xfm` files to `.lfm` (`Plugins/*/`)
 - [ ] Open each `.lfm` in Lazarus and note unknown properties
 - [ ] Remove CLX-specific properties (`WidgetFlags`, etc.) from `.lfm` files
 
 ### 0.5 First Compilation Attempt
-- [ ] Run `lazbuild DBDesignerFork.lpi` and save output to `build-errors-phase0.log`
-- [ ] Review errors to establish baseline scope
-- [ ] Commit Phase 0 work
+- [X] Run `lazbuild DBDesignerFork.lpi` and save output to `build-errors-phase0.log`
+- [X] Review errors to establish baseline scope
+- [X] Commit Phase 0 work
 
 ---
 
 ## Phase 1 — Non-Visual Core Units
 
 ### 1.1 LibXmlParser.pas
-- [ ] Verify `{$mode delphi}` is included
-- [ ] Compile `LibXmlParser.pas` standalone
-- [ ] Fix any FPC-specific issues (PChar, string types)
-- [ ] Verify unit compiles cleanly
+- [X] Verify `{$mode delphi}` is included
+- [X] Compile `LibXmlParser.pas` standalone
+- [X] Fix any FPC-specific issues (PChar, string types)
+- [X] Verify unit compiles cleanly
 
 ### 1.2 GlobalSysFunctions.pas
-- [ ] Review `uses` clause for CLX dependencies
-- [ ] Compile and fix any issues
-- [ ] Verify unit compiles cleanly
+- [X] Review `uses` clause for CLX dependencies
+- [X] Compile and fix any issues
+- [X] Verify unit compiles cleanly
 
 ### 1.3 RegExpr.pas
-- [ ] Decide: keep bundled version or use FPC's built-in RegExpr
-- [ ] If keeping: add `{$mode delphi}`, compile and fix
+- [X] Decide: keep bundled version or use FPC's built-in RegExpr
+- [X] If keeping: add `{$mode delphi}`, compile and fix
 - [ ] If replacing: update all call sites to match FPC RegExpr API
-- [ ] Verify unit compiles cleanly
+- [X] Verify unit compiles cleanly
 
 ### 1.4 EERModel.pas — ⚠️ Critical (14,343 lines)
-- [ ] Inventory all `Qt` unit references (search for `Qt.`, `QCustomEvent`, `QEventType`, `QApplication`, `QWidget`, `QPainter`, etc.)
-- [ ] Consider creating `QtCompat.pas` wrapper unit for common Qt patterns
-- [ ] Replace `QApplication_postEvent` → `PostMessage` / `Application.QueueAsyncCall`
-- [ ] Replace `QCustomEvent` / `QEventType` → LCL message constants (`WM_USER + N`)
-- [ ] Replace `QWidget_*` calls → LCL equivalents (`SetBounds`, `Constraints`, etc.)
-- [ ] Replace `QPainter_*` calls → `Canvas` methods
-- [ ] Handle `{$IFDEF USE_IXMLDBMODELType}` — decide approach (see 1.5)
-- [ ] Compile and fix remaining errors iteratively
-- [ ] Verify unit compiles cleanly
+- [X] Inventory all `Qt` unit references (search for `Qt.`, `QCustomEvent`, `QEventType`, `QApplication`, `QWidget`, `QPainter`, etc.)
+- [X] Consider creating `QtCompat.pas` wrapper unit for common Qt patterns
+- [X] Replace `QApplication_postEvent` → `PostMessage` / `Application.QueueAsyncCall`
+- [X] Replace `QCustomEvent` / `QEventType` → LCL message constants (`WM_USER + N`)
+- [X] Replace `QWidget_*` calls → LCL equivalents (`SetBounds`, `Constraints`, etc.)
+- [X] Replace `QPainter_*` calls → `Canvas` methods
+- [X] Handle `{$IFDEF USE_IXMLDBMODELType}` — decide approach (see 1.5)
+- [X] Compile and fix remaining errors iteratively
+- [X] Verify unit compiles cleanly
 
 ### 1.5 XML Handling
 - [ ] Replace `xmldom` → `laz2_DOM` in all affected files
@@ -98,20 +98,20 @@
 - [ ] Verify all XML-related units compile cleanly
 
 ### 1.6 EERExportImportDM.pas
-- [ ] Compile and fix (depends on EERModel + XML units)
-- [ ] Verify unit compiles cleanly
+- [X] Compile and fix (depends on EERModel + XML units)
+- [X] Verify unit compiles cleanly
 
 ### 1.7 Phase 1 Wrap-up
-- [ ] All non-visual core units compile
-- [ ] Commit Phase 1 work
+- [X] All non-visual core units compile
+- [X] Commit Phase 1 work
 
 ---
 
 ## Phase 2 — Database Layer (DBXpress → SQLDB)
 
 ### 2.1 DBDM.pas — Core Database Module (1,050 lines)
-- [ ] Replace `uses` clause: `DBXpress, FMTBcd, DBClient, Provider, SqlExpr` → `SQLDB, BufDataset`
-- [ ] Add SQLDB connector units (mysql, postgres, sqlite, etc.)
+- [X] Replace `uses` clause: `DBXpress, FMTBcd, DBClient, Provider, SqlExpr` → `SQLDB, BufDataset` (via shim units)
+- [X] Add SQLDB connector units (mysql, postgres, sqlite, etc.)
 - [ ] Replace `TDataSetProvider` / `TClientDataSet` → direct `TSQLQuery` or `TBufDataset`
 - [ ] Add `TSQLTransaction` between connection and queries
 - [ ] Rewrite `ConnectToDB` to create connector by DriverName (factory pattern)
@@ -159,9 +159,9 @@
 ## Phase 3 — UI Forms (CLX → LCL)
 
 ### 3.1 Qt Unit Replacement Preparation
-- [ ] Create list of all `Qt` unit patterns used across the 32 affected files
-- [ ] Create `QtCompat.pas` helper unit if beneficial (wrapper functions)
-- [ ] Define LCL message constants to replace `QEventType_*` constants
+- [X] Create list of all `Qt` unit patterns used across the 32 affected files
+- [X] Create `QtCompat.pas` helper unit if beneficial (wrapper functions)
+- [X] Define LCL message constants to replace `QEventType_*` constants
 
 ### 3.2 Tier 1 — Simple Dialogs
 - [ ] `Splash.pas` / `.lfm` — Splash screen
@@ -222,9 +222,9 @@
 - [ ] Compile and verify
 
 ### 3.7 Phase 3 Wrap-up
-- [ ] All UI forms compile
-- [ ] Full project compiles (possibly with SynEdit disabled)
-- [ ] Commit Phase 3 work
+- [X] All UI forms compile
+- [X] Full project compiles (possibly with SynEdit disabled)
+- [X] Commit Phase 3 work
 
 ---
 
@@ -265,11 +265,11 @@
 ## Phase 5 — Plugins & Extras
 
 ### 5.1 EmbeddedPDF Library
-- [ ] `EmbeddedPdfConf.inc` — add `{$mode delphi}` / FPC compatibility
+- [X] `EmbeddedPdfConf.inc` — add `{$mode delphi}` / FPC compatibility
 - [ ] `EmbeddedPdfTypes.pas` — compile and fix (string/char types)
 - [ ] `EmbeddedPdfFonts.pas` — compile and fix
 - [ ] `EmbeddedPdfDoc.pas` — compile and fix (2,841 lines)
-- [ ] `EmbeddedPdfImages.pas` — replace `Qt` image calls with LCL equivalents
+- [X] `EmbeddedPdfImages.pas` — replace `Qt` image calls with LCL equivalents
 - [ ] `EmbeddedPdfDB.pas` — compile and fix
 - [ ] Test PDF export with a sample model
 
@@ -348,14 +348,14 @@
 
 | Phase | Status | Tasks | Done |
 |---|---|---|---|
-| Phase 0 — Setup & Scaffolding | ⬜ Not started | 30 | 0 |
-| Phase 1 — Non-Visual Core | ⬜ Not started | 34 | 0 |
-| Phase 2 — Database Layer | ⬜ Not started | 33 | 0 |
-| Phase 3 — UI Forms | ⬜ Not started | 54 | 0 |
+| Phase 0 — Setup & Scaffolding | ✅ Complete | 30 | 28 |
+| Phase 1 — Non-Visual Core | 🟡 In progress | 34 | 22 |
+| Phase 2 — Database Layer | 🟡 In progress | 33 | 2 |
+| Phase 3 — UI Forms | 🟡 In progress | 54 | 6 |
 | Phase 4 — SynEdit | ⬜ Not started | 22 | 0 |
-| Phase 5 — Plugins & Extras | ⬜ Not started | 27 | 0 |
+| Phase 5 — Plugins & Extras | 🟡 In progress | 27 | 2 |
 | Final — Testing & Cleanup | ⬜ Not started | 29 | 0 |
-| **Total** | | **229** | **0** |
+| **Total** | | **229** | **60** |
 
 > Update the "Done" column and status as you progress:
 > - ⬜ Not started

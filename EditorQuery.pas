@@ -43,7 +43,7 @@ uses
   SysUtils, Types, Classes, Variants, LCLType, Graphics, Controls, Forms,
   Dialogs, StdCtrls, DB, DBClient, Provider, SqlExpr, Buttons,
   ExtCtrls, DBCtrls, Grids, DBGrids, ComCtrls, EERModel, IniFiles,
-  Menus, Clipbrd, {$IFDEF USE_SYNEDIT}SynEdit, SynHighlighterSQL, {$ENDIF}
+  Menus, Clipbrd, {$IFDEF USE_SYNEDIT}SynEdit, SynEditTypes, SynHighlighterSQL, {$ENDIF}
   {$IFDEF MSWINDOWS}Windows, ShellAPI, {$ENDIF}
   Qt, ImgList, EmbeddedPdfDB;
 
@@ -401,8 +401,7 @@ begin
     eoEnhanceHomeKey, eoGroupUndo,
     eoShowScrollHint, eoScrollHintFollows,
     eoSmartTabs, eoTabsToSpaces,
-    eoSmartTabDelete, eoHideShowScrollbars,
-    eoTabsToSpaces{, eoHighlightCurrentLine}];
+    eoSmartTabDelete, eoHideShowScrollbars];
 
   SQLSynEdit.OnMouseMove:=SQLMemoMouseMove;
   SQLSynEdit.OnDragDrop:=SQLMemoDragDrop;
@@ -1934,7 +1933,7 @@ begin
   begin
     if(SQLSynEdit.Visible)then
       SQLSynEdit.SetFocus;
-    SQLSynEdit.SelLength:=0;
+    begin SQLSynEdit.BlockBegin := SQLSynEdit.CaretXY; SQLSynEdit.BlockEnd := SQLSynEdit.CaretXY; end;
     if(SetStart>0)then
       SQLSynEdit.SelStart:=SetStart
     else
@@ -2127,7 +2126,7 @@ begin
 
     if(SetStart=0)then
       SetStart:=Length(SQLStr);
-    SQLSynEdit.SelLength:=0;
+    begin SQLSynEdit.BlockBegin := SQLSynEdit.CaretXY; SQLSynEdit.BlockEnd := SQLSynEdit.CaretXY; end;
     SQLSynEdit.SelStart:=SetStart;
   end
   else
