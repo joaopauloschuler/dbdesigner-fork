@@ -21,10 +21,13 @@ type
     FVendorLib: string;
     FTableScope: TTableScopes;
     FActiveStatements: Integer;
+    procedure SetDriverNameEx(const Value: string);
+    procedure UpdateConnectorType;
   public
+    procedure Open;
     property ActiveStatements: Integer read FActiveStatements;
   published
-    property DriverName: string read FDriverName write FDriverName;
+    property DriverName: string read FDriverName write SetDriverNameEx;
     property GetDriverFunc: string read FGetDriverFunc write FGetDriverFunc;
     property LibraryName: string read FLibraryName write FLibraryName;
     property VendorLib: string read FVendorLib write FVendorLib;
@@ -58,6 +61,51 @@ type
   end;
 
 implementation
+
+{ TSQLConnection }
+
+procedure TSQLConnection.SetDriverNameEx(const Value: string);
+begin
+  FDriverName := Value;
+  UpdateConnectorType;
+end;
+
+procedure TSQLConnection.UpdateConnectorType;
+var
+  LowerDriver: string;
+begin
+  LowerDriver := LowerCase(FDriverName);
+  if Pos('mysql', LowerDriver) > 0 then
+    ConnectorType := 'MySQL 5.7'
+  else if Pos('sqlite', LowerDriver) > 0 then
+    ConnectorType := 'SQLite3'
+  else if Pos('oracle', LowerDriver) > 0 then
+    ConnectorType := 'Oracle'
+  else if Pos('mssql', LowerDriver) > 0 then
+    ConnectorType := 'MSSQLServer'
+  else if Pos('interbase', LowerDriver) > 0 then
+    ConnectorType := 'Firebird'
+  else if Pos('firebird', LowerDriver) > 0 then
+    ConnectorType := 'Firebird'
+  else if Pos('odbc', LowerDriver) > 0 then
+    ConnectorType := 'ODBC';
+end;
+
+procedure TSQLConnection.Open;
+begin
+  // Ensure ConnectorType is set before connecting
+  if ConnectorType = '' then
+    UpdateConnectorType;
+  // Ensure a transaction is available (SQLDB requires one)
+  if Transaction = nil then
+  begin
+    Transaction := TSQLTransaction.Create(Self);
+    Transaction.DataBase := Self;
+  end;
+  inherited;
+end;
+
+{ TSQLDataSet }
 
 procedure TSQLDataSet.SetSchemaInfo(SchemaType: Integer; const SchemaObjectName, SchemaPattern: string);
 begin
