@@ -46,7 +46,7 @@
 - [X] Batch-copy all 39 `.xfm` files to `.lfm` (root directory)
 - [X] Batch-copy plugin `.xfm` files to `.lfm` (`Plugins/*/`)
 - [ ] Open each `.lfm` in Lazarus and note unknown properties
-- [ ] Remove CLX-specific properties (`WidgetFlags`, etc.) from `.lfm` files
+- [X] Remove CLX-specific properties (`WidgetFlags`, etc.) from `.lfm` files
 
 ### 0.5 First Compilation Attempt
 - [X] Run `lazbuild DBDesignerFork.lpi` and save output to `build-errors-phase0.log`
@@ -122,7 +122,7 @@
 - [ ] Verify unit compiles cleanly
 
 ### 2.2 DBEERDM.pas — EER Database Operations (3,074 lines)
-- [ ] Replace `uses` clause DB units
+- [X] Replace `uses` clause DB units
 - [ ] Update reverse engineering queries for SQLDB
 - [ ] Update synchronisation queries for SQLDB
 - [ ] Update metadata retrieval calls
@@ -130,7 +130,7 @@
 - [ ] Verify unit compiles cleanly
 
 ### 2.3 MainDM.pas — Main Data Module (1,881 lines)
-- [ ] Replace `uses` clause DB units
+- [X] Replace `uses` clause DB units
 - [ ] Update any DB component references
 - [ ] Compile and fix remaining errors
 - [ ] Verify unit compiles cleanly
@@ -174,7 +174,7 @@
 - [ ] `PrinterSettings.pas` / `.lfm` — Printer settings
 - [ ] `DBConnLogin.pas` / `.lfm` — Login dialog
 - [ ] `EditorDatatype.pas` / `.lfm` — Datatype editor
-- [ ] Compile all Tier 1 forms
+- [X] Compile all Tier 1 forms
 - [ ] Commit Tier 1
 
 ### 3.3 Tier 2 — Medium Complexity
@@ -188,7 +188,7 @@
 - [ ] `OptionsModel.pas` / `.lfm` — Model options
 - [ ] `DBConnEditor.pas` / `.lfm` — Connection editor
 - [ ] `DBConnSelect.pas` / `.lfm` — Connection selector
-- [ ] Compile all Tier 2 forms
+- [X] Compile all Tier 2 forms
 - [ ] Commit Tier 2
 
 ### 3.4 Tier 3 — Complex Forms
@@ -203,7 +203,7 @@
 - [ ] `EditorTableData.pas` / `.lfm` — Table data editor
 - [ ] `EditorQuery.pas` / `.lfm` — Query editor (3,085 lines)
 - [ ] `EditorQueryDragTarget.pas` / `.lfm` — Query drag target
-- [ ] Compile all Tier 3 forms
+- [X] Compile all Tier 3 forms
 - [ ] Commit Tier 3
 
 ### 3.5 Tier 4 — Core Forms & Data Modules
@@ -213,13 +213,13 @@
 - [ ] `EERExportImportDM.pas` — Export/import data module
 - [ ] `MainDM.pas` / `.lfm` — Main data module
 - [ ] `Main.pas` / `.lfm` — Main application form (3,514 lines)
-- [ ] Compile all Tier 4 forms
+- [X] Compile all Tier 4 forms
 - [ ] Commit Tier 4
 
 ### 3.6 Non-Form Units with Qt Dependencies
 - [ ] `EditorTableField.pas` — replace Qt usage
 - [ ] `EditorTableFieldDatatypeInplace.pas` — review for Qt usage
-- [ ] Compile and verify
+- [X] Compile and verify
 
 ### 3.7 Phase 3 Wrap-up
 - [X] All UI forms compile
@@ -231,34 +231,34 @@
 ## Phase 4 — SynEdit Integration
 
 ### 4.1 Remove Bundled SynEdit
-- [ ] Remove `QSynEdit*` and `QSynHighlighter*` references from `.lpr`
-- [ ] Add `SynEdit` package as project dependency in `.lpi`
+- [X] Remove `QSynEdit*` and `QSynHighlighter*` references from `.lpr`
+- [X] Add `SynEdit` package as project dependency in `.lpi`
 
 ### 4.2 Update SynEdit References
-- [ ] Replace `QSynEdit` → `SynEdit` in all source files
-- [ ] Replace `QSynHighlighterSQL` → `SynHighlighterSQL` in all source files
-- [ ] Replace `QSynEditHighlighter` → `SynEditHighlighter` in all source files
-- [ ] Replace `QSynEditKeyCmds` → `SynEditKeyCmds` in all source files
-- [ ] Replace `QSynEditTextBuffer` → `SynEditTextBuffer` in all source files
-- [ ] Replace `QSynEditMiscClasses` → `SynEditMiscClasses` in all source files
-- [ ] Replace `QSynEditMiscProcs` → `SynEditMiscProcs` in all source files
-- [ ] Replace `QSynEditStrConst` → `SynEditStrConst` in all source files
-- [ ] Replace `QSynEditKbdHandler` → `SynEditKbdHandler` in all source files
-- [ ] Replace `QSynEditKeyConst` → `SynEditKeyConst` in all source files
-- [ ] Replace `QSynEditTypes` → `SynEditTypes` in all source files
-- [ ] Replace `QSynHighlighterHashEntries` → `SynHighlighterHashEntries` in all source files
-- [ ] Handle `kTextDrawer.pas` — may not be needed with Lazarus SynEdit
+- [X] Replace `QSynEdit` → `SynEdit` in all source files
+- [X] Replace `QSynHighlighterSQL` → `SynHighlighterSQL` in all source files
+- [X] Replace `QSynEditHighlighter` → `SynEditHighlighter` in all source files
+- [X] Replace `QSynEditKeyCmds` → `SynEditKeyCmds` in all source files
+- [X] Replace `QSynEditTextBuffer` → `SynEditTextBuffer` in all source files
+- [X] Replace `QSynEditMiscClasses` → `SynEditMiscClasses` in all source files
+- [X] Replace `QSynEditMiscProcs` → `SynEditMiscProcs` in all source files
+- [X] Replace `QSynEditStrConst` → `SynEditStrConst` in all source files
+- [X] Replace `QSynEditKbdHandler` → `SynEditKbdHandler` in all source files
+- [X] Replace `QSynEditKeyConst` → `SynEditKeyConst` in all source files
+- [X] Replace `QSynEditTypes` → `SynEditTypes` in all source files
+- [X] Replace `QSynHighlighterHashEntries` → `SynHighlighterHashEntries` in all source files
+- [X] Handle `kTextDrawer.pas` — may not be needed with Lazarus SynEdit
 
 ### 4.3 Fix API Differences
-- [ ] Replace `TSynMemo` → `TSynEdit` if used
-- [ ] Update `Gutter.ShowLineNumbers` → `Gutter.LineNumberPart.Visible` if used
-- [ ] Fix any other Lazarus SynEdit API differences
-- [ ] Re-enable `{$DEFINE USE_SYNEDIT}` in `DBDesigner4.inc`
+- [X] Replace `TSynMemo` → `TSynEdit` if used
+- [X] Update `Gutter.ShowLineNumbers` → `Gutter.LineNumberPart.Visible` if used
+- [X] Fix any other Lazarus SynEdit API differences
+- [X] Re-enable `{$DEFINE USE_SYNEDIT}` in `DBDesigner4.inc`
 
 ### 4.4 Phase 4 Wrap-up
-- [ ] SynEdit compiles and integrates correctly
-- [ ] SQL syntax highlighting works in editor
-- [ ] Commit Phase 4 work
+- [X] SynEdit compiles and integrates correctly
+- [X] SQL syntax highlighting works in editor
+- [X] Commit Phase 4 work
 
 ---
 
@@ -266,11 +266,11 @@
 
 ### 5.1 EmbeddedPDF Library
 - [X] `EmbeddedPdfConf.inc` — add `{$mode delphi}` / FPC compatibility
-- [ ] `EmbeddedPdfTypes.pas` — compile and fix (string/char types)
-- [ ] `EmbeddedPdfFonts.pas` — compile and fix
-- [ ] `EmbeddedPdfDoc.pas` — compile and fix (2,841 lines)
+- [X] `EmbeddedPdfTypes.pas` — compile and fix (string/char types)
+- [X] `EmbeddedPdfFonts.pas` — compile and fix
+- [X] `EmbeddedPdfDoc.pas` — compile and fix (2,841 lines)
 - [X] `EmbeddedPdfImages.pas` — replace `Qt` image calls with LCL equivalents
-- [ ] `EmbeddedPdfDB.pas` — compile and fix
+- [X] `EmbeddedPdfDB.pas` — compile and fix
 - [ ] Test PDF export with a sample model
 
 ### 5.2 Plugin Loading Infrastructure
@@ -348,14 +348,14 @@
 
 | Phase | Status | Tasks | Done |
 |---|---|---|---|
-| Phase 0 — Setup & Scaffolding | ✅ Complete | 30 | 28 |
+| Phase 0 — Setup & Scaffolding | ✅ Complete | 30 | 29 |
 | Phase 1 — Non-Visual Core | 🟡 In progress | 34 | 22 |
-| Phase 2 — Database Layer | 🟡 In progress | 33 | 2 |
-| Phase 3 — UI Forms | 🟡 In progress | 54 | 6 |
-| Phase 4 — SynEdit | ⬜ Not started | 22 | 0 |
-| Phase 5 — Plugins & Extras | 🟡 In progress | 27 | 2 |
+| Phase 2 — Database Layer | 🟡 In progress | 33 | 4 |
+| Phase 3 — UI Forms | ✅ Complete (compile) | 54 | 11 |
+| Phase 4 — SynEdit | ✅ Complete | 22 | 20 |
+| Phase 5 — Plugins & Extras | 🟡 In progress | 27 | 6 |
 | Final — Testing & Cleanup | ⬜ Not started | 29 | 0 |
-| **Total** | | **229** | **60** |
+| **Total** | | **229** | **92** |
 
 > Update the "Done" column and status as you progress:
 > - ⬜ Not started
