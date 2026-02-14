@@ -225,7 +225,7 @@ type
     procedure StoredSQLEditBtnClick(Sender: TObject);
     procedure StoredSQLExecuteBtnClick(Sender: TObject);
     procedure StoredSQLTreeViewEdited(Sender: TObject; Node: TTreeNode;
-      var S: WideString);
+      var S: string);
     procedure StoredSQLTreeViewEditing(Sender: TObject; Node: TTreeNode;
       var AllowEdit: Boolean);
     procedure DeleteSQLCommandMIShow(Sender: TObject);
@@ -1518,7 +1518,7 @@ begin
 end;
 
 procedure TEditorQueryForm.StoredSQLTreeViewEdited(Sender: TObject;
-  Node: TTreeNode; var S: WideString);
+  Node: TTreeNode; var S: string);
 var itemname: string;
   folderanz: integer;
   i: integer;
@@ -1561,7 +1561,7 @@ end;
 procedure TEditorQueryForm.StoredSQLTreeViewEditing(Sender: TObject;
   Node: TTreeNode; var AllowEdit: Boolean);
 var s: string;
-  s1: Widestring;
+  s1: string;
 begin
   AllowEdit:=False;
 

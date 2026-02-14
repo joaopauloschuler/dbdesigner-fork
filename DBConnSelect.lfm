@@ -430,7 +430,7 @@ object DBConnSelectForm: TDBConnSelectForm
       PopupMenu = HostsPopupMenu
       ReadOnly = True
       TabOrder = 1
-      OnCustomDrawItem = DBConnTVCustomDrawItem
+      OnAdvancedCustomDrawItem = DBConnTVCustomDrawItem
       OnExpanding = DBConnTVExpanding
       OnItemClick = DBConnTVItemClick
       OnMouseDown = DBConnTVMouseDown

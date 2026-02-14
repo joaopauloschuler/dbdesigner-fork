@@ -189,7 +189,7 @@ begin
 end;
 
 procedure TEERPageSetupForm.SetModel(theModel: TEERModel);
-var PrinterName: WideString;
+var PrinterName: string;
 begin
   EERModel:=theModel;
 

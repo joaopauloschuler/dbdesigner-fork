@@ -96,7 +96,7 @@ type
       Item: TListItem; Selected: Boolean);
     procedure FormShow(Sender: TObject);
     procedure ConnectionsListViewEdited(Sender: TObject; Item: TListItem;
-      var S: WideString);
+      var S: string);
     procedure DelConnBtnClick(Sender: TObject);
     procedure ConnectionsListViewMouseDown(Sender: TObject;
       Button: TMouseButton; Shift: TShiftState; X, Y: Integer);
@@ -111,10 +111,9 @@ type
     procedure DeleteHostMIClick(Sender: TObject);
     procedure DBConnTVMouseDown(Sender: TObject; Button: TMouseButton;
       Shift: TShiftState; X, Y: Integer);
-    procedure DBConnTVCustomDrawItem(Sender: TCustomListView;
-      Item: TListItem; Canvas: TCanvas; const Rect: TRect;
-      State: TCustomDrawState; Stage: TCustomDrawStage;
-      var DefaultDraw: Boolean);
+    procedure DBConnTVCustomDrawItem(Sender: TCustomTreeView;
+      Node: TTreeNode; State: TCustomDrawState;
+      Stage: TCustomDrawStage; var PaintImages, DefaultDraw: Boolean);
     procedure RefreshDBConnList;
     procedure ConnectionsListViewDragOver(Sender, Source: TObject; X,
       Y: Integer; State: TDragState; var Accept: Boolean);
@@ -438,7 +437,7 @@ begin
 end;
 
 procedure TDBConnSelectForm.ConnectionsListViewEdited(Sender: TObject;
-  Item: TListItem; var S: WideString);
+  Item: TListItem; var S: string);
 begin
   SelDBConn.Name:=s;
 
@@ -959,12 +958,16 @@ begin
 end;
 
 procedure TDBConnSelectForm.DBConnTVCustomDrawItem(
-  Sender: TCustomListView; Item: TListItem; Canvas: TCanvas;
-  const Rect: TRect; State: TCustomDrawState; Stage: TCustomDrawStage;
-  var DefaultDraw: Boolean);
+  Sender: TCustomTreeView; Node: TTreeNode; State: TCustomDrawState;
+  Stage: TCustomDrawStage; var PaintImages, DefaultDraw: Boolean);
 var x: integer;
-  theRect: TRect;
+  theRect, Rect: TRect;
+  Canvas: TCanvas;
+  Item: TTreeNode;
 begin
+  Item := Node;
+  Canvas := TCustomTreeView(Sender).Canvas;
+  Rect := Node.DisplayRect(True);
   x:=Rect.Left+2;
   theRect:=Rect;
 
@@ -973,11 +976,11 @@ begin
     Brush.Color:=clWhite;
     FillRect(Rect);
     
-    if(TTreeNode(Item).ImageIndex>-1)then
+    if(Item.ImageIndex>-1)then
     begin
-      if(TTreeNode(Item).Selected)then
+      if(Item.Selected)then
       begin
-        DBConnImgList.Draw(Canvas, x, Rect.Top+1, TTreeNode(Item).SelectedIndex);
+        DBConnImgList.Draw(Canvas, x, Rect.Top+1, Item.SelectedIndex);
 
         theRect.Left:=x+18;
         Brush.Color:=clHighlight;
@@ -985,19 +988,19 @@ begin
       end
       else
         //Draw Folder Open if it is expanded
-        if((TTreeNode(Item).ImageIndex=0)and(TTreeNode(Item).Expanded))then
+        if((Item.ImageIndex=0)and(Item.Expanded))then
           DBConnImgList.Draw(Canvas, x, Rect.Top+1, 1)
         else
-          DBConnImgList.Draw(Canvas, x, Rect.Top+1, TTreeNode(Item).ImageIndex);
+          DBConnImgList.Draw(Canvas, x, Rect.Top+1, Item.ImageIndex);
       x:=x+20;
     end;
 
 
-    if(TTreeNode(Item).Selected)then
+    if(Item.Selected)then
       Font.Color:=clWhite
     else
       Font.Color:=clBlack;
-    TextOut(x, Rect.Top+2, TTreeNode(Item).Text);
+    TextOut(x, Rect.Top+2, Item.Text);
   end;
 
   DefaultDraw:=False;
