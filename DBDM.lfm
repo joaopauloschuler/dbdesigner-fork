@@ -29,15 +29,13 @@ object DMDB: TDMDB
     Top = 88
   end
   object OutputQry: TSQLQuery
-    MaxBlobSize = -1
     Params = <>
-    SQLConnection = SQLConn
+    Database = SQLConn
     Left = 40
     Top = 88
   end
   object OutputDataSetProvider: TDataSetProvider
     DataSet = OutputQry
-    Options = [poRetainServerOrder]
     Left = 132
     Top = 88
   end
@@ -50,9 +48,8 @@ object DMDB: TDMDB
     Top = 88
   end
   object SchemaSQLQuery: TSQLQuery
-    MaxBlobSize = -1
     Params = <>
-    SQLConnection = SQLConn
+    Database = SQLConn
     Left = 132
     Top = 22
   end

@@ -11,4 +11,8 @@ type
   end;
 
 implementation
+
+initialization
+  RegisterClass(TClientDataSet);
+
 end.

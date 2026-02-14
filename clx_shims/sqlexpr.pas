@@ -93,4 +93,9 @@ begin
   inherited;
 end;
 
+initialization
+  RegisterClass(TSQLConnection);
+  RegisterClass(TSQLDataSet);
+  RegisterClass(TSQLMonitor);
+
 end.

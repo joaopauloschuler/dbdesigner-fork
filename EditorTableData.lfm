@@ -1155,7 +1155,6 @@ object EditorTableDataForm: TEditorTableDataForm
     end
   end
   object OutputQry: TSQLQuery
-    MaxBlobSize = -1
     Params = <>
     Left = 100
     Top = 138

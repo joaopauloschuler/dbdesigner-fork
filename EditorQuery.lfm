@@ -2036,7 +2036,6 @@ object EditorQueryForm: TEditorQueryForm
   end
   object OutputDataSetProvider: TDataSetProvider
     DataSet = OutputQry
-    Options = [poRetainServerOrder]
     OnUpdateError = OutputDataSetProviderUpdateError
     Left = 262
     Top = 292
