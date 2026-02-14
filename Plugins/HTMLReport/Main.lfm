@@ -8,7 +8,7 @@ object MainForm: TMainForm
   ActiveControl = SortOrderPosRBtn
   Caption = 'HTML Report Plugin |'
   Color = clBtnFace
-  FormStyle = fsMDIForm
+  FormStyle = fsNormal
   Icon.Data = {
     0000010003002020100000000000E8020000360000002020000001000800A808
     00001E0300002020000001001800A80C0000C60B000028000000200000004000
