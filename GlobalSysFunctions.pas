@@ -145,7 +145,7 @@ begin
   try
     try
 {$IFDEF LINUX}
-      Screen.SystemFont.Name:=theIni.ReadString('GeneralSettings', 'ApplicationFontName', 'Nimbus Sans L');
+      Screen.SystemFont.Name:=theIni.ReadString('GeneralSettings', 'ApplicationFontName', 'Sans');
       Screen.SystemFont.Size:=StrToInt(theIni.ReadString('GeneralSettings', 'ApplicationFontSize', '11'));
 {$ELSE}
       Screen.SystemFont.Name:=theIni.ReadString('GeneralSettings', 'ApplicationFontName', 'MS Sans Serif');
@@ -163,7 +163,7 @@ begin
         Screen.SystemFont.Style:=Screen.SystemFont.Style+[fsStrikeOut];
     except
 {$IFDEF LINUX}
-      Screen.SystemFont.Name:='Nimbus Sans L';
+      Screen.SystemFont.Name:='Sans';
       Screen.SystemFont.Size:=11;
       Screen.SystemFont.Style:=[];
 {$ELSE}
