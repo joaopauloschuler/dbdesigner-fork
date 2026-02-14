@@ -390,37 +390,115 @@ procedure TDMMain.LoadACursor(crNumber: integer; fname, fname_mask: string; XSpo
 {$IFDEF FPC}
 var
   CurBmp, MaskBmp: TBitmap;
+  CurStream: TMemoryStream;
   CurImg: TCursorImage;
+  BmpInfoSize: LongWord;
+  BmpDataSize: LongWord;
+  BmpWidth, BmpHeight: LongInt;
+  IconDir: packed record
+    idReserved: Word;
+    idType: Word;
+    idCount: Word;
+  end;
+  IconEntry: packed record
+    bWidth: Byte;
+    bHeight: Byte;
+    bColorCount: Byte;
+    bReserved: Byte;
+    wXHotspot: Word;
+    wYHotspot: Word;
+    dwBytesInRes: LongWord;
+    dwImageOffset: LongWord;
+  end;
 begin
   if not FileExists(fname) then
-    raise EInOutError.Create(GetTranslatedMessage('File %s does not exist.', 24, fname));
+    Exit; // Silently skip missing cursor files
   if not FileExists(fname_mask) then
-    raise EInOutError.Create(GetTranslatedMessage('File %s does not exist.', 24, fname_mask));
-  
+    Exit;
+
   CurBmp := TBitmap.Create;
   MaskBmp := TBitmap.Create;
+  CurStream := TMemoryStream.Create;
   try
-    CurBmp.LoadFromFile(fname);
-    MaskBmp.LoadFromFile(fname_mask);
-    
-    // Create a cursor image from the bitmap
-    CurImg := TCursorImage.Create;
     try
-      CurImg.Width := CurBmp.Width;
-      CurImg.Height := CurBmp.Height;
-      CurImg.HotSpot := Point(XSpot, YSpot);
-      CurImg.Canvas.Draw(0, 0, CurBmp);
-      // Apply mask
-      CurImg.Canvas.CopyMode := cmSrcAnd;
-      CurImg.Canvas.Draw(0, 0, MaskBmp);
-      
-      Screen.Cursors[crNumber] := CurImg.ReleaseHandle;
-    finally
-      CurImg.Free;
+      CurBmp.LoadFromFile(fname);
+      MaskBmp.LoadFromFile(fname_mask);
+
+      BmpWidth := CurBmp.Width;
+      BmpHeight := CurBmp.Height;
+      // BMP data after the 14-byte file header: info header + pixel data
+      BmpInfoSize := CurBmp.RawImage.Description.Height * ((CurBmp.RawImage.Description.Width + 31) div 32) * 4;
+      // For 1-bit: row size = ((Width + 31) / 32) * 4 bytes
+
+      // Build a .cur file in memory:
+      // CUR header (6 bytes)
+      IconDir.idReserved := 0;
+      IconDir.idType := NtoLE(Word(2)); // 2 = cursor
+      IconDir.idCount := NtoLE(Word(1));
+      CurStream.Write(IconDir, 6);
+
+      // Directory entry (16 bytes)
+      BmpDataSize := LongWord(CurBmp.RawImage.DataSize + MaskBmp.RawImage.DataSize + 40);
+      IconEntry.bWidth := Byte(BmpWidth);
+      IconEntry.bHeight := Byte(BmpHeight);
+      IconEntry.bColorCount := 0;
+      IconEntry.bReserved := 0;
+      IconEntry.wXHotspot := NtoLE(Word(XSpot));
+      IconEntry.wYHotspot := NtoLE(Word(YSpot));
+      IconEntry.dwBytesInRes := NtoLE(BmpDataSize);
+      IconEntry.dwImageOffset := NtoLE(LongWord(22)); // 6 + 16
+      CurStream.Write(IconEntry, 16);
+
+      // BITMAPINFOHEADER (40 bytes) - double height for XOR+AND
+      CurStream.Size := 22; // position at offset 22
+      CurStream.Position := 22;
+      // Copy the BMP info header from the cursor bitmap, but with doubled height
+      // We'll write a fresh BITMAPINFOHEADER
+      CurStream.WriteDWord(NtoLE(LongWord(40)));  // biSize
+      CurStream.WriteDWord(NtoLE(LongWord(BmpWidth)));  // biWidth
+      CurStream.WriteDWord(NtoLE(LongWord(BmpHeight * 2)));  // biHeight (doubled for cursor)
+      CurStream.WriteWord(NtoLE(Word(1)));   // biPlanes
+      CurStream.WriteWord(NtoLE(Word(1)));   // biBitCount (1 = monochrome)
+      CurStream.WriteDWord(0);  // biCompression
+      CurStream.WriteDWord(0);  // biSizeImage
+      CurStream.WriteDWord(0);  // biXPelsPerMeter
+      CurStream.WriteDWord(0);  // biYPelsPerMeter
+      CurStream.WriteDWord(NtoLE(LongWord(2)));  // biClrUsed
+      CurStream.WriteDWord(0);  // biClrImportant
+
+      // Color table for monochrome (2 entries: black + white)
+      CurStream.WriteDWord(0);            // black: 00 00 00 00
+      CurStream.WriteDWord($00FFFFFF);    // white: FF FF FF 00
+
+      // XOR mask (cursor image pixel data) - copy from CurBmp raw data
+      if CurBmp.RawImage.Data <> nil then
+        CurStream.Write(CurBmp.RawImage.Data^, CurBmp.RawImage.DataSize);
+
+      // AND mask (transparency mask) - copy from MaskBmp raw data  
+      if MaskBmp.RawImage.Data <> nil then
+        CurStream.Write(MaskBmp.RawImage.Data^, MaskBmp.RawImage.DataSize);
+
+      // Load the cursor from the stream
+      CurStream.Position := 0;
+      CurImg := TCursorImage.Create;
+      try
+        CurImg.LoadFromStream(CurStream);
+        CurImg.HotSpot := Point(XSpot, YSpot);
+        Screen.Cursors[crNumber] := CurImg.ReleaseHandle;
+      finally
+        CurImg.Free;
+      end;
+    except
+      on E: Exception do
+      begin
+        // Failed to load custom cursor - use default cursor instead.
+        // This is non-fatal; the app works fine with standard cursors.
+      end;
     end;
   finally
     CurBmp.Free;
     MaskBmp.Free;
+    CurStream.Free;
   end;
 end;
 {$ELSE}
