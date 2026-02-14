@@ -1156,7 +1156,7 @@ object MainForm: TMainForm
 
           TabStop = False
 
-          Color = clNormalBackground
+          Color = clWindow
 
           ReadOnly = True
 
@@ -1178,7 +1178,7 @@ object MainForm: TMainForm
 
           TabStop = False
 
-          Color = clNormalBackground
+          Color = clWindow
 
           ReadOnly = True
 
@@ -1200,7 +1200,7 @@ object MainForm: TMainForm
 
           TabStop = False
 
-          Color = clNormalBackground
+          Color = clWindow
 
           ReadOnly = True
 
@@ -1222,7 +1222,7 @@ object MainForm: TMainForm
 
           TabStop = False
 
-          Color = clNormalBackground
+          Color = clWindow
 
           ReadOnly = True
 
@@ -1240,7 +1240,7 @@ object MainForm: TMainForm
 
           Height = 57
 
-          Color = clNormalBackground
+          Color = clWindow
 
           Lines.Strings = (
 
@@ -3378,7 +3378,7 @@ object MainForm: TMainForm
     BevelOuter = bvNone
 
 
-    Color = clDark
+    Color = clBtnShadow
 
     TabOrder = 2
 

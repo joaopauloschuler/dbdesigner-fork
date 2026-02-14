@@ -18,7 +18,7 @@ object ZoomSelForm: TZoomSelForm
     Width = 87
     Height = 165
     BevelOuter = bvLowered
-    Color = clButton
+    Color = clBtnFace
     TabOrder = 0
     object ZoomLBox: TListBox
       Left = 2

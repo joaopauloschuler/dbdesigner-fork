@@ -87,7 +87,7 @@ object EditorQueryDragTargetForm: TEditorQueryDragTargetForm
     Height = 5
     BevelOuter = bvNone
     BorderStyle = bsSingle
-    Color = clDark
+    Color = clBtnShadow
     TabOrder = 7
   end
   object Panel3: TPanel
@@ -97,7 +97,7 @@ object EditorQueryDragTargetForm: TEditorQueryDragTargetForm
     Height = 19
     BevelOuter = bvNone
     BorderStyle = bsSingle
-    Color = clDark
+    Color = clBtnShadow
     TabOrder = 8
   end
   object Panel4: TPanel
@@ -107,7 +107,7 @@ object EditorQueryDragTargetForm: TEditorQueryDragTargetForm
     Height = 19
     BevelOuter = bvNone
     BorderStyle = bsSingle
-    Color = clDark
+    Color = clBtnShadow
     TabOrder = 9
   end
   object Panel6: TPanel
@@ -117,7 +117,7 @@ object EditorQueryDragTargetForm: TEditorQueryDragTargetForm
     Height = 11
     BevelOuter = bvNone
     BorderStyle = bsSingle
-    Color = clDark
+    Color = clBtnShadow
     TabOrder = 10
   end
   object DropColumn1Pnl: TPanel

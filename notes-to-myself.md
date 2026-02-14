@@ -100,3 +100,11 @@ f52b469 Fix SetSchemaInfo test
 - **Fix**: Removed all 27 `Masked = True` lines from 9 .lfm files.
 - **Reason**: `Masked` is a CLX/Qt-specific bitmap transparency property; LCL handles transparency differently.
 - **Result**: All 5 binaries compile and run clean (no stderr output).
+
+## Splash Screen Commented Out (commit 17d9573)
+- `Splash.pas:92` was loading `splashscreen.png` via `TBitmap.LoadFromFile`
+- LCL's `TBitmap` only supports BMP format, not PNG → "Wrong image format" exception
+- Commented out splash screen creation in `DBDesignerFork.lpr`
+- Set `Version := '1.5'` directly in `Main.pas` instead of reading from `SplashForm.VersionLbl.Caption`
+- App now starts clean with no errors (exit 124 = killed by timeout = stayed alive)
+- Future fix: could convert splashscreen.png to BMP, or use `TPicture.LoadFromFile` which auto-detects format

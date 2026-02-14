@@ -37,7 +37,7 @@ object EERPlaceModelForm: TEERPlaceModelForm
       Width = 370
       Height = 21
       BevelOuter = bvNone
-      Color = clDark
+      Color = clBtnShadow
       TabOrder = 0
       object PageControlTitleLbl: TLabel
         Left = 6

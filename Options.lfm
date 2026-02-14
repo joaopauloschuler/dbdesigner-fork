@@ -1014,7 +1014,7 @@ object OptionsForm: TOptionsForm
     Width = 553
     Height = 21
     BevelOuter = bvNone
-    Color = clDark
+    Color = clBtnShadow
     TabOrder = 3
     object PageControlTitleLbl: TLabel
       Left = 6

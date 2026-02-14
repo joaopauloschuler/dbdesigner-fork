@@ -4,7 +4,7 @@ object MainForm: TMainForm
   Caption = 'DBDesigner Fork'
   ClientHeight = 377
   ClientWidth = 600
-  Color = clDark
+  Color = clBtnShadow
   Constraints.MinHeight = 400
   Constraints.MinWidth = 600
   FormStyle = fsNormal
@@ -135,7 +135,7 @@ object MainForm: TMainForm
     Height = 16
     Align = alBottom
     BevelOuter = bvNone
-    Color = clButton
+    Color = clBtnFace
     TabOrder = 0
     object NotSavedImg: TImage
       Left = 54
@@ -461,7 +461,7 @@ object MainForm: TMainForm
     Height = 1
     Align = alTop
     BevelOuter = bvNone
-    Color = clDark
+    Color = clBtnShadow
     TabOrder = 1
   end
   object QueryPnl: TPanel
@@ -471,7 +471,7 @@ object MainForm: TMainForm
     Height = 33
     Align = alBottom
     BevelOuter = bvNone
-    Color = clButton
+    Color = clBtnFace
     TabOrder = 3
     Visible = False
   end
@@ -483,7 +483,7 @@ object MainForm: TMainForm
     Cursor = crArrow
     Align = alLeft
     BevelOuter = bvNone
-    Color = clButton
+    Color = clBtnFace
     TabOrder = 4
     object Shape1: TShape
       Left = 34
@@ -491,7 +491,7 @@ object MainForm: TMainForm
       Width = 1
       Height = 98
       Align = alRight
-      Brush.Color = clDark
+      Brush.Color = clBtnShadow
       Pen.Style = psClear
     end
     object DesignToolsPnl: TPanel
@@ -502,7 +502,7 @@ object MainForm: TMainForm
       Cursor = crArrow
       Align = alTop
       BevelOuter = bvNone
-      Color = clButton
+      Color = clBtnFace
       TabOrder = 0
       object CreatesImg: TImage
         Left = 4
@@ -1694,7 +1694,7 @@ object MainForm: TMainForm
         Width = 1
         Height = 340
         Align = alRight
-        Brush.Color = clDark
+        Brush.Color = clBtnShadow
         Pen.Style = psClear
       end
       object Image9: TImage
@@ -1940,7 +1940,7 @@ object MainForm: TMainForm
       Cursor = crArrow
       Align = alTop
       BevelOuter = bvNone
-      Color = clButton
+      Color = clBtnFace
       TabOrder = 1
       object QueryImg: TImage
         Left = 4
@@ -2128,7 +2128,7 @@ object MainForm: TMainForm
         Width = 1
         Height = 36
         Align = alRight
-        Brush.Color = clDark
+        Brush.Color = clBtnShadow
         Pen.Style = psClear
       end
       object Shape4: TShape
@@ -2148,7 +2148,7 @@ object MainForm: TMainForm
       Cursor = crArrow
       Align = alTop
       BevelOuter = bvNone
-      Color = clButton
+      Color = clBtnFace
       TabOrder = 2
       Visible = False
       object Shape5: TShape
@@ -2157,7 +2157,7 @@ object MainForm: TMainForm
         Width = 1
         Height = 254
         Align = alRight
-        Brush.Color = clDark
+        Brush.Color = clBtnShadow
         Pen.Style = psClear
       end
       object wtPointerQrySBtn: TSpeedButton
@@ -2819,7 +2819,7 @@ object MainForm: TMainForm
       Height = 3
       Cursor = crVSplit
       Align = alTop
-      Color = clDark
+      Color = clBtnShadow
     end
     object NavPnl: TPanel
       Left = 0
@@ -2923,7 +2923,7 @@ object MainForm: TMainForm
         Height = 3
         Align = alTop
         BevelOuter = bvNone
-        Color = clDark
+        Color = clBtnShadow
         TabOrder = 2
       end
       object DatatypesLeftPnl: TPanel
@@ -2998,7 +2998,7 @@ object MainForm: TMainForm
     Height = 321
     Align = alRight
     BevelOuter = bvNone
-    Color = clDark
+    Color = clBtnShadow
     TabOrder = 6
     Visible = False
   end

@@ -635,7 +635,7 @@ object DBImportDataForm: TDBImportDataForm
         RowCount = 7
         FixedRows = 0
         Font.CharSet = 0
-        Font.Color = clText
+        Font.Color = clWindowText
         Font.Height = 12
         Font.Name = 'Lucida Console'
         Font.Pitch = fpVariable

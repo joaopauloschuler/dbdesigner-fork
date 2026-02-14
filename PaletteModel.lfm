@@ -926,7 +926,7 @@ object PaletteModelFrom: TPaletteModelFrom
       TabOrder = 1
       object ModelSheet: TTabSheet
         Caption = 'ModelSheet'
-        Color = clDark
+        Color = clBtnShadow
         object Shape1: TShape
           Left = 0
           Top = 1
@@ -991,13 +991,13 @@ object PaletteModelFrom: TPaletteModelFrom
           Height = 1
           Align = alTop
           BevelOuter = bvNone
-          Color = clDark
+          Color = clBtnShadow
           TabOrder = 1
         end
       end
       object TablesSheet: TTabSheet
         Caption = 'TablesSheet'
-        Color = clDark
+        Color = clBtnShadow
         ImageIndex = 1
         object TablesTreeView: TTreeView
           Left = 0

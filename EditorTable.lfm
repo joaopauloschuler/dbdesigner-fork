@@ -572,7 +572,7 @@ object EditorTableForm: TEditorTableForm
       Width = 531
       Height = 21
       BevelOuter = bvNone
-      Color = clDark
+      Color = clBtnShadow
       TabOrder = 2
       object PageControlTitleLbl: TLabel
         Left = 6
