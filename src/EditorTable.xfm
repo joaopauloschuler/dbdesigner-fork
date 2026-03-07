@@ -229,7 +229,6 @@ object EditorTableForm: TEditorTableForm
           Items.Strings = (
             'PRIMARY'
             'product_name')
-          Rows = 2
           TabOrder = 1
           OnClick = IndexListBoxClick
           OnDblClick = IndexListBoxDblClick
@@ -528,7 +527,6 @@ object EditorTableForm: TEditorTableForm
           TabOrder = 0
           WantTabs = True
           WordWrap = False
-          WrapMode = wmNone
         end
       end
       object CommentsSheet: TTabSheet

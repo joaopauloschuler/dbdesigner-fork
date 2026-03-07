@@ -39,7 +39,6 @@ object ZoomSelForm: TZoomSelForm
         '200 %'
         '300 %'
         '400 %')
-      Rows = 10
       TabOrder = 0
       OnClick = ZoomLBoxDblClick
       OnDblClick = ZoomLBoxDblClick

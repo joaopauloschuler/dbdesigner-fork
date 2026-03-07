@@ -40,17 +40,17 @@ type
   WidgetFlags = Cardinal;
 
 const
-  // Custom event types - mapped to WM_USER range
+  // Custom event types - keep these aligned with src/EERDM.pas
   QEventType_ClxUser = LM_USER + 100;
-  QEventType_PlaceModelFromFile = LM_USER + 101;
-  QEventType_PlaceModelFromDB = LM_USER + 102;
-  QEventType_PlaceModelFromLibrary = LM_USER + 103;
-  QEventType_EditTable = LM_USER + 104;
-  QEventType_EditRel = LM_USER + 105;
-  QEventType_EditNote = LM_USER + 106;
-  QEventType_EditRegion = LM_USER + 107;
-  QEventType_EditImage = LM_USER + 108;
-  QEventType_DeleteObject = LM_USER + 109;
+  QEventType_EditTable = QEventType_ClxUser + 1;
+  QEventType_EditRel = QEventType_ClxUser + 2;
+  QEventType_EditRegion = QEventType_ClxUser + 3;
+  QEventType_EditNote = QEventType_ClxUser + 4;
+  QEventType_EditImage = QEventType_ClxUser + 5;
+  QEventType_PlaceModelFromFile = QEventType_ClxUser + 29;
+  QEventType_PlaceModelFromDB = QEventType_ClxUser + 30;
+  QEventType_PlaceModelFromLibrary = QEventType_ClxUser + 31;
+  QEventType_DeleteObject = QEventType_ClxUser + 32;
 
 
   // CLX Key constants (mapped to LCL VK_ constants)

@@ -220,7 +220,7 @@ object DBConnEditorForm: TDBConnEditorForm
           Top = 110
           Width = 104
           Height = 21
-          EchoMode = emPassword
+          PasswordChar = '*'
           TabOrder = 7
           OnExit = PasswordEdExit
         end
