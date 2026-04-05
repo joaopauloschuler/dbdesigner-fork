@@ -1,9 +1,9 @@
 
-# DBDesigner Fork
+# DBDesigner Fork ![License: GPL v2](https://img.shields.io/badge/License-GPLv2-blue.svg)
 
 **DBDesigner Fork** is an open-source visual database design and modeling tool (Entity-Relationship / EER diagram editor). It is a community fork of the original **DBDesigner 4**, created by fabFORCE (Mike).
 
-![License: GPL v2](https://img.shields.io/badge/License-GPLv2-blue.svg)
+![How to Install BPSA](docs/1.jpeg?raw=true)
 
 ## Overview
 
