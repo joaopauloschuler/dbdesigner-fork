@@ -232,6 +232,7 @@ begin
   end;
 
   try
+    ScheduleModalClose(800);
     Item.Click;
     Application.ProcessMessages;
     Sleep(500);
@@ -279,6 +280,7 @@ begin
   end;
 
   try
+    ScheduleModalClose(800);
     if Btn is TSpeedButton then
       TSpeedButton(Btn).Click
     else if Btn is TButton then
@@ -812,7 +814,7 @@ begin
 end;
 
 { Phase 7: Test buttons on MainForm and visible forms }
-procedure Phase7_TestButtons(AMainForm: TForm; var PassCount, FailCount, SkipCount: Integer);
+procedure Phase7_TestButtons(AMainForm: TForm; var PassCount, FailCount, SkipCount: Integer; const LogFile: string);
 var
   I, J: Integer;
   Entry: TTestEntry;
@@ -829,6 +831,8 @@ begin
     Component := AMainForm.Components[I];
     if (Component is TSpeedButton) or (Component is TButton) or (Component is TBitBtn) then
     begin
+      Log('  [TRYING] button: ' + AMainForm.Name + '.' + Component.Name);
+      FlushLog(LogFile);
       Entry := TestButton(TControl(Component), AMainForm.Name);
       LogTestEntry(Entry);
       case Entry.Result of
@@ -837,6 +841,7 @@ begin
         trSkip: Inc(SkipCount);
       end;
       Application.ProcessMessages;
+      FlushLog(LogFile);
     end;
   end;
 
@@ -866,6 +871,8 @@ begin
 
         for J := 0 to ButtonList.Count - 1 do
         begin
+          Log('  [TRYING] button: ' + AForm.Name + '.' + TComponent(ButtonList[J]).Name);
+          FlushLog(LogFile);
           Entry := TestButton(TControl(ButtonList[J]), AForm.Name);
           LogTestEntry(Entry);
           case Entry.Result of
@@ -874,6 +881,7 @@ begin
             trSkip: Inc(SkipCount);
           end;
           Application.ProcessMessages;
+          FlushLog(LogFile);
         end;
       finally
         ButtonList.Free;
@@ -939,7 +947,7 @@ begin
     Phase6_TestMenuItems(AMainForm, PassCount, FailCount, SkipCount, ActualLogFile);
     FlushLog(ActualLogFile);
 
-    Phase7_TestButtons(AMainForm, PassCount, FailCount, SkipCount);
+    Phase7_TestButtons(AMainForm, PassCount, FailCount, SkipCount, ActualLogFile);
     FlushLog(ActualLogFile);
 
     // Summary
