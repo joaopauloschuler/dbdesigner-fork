@@ -86,6 +86,8 @@ type
     PageSetupBtn: TBitBtn;
     procedure FormCreate(Sender: TObject);
     procedure FormDestroy(Sender: TObject);
+    procedure FormClose(Sender: TObject; var Action: TCloseAction);
+    procedure FormShow(Sender: TObject);
 
     procedure SetModel(theModel: TEERModel);
     procedure SetSelPagesArraySize;
@@ -103,30 +105,23 @@ type
     procedure SetPrinterValues;
     procedure PortraitRBtnClick(Sender: TObject);
     procedure StartPrintBtnClick(Sender: TObject);
+    procedure PaintBoxPaint(Sender: TObject);
+    procedure PaintBoxMouseDown(Sender: TObject; Button: TMouseButton;
+      Shift: TShiftState; X, Y: Integer);
+    procedure PrintAllPagesCBoxClick(Sender: TObject);
+    procedure HPageSizeTBarChange(Sender: TObject);
+    procedure HPagesSpinEditChanged(Sender: TObject);
+    procedure VPagesSpinEditChanged(Sender: TObject);
+    procedure PrintDlgBtnClick(Sender: TObject);
+    procedure PageSetupBtnClick(Sender: TObject);
   public
     procedure HideEdits;
     procedure ShowEdits;
   private
     FCurrentPageSize: TPageSize;
     function GetPrinterMargins: TSize;
-    procedure PaintBoxPaint(Sender: TObject);
-    procedure PaintBoxMouseDown(Sender: TObject; Button: TMouseButton;
-      Shift: TShiftState; X, Y: Integer);
-    procedure PrintAllPagesCBoxClick(Sender: TObject);
-    procedure HPageSizeTBarChange(Sender: TObject);
-    procedure HPagesSpinEditChanged(Sender: TObject; NewValue: Integer);
-    procedure FormShow(Sender: TObject);
-    procedure VPagesSpinEditChanged(Sender: TObject; NewValue: Integer);
-
-
-
     procedure SetModelSelPages;
     procedure StoreSelPagesInModel;
-    procedure FormClose(Sender: TObject; var Action: TCloseAction);
-    procedure PrintDlgBtnClick(Sender: TObject);
-    procedure PageSetupBtnClick(Sender: TObject);
-
-  private
     { Private-Deklarationen }
   public
     { Public-Deklarationen }
@@ -770,8 +765,7 @@ begin
   end;
 end;
 
-procedure TEERPageSetupForm.HPagesSpinEditChanged(Sender: TObject;
-  NewValue: Integer);
+procedure TEERPageSetupForm.HPagesSpinEditChanged(Sender: TObject);
 begin
   if(SpinEditActive)then
   begin
@@ -782,8 +776,7 @@ begin
   end;
 end;
 
-procedure TEERPageSetupForm.VPagesSpinEditChanged(Sender: TObject;
-  NewValue: Integer);
+procedure TEERPageSetupForm.VPagesSpinEditChanged(Sender: TObject);
 begin
   if(SpinEditActive)then
   begin
