@@ -165,6 +165,8 @@ const
   );
 var
   I: Integer;
+  Mid: string;
+  AllDigits: Boolean;
 begin
   Result := False;
   for I := Low(UnsafeNames) to High(UnsafeNames) do
@@ -173,6 +175,25 @@ begin
       Result := True;
       Exit;
     end;
+
+  // Skip dynamically created plugin menu items (Plugin<digits>MI).
+  // Their OnClick launches an external plugin executable and waits for it,
+  // which deadlocks the self-test.
+  if (Length(AName) > 8) and
+     (CompareText(Copy(AName, 1, 6), 'Plugin') = 0) and
+     (CompareText(Copy(AName, Length(AName) - 1, 2), 'MI') = 0) then
+  begin
+    Mid := Copy(AName, 7, Length(AName) - 8);
+    AllDigits := Length(Mid) > 0;
+    for I := 1 to Length(Mid) do
+      if not (Mid[I] in ['0'..'9']) then
+      begin
+        AllDigits := False;
+        Break;
+      end;
+    if AllDigits then
+      Result := True;
+  end;
 end;
 
 // ---------------------------------------------------------------------------
@@ -211,6 +232,7 @@ begin
   end;
 
   try
+    ScheduleModalClose(800);
     Item.Click;
     Application.ProcessMessages;
     Sleep(500);
@@ -258,6 +280,7 @@ begin
   end;
 
   try
+    ScheduleModalClose(800);
     if Btn is TSpeedButton then
       TSpeedButton(Btn).Click
     else if Btn is TButton then
@@ -730,7 +753,7 @@ begin
 end;
 
 { Phase 6: Test all menu items }
-procedure Phase6_TestMenuItems(AMainForm: TForm; var PassCount, FailCount, SkipCount: Integer);
+procedure Phase6_TestMenuItems(AMainForm: TForm; var PassCount, FailCount, SkipCount: Integer; const LogFile: string);
 var
   I, J: Integer;
   Entry: TTestEntry;
@@ -758,6 +781,9 @@ begin
     begin
       ItemName := TMenuItem(MenuItems[I]).Name;
 
+      Log('  [TRYING] menu item: ' + ItemName);
+      FlushLog(LogFile);
+
       // Schedule auto-close for menu items that open modal dialogs
       if (CompareText(ItemName, 'AboutMI') = 0) or
          (CompareText(ItemName, 'EERModelOptionsMI') = 0) or
@@ -779,6 +805,7 @@ begin
         trSkip: Inc(SkipCount);
       end;
       Application.ProcessMessages;
+      FlushLog(LogFile);
     end;
   finally
     MenuItems.Free;
@@ -787,7 +814,7 @@ begin
 end;
 
 { Phase 7: Test buttons on MainForm and visible forms }
-procedure Phase7_TestButtons(AMainForm: TForm; var PassCount, FailCount, SkipCount: Integer);
+procedure Phase7_TestButtons(AMainForm: TForm; var PassCount, FailCount, SkipCount: Integer; const LogFile: string);
 var
   I, J: Integer;
   Entry: TTestEntry;
@@ -804,6 +831,8 @@ begin
     Component := AMainForm.Components[I];
     if (Component is TSpeedButton) or (Component is TButton) or (Component is TBitBtn) then
     begin
+      Log('  [TRYING] button: ' + AMainForm.Name + '.' + Component.Name);
+      FlushLog(LogFile);
       Entry := TestButton(TControl(Component), AMainForm.Name);
       LogTestEntry(Entry);
       case Entry.Result of
@@ -812,6 +841,7 @@ begin
         trSkip: Inc(SkipCount);
       end;
       Application.ProcessMessages;
+      FlushLog(LogFile);
     end;
   end;
 
@@ -841,6 +871,8 @@ begin
 
         for J := 0 to ButtonList.Count - 1 do
         begin
+          Log('  [TRYING] button: ' + AForm.Name + '.' + TComponent(ButtonList[J]).Name);
+          FlushLog(LogFile);
           Entry := TestButton(TControl(ButtonList[J]), AForm.Name);
           LogTestEntry(Entry);
           case Entry.Result of
@@ -849,6 +881,7 @@ begin
             trSkip: Inc(SkipCount);
           end;
           Application.ProcessMessages;
+          FlushLog(LogFile);
         end;
       finally
         ButtonList.Free;
@@ -911,10 +944,10 @@ begin
     Phase5_SaveModel(AMainForm, LogDir);
     FlushLog(ActualLogFile);
 
-    Phase6_TestMenuItems(AMainForm, PassCount, FailCount, SkipCount);
+    Phase6_TestMenuItems(AMainForm, PassCount, FailCount, SkipCount, ActualLogFile);
     FlushLog(ActualLogFile);
 
-    Phase7_TestButtons(AMainForm, PassCount, FailCount, SkipCount);
+    Phase7_TestButtons(AMainForm, PassCount, FailCount, SkipCount, ActualLogFile);
     FlushLog(ActualLogFile);
 
     // Summary

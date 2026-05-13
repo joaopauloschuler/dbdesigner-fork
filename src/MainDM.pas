@@ -388,13 +388,31 @@ end;
 
 procedure TDMMain.LoadACursor(crNumber: integer; fname, fname_mask: string; XSpot, YSpot: integer);
 {$IFDEF FPC}
+// Build a .cur in memory from the raw bytes of two 1-bit Windows BMP files.
+// The BMP files are already in the exact layout the CUR format expects
+// (BITMAPINFOHEADER + 2-color palette + bottom-up packed pixel data), so we
+// read them as raw bytes — never decoding through TBitmap, which would
+// expand the data to 32bpp and corrupt the cursor.
 var
-  CurBmp, MaskBmp: TBitmap;
+  CurFile, MaskFile: TFileStream;
   CurStream: TMemoryStream;
   CurImg: TCursorImage;
-  BmpInfoSize: LongWord;
-  BmpDataSize: LongWord;
-  BmpWidth, BmpHeight: LongInt;
+  CurInfo, MaskInfo: packed record
+    biSize: LongWord;
+    biWidth: LongInt;
+    biHeight: LongInt;
+    biPlanes: Word;
+    biBitCount: Word;
+    biCompression: LongWord;
+    biSizeImage: LongWord;
+    biXPelsPerMeter: LongInt;
+    biYPelsPerMeter: LongInt;
+    biClrUsed: LongWord;
+    biClrImportant: LongWord;
+  end;
+  RowBytes, XorSize, AndSize, DataOffset, FileHdrSize: LongWord;
+  XorData, AndData: TBytes;
+  k: LongWord;
   IconDir: packed record
     idReserved: Word;
     idType: Word;
@@ -411,74 +429,89 @@ var
     dwImageOffset: LongWord;
   end;
 begin
-  if not FileExists(fname) then
-    Exit; // Silently skip missing cursor files
-  if not FileExists(fname_mask) then
-    Exit;
+  if not FileExists(fname) then Exit;
+  if not FileExists(fname_mask) then Exit;
 
-  CurBmp := TBitmap.Create;
-  MaskBmp := TBitmap.Create;
+  FileHdrSize := 14; // BITMAPFILEHEADER size
+  CurFile := nil;
+  MaskFile := nil;
   CurStream := TMemoryStream.Create;
   try
     try
-      CurBmp.LoadFromFile(fname);
-      MaskBmp.LoadFromFile(fname_mask);
+      CurFile := TFileStream.Create(fname, fmOpenRead or fmShareDenyWrite);
+      MaskFile := TFileStream.Create(fname_mask, fmOpenRead or fmShareDenyWrite);
 
-      BmpWidth := CurBmp.Width;
-      BmpHeight := CurBmp.Height;
-      // BMP data after the 14-byte file header: info header + pixel data
-      BmpInfoSize := CurBmp.RawImage.Description.Height * ((CurBmp.RawImage.Description.Width + 31) div 32) * 4;
-      // For 1-bit: row size = ((Width + 31) / 32) * 4 bytes
+      // Skip the 14-byte file header and read BITMAPINFOHEADER from each.
+      CurFile.Position := FileHdrSize;
+      CurFile.ReadBuffer(CurInfo, SizeOf(CurInfo));
+      MaskFile.Position := FileHdrSize;
+      MaskFile.ReadBuffer(MaskInfo, SizeOf(MaskInfo));
 
-      // Build a .cur file in memory:
-      // CUR header (6 bytes)
+      // Only handle 1-bit cursors — that's what DBDesigner ships.
+      if (CurInfo.biBitCount <> 1) or (MaskInfo.biBitCount <> 1) then
+        Exit;
+      if (CurInfo.biWidth <> MaskInfo.biWidth) or
+         (CurInfo.biHeight <> MaskInfo.biHeight) then
+        Exit;
+
+      RowBytes := ((LongWord(CurInfo.biWidth) + 31) div 32) * 4;
+      XorSize := RowBytes * LongWord(CurInfo.biHeight);
+      AndSize := XorSize;
+
+      // Pixel data sits at: file header + info header + 2-entry palette.
+      DataOffset := FileHdrSize + CurInfo.biSize + 2 * 4;
+
+      SetLength(XorData, XorSize);
+      SetLength(AndData, AndSize);
+      CurFile.Position := DataOffset;
+      CurFile.ReadBuffer(XorData[0], XorSize);
+      MaskFile.Position := FileHdrSize + MaskInfo.biSize + 2 * 4;
+      MaskFile.ReadBuffer(AndData[0], AndSize);
+
+      // ICONDIR (6 bytes), type=2 means cursor.
       IconDir.idReserved := 0;
-      IconDir.idType := NtoLE(Word(2)); // 2 = cursor
+      IconDir.idType := NtoLE(Word(2));
       IconDir.idCount := NtoLE(Word(1));
       CurStream.Write(IconDir, 6);
 
-      // Directory entry (16 bytes)
-      BmpDataSize := LongWord(CurBmp.RawImage.DataSize + MaskBmp.RawImage.DataSize + 40);
-      IconEntry.bWidth := Byte(BmpWidth);
-      IconEntry.bHeight := Byte(BmpHeight);
-      IconEntry.bColorCount := 0;
+      // ICONDIRENTRY (16 bytes).
+      IconEntry.bWidth := Byte(CurInfo.biWidth);
+      IconEntry.bHeight := Byte(CurInfo.biHeight);
+      IconEntry.bColorCount := 2;
       IconEntry.bReserved := 0;
       IconEntry.wXHotspot := NtoLE(Word(XSpot));
       IconEntry.wYHotspot := NtoLE(Word(YSpot));
-      IconEntry.dwBytesInRes := NtoLE(BmpDataSize);
-      IconEntry.dwImageOffset := NtoLE(LongWord(22)); // 6 + 16
+      IconEntry.dwBytesInRes := NtoLE(LongWord(40 + 8 + XorSize + AndSize));
+      IconEntry.dwImageOffset := NtoLE(LongWord(22));
       CurStream.Write(IconEntry, 16);
 
-      // BITMAPINFOHEADER (40 bytes) - double height for XOR+AND
-      CurStream.Size := 22; // position at offset 22
-      CurStream.Position := 22;
-      // Copy the BMP info header from the cursor bitmap, but with doubled height
-      // We'll write a fresh BITMAPINFOHEADER
-      CurStream.WriteDWord(NtoLE(LongWord(40)));  // biSize
-      CurStream.WriteDWord(NtoLE(LongWord(BmpWidth)));  // biWidth
-      CurStream.WriteDWord(NtoLE(LongWord(BmpHeight * 2)));  // biHeight (doubled for cursor)
+      // BITMAPINFOHEADER — height is doubled to cover XOR + AND masks.
+      CurStream.WriteDWord(NtoLE(LongWord(40)));
+      CurStream.WriteDWord(NtoLE(LongWord(CurInfo.biWidth)));
+      CurStream.WriteDWord(NtoLE(LongWord(CurInfo.biHeight * 2)));
       CurStream.WriteWord(NtoLE(Word(1)));   // biPlanes
-      CurStream.WriteWord(NtoLE(Word(1)));   // biBitCount (1 = monochrome)
-      CurStream.WriteDWord(0);  // biCompression
+      CurStream.WriteWord(NtoLE(Word(1)));   // biBitCount
+      CurStream.WriteDWord(0);  // biCompression = BI_RGB
       CurStream.WriteDWord(0);  // biSizeImage
       CurStream.WriteDWord(0);  // biXPelsPerMeter
       CurStream.WriteDWord(0);  // biYPelsPerMeter
       CurStream.WriteDWord(NtoLE(LongWord(2)));  // biClrUsed
       CurStream.WriteDWord(0);  // biClrImportant
 
-      // Color table for monochrome (2 entries: black + white)
-      CurStream.WriteDWord(0);            // black: 00 00 00 00
-      CurStream.WriteDWord($00FFFFFF);    // white: FF FF FF 00
+      // Source BMP palette: index 0 = white, index 1 = black.
+      // Cursor body pixels are bit=1 → render black via this palette.
+      CurStream.WriteDWord($00FFFFFF);
+      CurStream.WriteDWord(0);
 
-      // XOR mask (cursor image pixel data) - copy from CurBmp raw data
-      if CurBmp.RawImage.Data <> nil then
-        CurStream.Write(CurBmp.RawImage.Data^, CurBmp.RawImage.DataSize);
+      // AND mask: Windows CUR expects bit=0 to mean "opaque" (show XOR pixel).
+      // DBDesigner's mask BMPs use the inverse convention (bit=1 marks the
+      // cursor body as opaque, Kylix-style), so flip every AND byte.
+      for k := 0 to AndSize - 1 do
+        AndData[k] := not AndData[k];
 
-      // AND mask (transparency mask) - copy from MaskBmp raw data  
-      if MaskBmp.RawImage.Data <> nil then
-        CurStream.Write(MaskBmp.RawImage.Data^, MaskBmp.RawImage.DataSize);
+      CurStream.Write(XorData[0], XorSize);
+      CurStream.Write(AndData[0], AndSize);
 
-      // Load the cursor from the stream
       CurStream.Position := 0;
       CurImg := TCursorImage.Create;
       try
@@ -489,15 +522,11 @@ begin
         CurImg.Free;
       end;
     except
-      on E: Exception do
-      begin
-        // Failed to load custom cursor - use default cursor instead.
-        // This is non-fatal; the app works fine with standard cursors.
-      end;
+      // Failed to load custom cursor — non-fatal, app works with default cursors.
     end;
   finally
-    CurBmp.Free;
-    MaskBmp.Free;
+    CurFile.Free;
+    MaskFile.Free;
     CurStream.Free;
   end;
 end;

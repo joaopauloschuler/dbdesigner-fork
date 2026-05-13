@@ -86,6 +86,8 @@ type
     PageSetupBtn: TBitBtn;
     procedure FormCreate(Sender: TObject);
     procedure FormDestroy(Sender: TObject);
+    procedure FormClose(Sender: TObject; var Action: TCloseAction);
+    procedure FormShow(Sender: TObject);
 
     procedure SetModel(theModel: TEERModel);
     procedure SetSelPagesArraySize;
@@ -103,30 +105,23 @@ type
     procedure SetPrinterValues;
     procedure PortraitRBtnClick(Sender: TObject);
     procedure StartPrintBtnClick(Sender: TObject);
+    procedure PaintBoxPaint(Sender: TObject);
+    procedure PaintBoxMouseDown(Sender: TObject; Button: TMouseButton;
+      Shift: TShiftState; X, Y: Integer);
+    procedure PrintAllPagesCBoxClick(Sender: TObject);
+    procedure HPageSizeTBarChange(Sender: TObject);
+    procedure HPagesSpinEditChanged(Sender: TObject);
+    procedure VPagesSpinEditChanged(Sender: TObject);
+    procedure PrintDlgBtnClick(Sender: TObject);
+    procedure PageSetupBtnClick(Sender: TObject);
   public
     procedure HideEdits;
     procedure ShowEdits;
   private
     FCurrentPageSize: TPageSize;
     function GetPrinterMargins: TSize;
-    procedure PaintBoxPaint(Sender: TObject);
-    procedure PaintBoxMouseDown(Sender: TObject; Button: TMouseButton;
-      Shift: TShiftState; X, Y: Integer);
-    procedure PrintAllPagesCBoxClick(Sender: TObject);
-    procedure HPageSizeTBarChange(Sender: TObject);
-    procedure HPagesSpinEditChanged(Sender: TObject; NewValue: Integer);
-    procedure FormShow(Sender: TObject);
-    procedure VPagesSpinEditChanged(Sender: TObject; NewValue: Integer);
-
-
-
     procedure SetModelSelPages;
     procedure StoreSelPagesInModel;
-    procedure FormClose(Sender: TObject; var Action: TCloseAction);
-    procedure PrintDlgBtnClick(Sender: TObject);
-    procedure PageSetupBtnClick(Sender: TObject);
-
-  private
     { Private-Deklarationen }
   public
     { Public-Deklarationen }
@@ -210,13 +205,17 @@ begin
     0, 0, 0, 0, [EERTable, EERRegion, EERNote, EERRelation],
     72, False);
 
-  if(EERModel.ModelPrinter<>'')then
+  if (EERModel.ModelPrinter<>'') then
   begin
     //!!! This isn't working at the moment
     PrinterName:=EERModel.ModelPrinter;
     // QPrinter_setPrinterName not available in LCL
 
-    Printer.SetPrinter(EERModel.ModelPrinter);
+    try
+      Printer.SetPrinter(EERModel.ModelPrinter);
+    except
+      // No printer backend available (headless / no CUPS)
+    end;
   end;
 
 
@@ -236,7 +235,11 @@ begin
   SetModelSelPages;
 
   //Set Printer Orientation
-  Printer.Orientation:=EERModel.PageOrientation;
+  try
+    Printer.Orientation:=EERModel.PageOrientation;
+  except
+    // No printer backend available
+  end;
   FCurrentPageSize:=GetPageSizeNr(EERModel.PageFormat);
 
   SetPrinterValues;
@@ -304,23 +307,27 @@ begin
   PageSizeCBox.ItemIndex:=PageSizeCBox.Items.IndexOf(
     GetPageSizeStr(FCurrentPageSize));
 
-  case Printer.Orientation of
-    poPortrait:
-    begin
-      PortraitRBtn.Visible:=False;
-      PortraitRBtn.Checked:=True;
-      PortraitRBtn.Visible:=True;
-      PortraitImg.Show;
-      LandscapeImg.Hide;
+  try
+    case Printer.Orientation of
+      poPortrait:
+      begin
+        PortraitRBtn.Visible:=False;
+        PortraitRBtn.Checked:=True;
+        PortraitRBtn.Visible:=True;
+        PortraitImg.Show;
+        LandscapeImg.Hide;
+      end;
+      poLandscape:
+      begin
+        LandscapeRBtn.Visible:=False;
+        LandscapeRBtn.Checked:=True;
+        LandscapeRBtn.Visible:=True;
+        PortraitImg.Hide;
+        LandscapeImg.Show;
+      end;
     end;
-    poLandscape:
-    begin
-      LandscapeRBtn.Visible:=False;
-      LandscapeRBtn.Checked:=True;
-      LandscapeRBtn.Visible:=True;
-      PortraitImg.Hide;
-      LandscapeImg.Show;
-    end;
+  except
+    // No printer backend available
   end;
 
   // Set Model PageSettings
@@ -333,16 +340,20 @@ procedure TEERPageSetupForm.ResizeEERModelPages;
 begin
   //Calculate Page Settings of the EERModel
   //from EERModel.PageSize.cx Value
-  if(Printer.PageWidth-GetPrinterMargins.cx*2-1)>
-    (Printer.PageHeight-GetPrinterMargins.cy*2-1)then
-    EERModel.PageAspectRatio:=(Printer.PageWidth-GetPrinterMargins.cx*2-1)/
-      (Printer.PageHeight-GetPrinterMargins.cy*2-1)
-  else
-    EERModel.PageAspectRatio:=(Printer.PageHeight-GetPrinterMargins.cy*2-1)/
-      (Printer.PageWidth-GetPrinterMargins.cx*2-1);
+  try
+    if(Printer.PageWidth-GetPrinterMargins.cx*2-1)>
+      (Printer.PageHeight-GetPrinterMargins.cy*2-1)then
+      EERModel.PageAspectRatio:=(Printer.PageWidth-GetPrinterMargins.cx*2-1)/
+        (Printer.PageHeight-GetPrinterMargins.cy*2-1)
+    else
+      EERModel.PageAspectRatio:=(Printer.PageHeight-GetPrinterMargins.cy*2-1)/
+        (Printer.PageWidth-GetPrinterMargins.cx*2-1);
 
-  EERModel.ModelPrinter:=Printer.PrinterName;
-  EERModel.PageOrientation:=Printer.Orientation;
+    EERModel.ModelPrinter:=Printer.PrinterName;
+    EERModel.PageOrientation:=Printer.Orientation;
+  except
+    // No printer backend available — keep existing model values
+  end;
 
   if(EERModel.PageOrientation=poPortrait)then
     EERModel.PageSize.cy:=Round(EERModel.PageSize.cx*EERModel.PageAspectRatio)
@@ -552,10 +563,14 @@ end;
 procedure TEERPageSetupForm.PortraitRBtnClick(Sender: TObject);
 begin
   //if orientation has changed
-  if(PortraitRBtn.Checked)then
-    Printer.Orientation:=poPortrait
-  else
-    Printer.Orientation:=poLandscape;
+  try
+    if(PortraitRBtn.Checked)then
+      Printer.Orientation:=poPortrait
+    else
+      Printer.Orientation:=poLandscape;
+  except
+    // No printer backend available
+  end;
 
   SetPrinterValues;
 end;
@@ -770,8 +785,7 @@ begin
   end;
 end;
 
-procedure TEERPageSetupForm.HPagesSpinEditChanged(Sender: TObject;
-  NewValue: Integer);
+procedure TEERPageSetupForm.HPagesSpinEditChanged(Sender: TObject);
 begin
   if(SpinEditActive)then
   begin
@@ -782,8 +796,7 @@ begin
   end;
 end;
 
-procedure TEERPageSetupForm.VPagesSpinEditChanged(Sender: TObject;
-  NewValue: Integer);
+procedure TEERPageSetupForm.VPagesSpinEditChanged(Sender: TObject);
 begin
   if(SpinEditActive)then
   begin
@@ -856,9 +869,14 @@ end;
 function TEERPageSetupForm.GetPrinterMargins: TSize;
 begin
   // Approximate margins - LCL Printer doesn't expose Margins directly
-  // Default to ~10mm margins at printer DPI
-  Result.cx := Round(Printer.XDPI * 0.4); // ~10mm
-  Result.cy := Round(Printer.YDPI * 0.4); // ~10mm
+  // Default to ~10mm margins at printer DPI; fall back to 96 DPI if no printer.
+  try
+    Result.cx := Round(Printer.XDPI * 0.4);
+    Result.cy := Round(Printer.YDPI * 0.4);
+  except
+    Result.cx := Round(96 * 0.4);
+    Result.cy := Round(96 * 0.4);
+  end;
 end;
 
 end.
