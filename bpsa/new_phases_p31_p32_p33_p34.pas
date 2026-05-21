@@ -283,7 +283,7 @@ begin
 
   // Test GetColumnFromSepString
   try
-    S := DMMain.GetColumnFromSepString('apple,banana,cherry', 2, ',', '"');
+    S := DMMain.GetColumnFromSepString('apple,banana,cherry', 1, ',', '"');
     if S = 'banana' then
     begin
       Log('[PASS] GetColumnFromSepString: column 2 = "' + S + '"');
