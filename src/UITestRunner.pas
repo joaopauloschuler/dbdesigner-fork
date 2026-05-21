@@ -29,7 +29,8 @@ function HasSelfTestParam: Boolean;
 
 implementation
 
-uses EER, EERModel, EERExportSQLScript, OptionsModel, Options, Main;
+uses EER, EERModel, EERExportSQLScript, OptionsModel, Options, Main,
+     EditorImage, ZoomSel, PaletteDataTypesReplace, EERPageSetup;
 
 type
   TTestResult = (trPass, trFail, trSkip);
@@ -893,6 +894,187 @@ begin
   Log('');
 end;
 
+{ Phase 8: Additional editor dialog and button tests }
+procedure Phase8_AdditionalEditors(AMainForm: TForm; var PassCount, FailCount, SkipCount: Integer);
+var
+  Model: TEERModel;
+  ImgFrm: TEditorImageForm;
+  ZoomFrm: TZoomSelForm;
+  ReplaceFrm: TPaletteDataTypesReplaceForm;
+  PageFrm: TEERPageSetupForm;
+  Img: TEERImage;
+  I: Integer;
+  Component: TComponent;
+  SnapBtn: TSpeedButton;
+begin
+  Log('--- Phase 8: Additional editor dialogs and button tests ---');
+  Log('');
+
+  Model := GetCurrentModel(AMainForm);
+
+  // 8.1 - TEditorImageForm
+  if Model <> nil then
+  begin
+    try
+      Log('  Opening Image Editor...');
+      Img := TEERImage(Model.NewImage(50, 50, 100, 100, True));
+      ImgFrm := TEditorImageForm.Create(AMainForm);
+      try
+        ImgFrm.SetImage(Img);
+        ScheduleModalClose(800);
+        ImgFrm.ShowModal;
+      finally
+        ImgFrm.Free;
+      end;
+      Application.ProcessMessages;
+      Log('[PASS] Image Editor dialog opened and closed.');
+      Inc(PassCount);
+    except
+      on E: Exception do
+      begin
+        Log('[FAIL] Image Editor: ' + E.ClassName + ': ' + E.Message);
+        Inc(FailCount);
+      end;
+    end;
+  end
+  else
+  begin
+    Log('[SKIP] Image Editor - no active model');
+    Inc(SkipCount);
+  end;
+
+  // 8.2 - TZoomSelForm
+  try
+    Log('  Opening Zoom Selection dialog...');
+    ZoomFrm := TZoomSelForm.Create(AMainForm);
+    try
+      ZoomFrm.FocusZoom(1.0);
+      ScheduleModalClose(800);
+      ZoomFrm.ShowModal;
+    finally
+      ZoomFrm.Free;
+    end;
+    Application.ProcessMessages;
+    Log('[PASS] Zoom Selection dialog opened and closed.');
+    Inc(PassCount);
+  except
+    on E: Exception do
+    begin
+      Log('[FAIL] Zoom Selection: ' + E.ClassName + ': ' + E.Message);
+      Inc(FailCount);
+    end;
+  end;
+
+  // 8.3 - TPaletteDataTypesReplaceForm
+  if Model <> nil then
+  begin
+    try
+      Log('  Opening DataTypes Replace dialog...');
+      ReplaceFrm := TPaletteDataTypesReplaceForm.Create(AMainForm);
+      try
+        ReplaceFrm.SetModel(Model);
+        ScheduleModalClose(800);
+        ReplaceFrm.ShowModal;
+      finally
+        ReplaceFrm.Free;
+      end;
+      Application.ProcessMessages;
+      Log('[PASS] DataTypes Replace dialog opened and closed.');
+      Inc(PassCount);
+    except
+      on E: Exception do
+      begin
+        Log('[FAIL] DataTypes Replace: ' + E.ClassName + ': ' + E.Message);
+        Inc(FailCount);
+      end;
+    end;
+  end
+  else
+  begin
+    Log('[SKIP] DataTypes Replace - no active model');
+    Inc(SkipCount);
+  end;
+
+  // 8.4 - TEERPageSetupForm
+  if Model <> nil then
+  begin
+    try
+      Log('  Opening Page Setup dialog...');
+      PageFrm := TEERPageSetupForm.Create(AMainForm);
+      try
+        PageFrm.SetModel(Model);
+        ScheduleModalClose(800);
+        PageFrm.ShowModal;
+      finally
+        PageFrm.Free;
+      end;
+      Application.ProcessMessages;
+      Log('[PASS] Page Setup dialog opened and closed.');
+      Inc(PassCount);
+    except
+      on E: Exception do
+      begin
+        Log('[FAIL] Page Setup: ' + E.ClassName + ': ' + E.Message);
+        Inc(FailCount);
+      end;
+    end;
+  end
+  else
+  begin
+    Log('[SKIP] Page Setup - no active model');
+    Inc(SkipCount);
+  end;
+
+  // 8.5 - SnapToGridBtn via OnMouseUp (it has no OnClick handler)
+  SnapBtn := nil;
+  for I := 0 to AMainForm.ComponentCount - 1 do
+  begin
+    Component := AMainForm.Components[I];
+    if (CompareText(Component.Name, 'SnapToGridBtn') = 0) and
+       (Component is TSpeedButton) then
+    begin
+      SnapBtn := TSpeedButton(Component);
+      Break;
+    end;
+  end;
+  if SnapBtn <> nil then
+  begin
+    try
+      Log('  Invoking SnapToGridBtn.OnMouseUp...');
+      if Assigned(SnapBtn.OnMouseUp) then
+      begin
+        SnapBtn.OnMouseUp(SnapBtn, mbLeft, [], 5, 5);
+        Application.ProcessMessages;
+        // Toggle back to original state
+        SnapBtn.OnMouseUp(SnapBtn, mbLeft, [], 5, 5);
+        Application.ProcessMessages;
+        Log('[PASS] SnapToGridBtn.OnMouseUp invoked successfully.');
+        Inc(PassCount);
+      end
+      else
+      begin
+        Log('[SKIP] SnapToGridBtn has no OnMouseUp handler.');
+        Inc(SkipCount);
+      end;
+    except
+      on E: Exception do
+      begin
+        Log('[FAIL] SnapToGridBtn: ' + E.ClassName + ': ' + E.Message);
+        Inc(FailCount);
+      end;
+    end;
+  end
+  else
+  begin
+    Log('[SKIP] SnapToGridBtn not found.');
+    Inc(SkipCount);
+  end;
+
+  Application.ProcessMessages;
+  Log('');
+end;
+
+
 // ===========================================================================
 // Main entry point
 // ===========================================================================
@@ -950,6 +1132,8 @@ begin
     Phase7_TestButtons(AMainForm, PassCount, FailCount, SkipCount, ActualLogFile);
     FlushLog(ActualLogFile);
 
+    Phase8_AdditionalEditors(AMainForm, PassCount, FailCount, SkipCount);
+    FlushLog(ActualLogFile);
     // Summary
     LogSeparator;
     Log('TEST SUMMARY');
