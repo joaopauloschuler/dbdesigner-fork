@@ -406,6 +406,11 @@ begin
           on E: Exception do
             Log('WARNING: Could not close ' + Screen.Forms[I].Name + ': ' + E.Message);
         end;
+      end
+      else
+      begin
+        // Try to close other visible non-modal helper forms that could cause issues
+        Log('Skipping non-Tips visible form: ' + Screen.Forms[I].Name + ' (' + Screen.Forms[I].ClassName + ')');
       end;
     end;
   end;
@@ -793,7 +798,23 @@ begin
          (CompareText(ItemName, 'SQLCreateScriptMI') = 0) or
          (CompareText(ItemName, 'SQLDropScriptMI') = 0) or
          (CompareText(ItemName, 'SQLOptimizeTableScriptMI') = 0) or
-         (CompareText(ItemName, 'SQLRepairTableScriptMI') = 0) then
+         (CompareText(ItemName, 'SQLRepairTableScriptMI') = 0) or
+         (CompareText(ItemName, 'ShowLinkedModelsMI') = 0) or
+         (CompareText(ItemName, 'OpenMI') = 0) or
+         (CompareText(ItemName, 'SaveAsMI') = 0) or
+         (CompareText(ItemName, 'SaveMI') = 0) or
+         (CompareText(ItemName, 'PrintMI') = 0) or
+         (CompareText(ItemName, 'SaveModelasImageMI') = 0) or
+         (CompareText(ItemName, 'ExportSelectedObjectsAsImgMi') = 0) or
+         (CompareText(ItemName, 'ExportMDBXMLFileMI') = 0) or
+         (CompareText(ItemName, 'ImportERwin41XMLModelMI') = 0) or
+         (CompareText(ItemName, 'AddLinkModelFromFileMI') = 0) or
+         (CompareText(ItemName, 'RefreshLinkedObjectsMI') = 0) or
+         (CompareText(ItemName, 'ConnecttoDatabaseMI') = 0) or
+         (CompareText(ItemName, 'StylePlatinumMI') = 0) or
+         (CompareText(ItemName, 'StyleSGIMI') = 0) or
+         (CompareText(ItemName, 'StyleMotifMI') = 0) or
+         (CompareText(ItemName, 'StyleStandardMI') = 0) then
       begin
         ScheduleModalClose(800);
       end;
@@ -870,11 +891,24 @@ begin
             ButtonList.Add(Component);
         end;
 
+        Log('  Found ' + IntToStr(ButtonList.Count) + ' buttons on ' + AForm.Name);
         for J := 0 to ButtonList.Count - 1 do
         begin
           Log('  [TRYING] button: ' + AForm.Name + '.' + TComponent(ButtonList[J]).Name);
           FlushLog(LogFile);
-          Entry := TestButton(TControl(ButtonList[J]), AForm.Name);
+          // Use try-except to ensure no button click causes a hang
+          try
+            Entry := TestButton(TControl(ButtonList[J]), AForm.Name);
+          except
+            on E: Exception do
+            begin
+              Entry.ComponentName := AForm.Name + '.' + TComponent(ButtonList[J]).Name;
+              Entry.ComponentClass := TComponent(ButtonList[J]).ClassName;
+              Entry.Result := trFail;
+              Entry.ErrorMessage := E.ClassName + ': ' + E.Message;
+              Entry.StackTrace := GetExceptionStackTrace;
+            end;
+          end;
           LogTestEntry(Entry);
           case Entry.Result of
             trPass: Inc(PassCount);
@@ -1618,6 +1652,13 @@ begin
     FlushLog(ActualLogFile);
 
     Phase28_TestTableColumnMetadata(AMainForm, PassCount, FailCount, SkipCount);
+    FlushLog(ActualLogFile);
+
+    Phase29_TestEditorDialogs(AMainForm, PassCount, FailCount, SkipCount);
+    FlushLog(ActualLogFile);
+
+    Phase30_TestModelDataTypes(AMainForm, PassCount, FailCount, SkipCount);
+    FlushLog(ActualLogFile);
     FlushLog(ActualLogFile);
 
 

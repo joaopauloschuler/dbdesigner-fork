@@ -659,3 +659,176 @@ begin
   Log('');
 end;
 
+
+
+//==============================================================================
+// Phase 29: Test Editor Dialogs for model objects
+//==============================================================================
+procedure Phase29_TestEditorDialogs(AMainForm: TForm; var PassCount, FailCount, SkipCount: Integer);
+var
+  Model: TEERModel;
+  Table: TEERTable;
+  Note: TEERNote;
+  Rel: TEERRel;
+  Region: TEERRegion;
+  I: Integer;
+begin
+  Log('--- Phase 29: Testing Editor Dialogs for model objects ---');
+  Log('');
+
+  Model := GetCurrentModel(AMainForm);
+  if Model = nil then
+  begin
+    Log('[SKIP] No active model for editor dialog tests.');
+    Log('');
+    Exit;
+  end;
+
+  // Test table editor
+  Table := nil;
+  if Model.GetEERObjectCount([EERTable]) > 0 then
+    Table := TEERTable(Model.GetEERObjectByIndex(EERTable, 0));
+
+  if Table <> nil then
+  begin
+    Log('  Opening table editor for: ' + Table.ObjName);
+    try
+      Table.ShowEditor(nil);
+      Application.ProcessMessages;
+      Sleep(200);
+      Application.ProcessMessages;
+      Log('[PASS] Table editor opened successfully.');
+      Inc(PassCount);
+    except
+      on E: Exception do
+      begin
+        Log('[FAIL] Table editor failed: ' + E.ClassName + ': ' + E.Message);
+        Inc(FailCount);
+      end;
+    end;
+  end
+  else
+  begin
+    Log('[SKIP] No table found for editor test.');
+    Inc(SkipCount);
+  end;
+
+  // Test note editor
+  Note := nil;
+  if Model.GetEERObjectCount([EERNote]) > 0 then
+    Note := TEERNote(Model.GetEERObjectByIndex(EERNote, 0));
+
+  if Note <> nil then
+  begin
+    Log('  Opening note editor for: ' + Note.ObjName);
+    try
+      Note.ShowEditor(nil);
+      Application.ProcessMessages;
+      Sleep(200);
+      Application.ProcessMessages;
+      Log('[PASS] Note editor opened successfully.');
+      Inc(PassCount);
+    except
+      on E: Exception do
+      begin
+        Log('[FAIL] Note editor failed: ' + E.ClassName + ': ' + E.Message);
+        Inc(FailCount);
+      end;
+    end;
+  end;
+
+  // Test relation editor  
+  Rel := nil;
+  if Model.GetEERObjectCount([EERRelation]) > 0 then
+    Rel := TEERRel(Model.GetEERObjectByIndex(EERRelation, 0));
+
+  if Rel <> nil then
+  begin
+    Log('  Opening relation editor for: ' + Rel.ObjName);
+    try
+      Rel.ShowEditor(nil);
+      Application.ProcessMessages;
+      Sleep(200);
+      Application.ProcessMessages;
+      Log('[PASS] Relation editor opened successfully.');
+      Inc(PassCount);
+    except
+      on E: Exception do
+      begin
+        Log('[FAIL] Relation editor failed: ' + E.ClassName + ': ' + E.Message);
+        Inc(FailCount);
+      end;
+    end;
+  end;
+
+  Log('');
+end;
+
+
+//==============================================================================
+// Phase 30: Test Model Data Type Integrity
+//==============================================================================
+procedure Phase30_TestModelDataTypes(AMainForm: TForm; var PassCount, FailCount, SkipCount: Integer);
+var
+  Model: TEERModel;
+  Table: TEERTable;
+  Col: TEERColumn;
+  DataType: TEERDataType;
+  TableCount, ColCount, BadCount: Integer;
+  I, J: Integer;
+begin
+  Log('--- Phase 30: Testing Model Data Type Integrity ---');
+  Log('');
+
+  Model := GetCurrentModel(AMainForm);
+  if Model = nil then
+  begin
+    Log('[SKIP] No active model for data type tests.');
+    Log('');
+    Exit;
+  end;
+
+  TableCount := Model.GetEERObjectCount([EERTable]);
+  Log('  Analyzing ' + IntToStr(TableCount) + ' tables...');
+  BadCount := 0;
+  ColCount := 0;
+
+  for I := 0 to TableCount - 1 do
+  begin
+    Table := TEERTable(Model.GetEERObjectByIndex(EERTable, I));
+    if Table = nil then Continue;
+
+    for J := 0 to Table.GetColumnCount - 1 do
+    begin
+      Inc(ColCount);
+      Col := TEERColumn(Table.GetColumnByIndex(J));
+      if Col = nil then
+      begin
+        Log('[FAIL] Table "' + Table.ObjName + '" has nil column at index ' + IntToStr(J));
+        Inc(BadCount);
+        Inc(FailCount);
+        Continue;
+      end;
+
+      DataType := Model.GetDataType(Col.IdDatatype);
+      if DataType = nil then
+      begin
+        Log('[FAIL] Table "' + Table.ObjName + '" column "' + Col.ColName + '" has invalid datatype ID: ' + IntToStr(Col.IdDatatype));
+        Inc(BadCount);
+        Inc(FailCount);
+      end;
+    end;
+  end;
+
+  Log('  Checked ' + IntToStr(ColCount) + ' columns across ' + IntToStr(TableCount) + ' tables.');
+  if BadCount = 0 then
+  begin
+    Log('[PASS] All columns have valid data types.');
+    Inc(PassCount);
+  end
+  else
+    Log('[FAIL] Found ' + IntToStr(BadCount) + ' columns with invalid data types.');
+
+  Log('');
+end;
+
