@@ -368,3 +368,24 @@ The `{$R *.lfm}` directive embeds form data into the `.ppu`/`.o` file at unit co
 ### Verified experimentally
 1. Changed `Caption` in `src/Splash.lfm` → ran `lazbuild` (incremental) → only 164 lines compiled (just `.lpr`), binary had OLD caption
 2. Ran `lazbuild --build-all` → 58,102 lines compiled (full rebuild), binary had NEW caption
+
+
+## UITestRunner: Phase 8 Added (commit a1c49e649)
+
+Added `Phase8_AdditionalEditors` procedure to `src/UITestRunner.pas` testing 5 previously-untested editor dialogs/buttons:
+
+1. **TEditorImageForm** (image editor) — creates a TEERImage in the model via `Model.NewImage(50,50,100,100,True)`, then opens editor via `SetImage(Img)` + `ShowModal` with `ScheduleModalClose(800)`.
+2. **TZoomSelForm** (zoom selection) — `FocusZoom(1.0)` + `ShowModal`.
+3. **TPaletteDataTypesReplaceForm** (datatype replace) — `SetModel(Model)` + `ShowModal`.
+4. **TEERPageSetupForm** (page setup) — `SetModel(Model)` + `ShowModal`.
+5. **SnapToGridBtn** — fixes prior `[SKIP] no OnClick handler` by directly invoking `OnMouseUp(Sender, mbLeft, [], 5, 5)` twice (toggles state on/off).
+
+All 5 tests now PASS, 0 FAIL. Pattern reused from existing Phase 3 (Options/ModelOptions/SQL Script). New units imported: `EditorImage, ZoomSel, PaletteDataTypesReplace, EERPageSetup`.
+
+Test totals after Phase 8: 171 tests / 93 PASS / 0 FAIL / 78 SKIP. Phase 8 procedure inserted at ~line 896 of UITestRunner.pas (before "Main entry point" comment); call inserted in RunUITests at ~line 1135.
+
+### How to add more editor tests
+- Pattern: `Frm := TXxxForm.Create(AMainForm); Frm.SetXxx(...); ScheduleModalClose(800); Frm.ShowModal; Frm.Free;`
+- Wrap in try/except, increment PassCount/FailCount counters, log [PASS]/[FAIL]/[SKIP].
+- Editors NOT yet tested directly: TEditorTableForm, TEditorQueryForm, TEditorString/Datatype/Note/Region/Relation, TEERReverseEngineering/StoreInDatabase/Synchronisation, TPlaceModelForm, TPrinterSettingsForm.
+- See `src/UITestRunner.pas:386` Phase0 / `src/UITestRunner.pas:573` Phase3 for reference templates.
