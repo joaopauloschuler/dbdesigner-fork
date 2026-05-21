@@ -91,18 +91,6 @@ xvfb-run -a ./bin/DBDesignerFork bin/Examples/order.xml
 - **Code cleanup** (optional): replace Q* shims with direct LCL unit names
 - **Cross-platform** testing (Windows, macOS)
 
-### Latest Commits
-```
-ab48590 Add SQL export test program
-313c1cf Merge branch 'main'
-40e0793 Add Lessons Learned section to port-to-lazarus.md
-22782f0 Archive unused Delphi project files
-74fdb3c Verify full schema info works with SQLite
-f52b469 Fix SetSchemaInfo test
-1408ab9 Add SQLite and SQLExpr shim integration tests
-```
-
-
 ### Fix: Font.Weight Runtime Error (Latest)
 - **Problem**: `TControl.ReadState` raised errors when loading .lfm forms containing `Font.Weight = 40` — a CLX/Qt property that doesn't exist in LCL.
 - **Fix**: Removed all 54 `Font.Weight` / `TitleFont.Weight` lines from 17 .lfm files.
@@ -114,14 +102,6 @@ f52b469 Fix SetSchemaInfo test
 - **Fix**: Removed all 27 `Masked = True` lines from 9 .lfm files.
 - **Reason**: `Masked` is a CLX/Qt-specific bitmap transparency property; LCL handles transparency differently.
 - **Result**: All 5 binaries compile and run clean (no stderr output).
-
-## Splash Screen Commented Out (commit 17d9573)
-- `Splash.pas:92` was loading `splashscreen.png` via `TBitmap.LoadFromFile`
-- LCL's `TBitmap` only supports BMP format, not PNG → "Wrong image format" exception
-- Commented out splash screen creation in `DBDesignerFork.lpr`
-- Set `Version := '1.5'` directly in `Main.pas` instead of reading from `SplashForm.VersionLbl.Caption`
-- App now starts clean with no errors (exit 124 = killed by timeout = stayed alive)
-- Future fix: could convert splashscreen.png to BMP, or use `TPicture.LoadFromFile` which auto-detects format
 
 ## CLX Color Constants Replaced (commit 2921ded)
 Replaced deprecated CLX/Qt color constants with LCL equivalents in 10 .lfm files (35 replacements):
@@ -301,43 +281,6 @@ After fixes, verify by:
 - **Phase B**: TMenuItem.Bitmap restoration in PaletteModel.lfm (6 menu icons) — LOW PRIORITY
 - **Phase C**: TPanel.Bitmap backgrounds — COSMETIC, optional
 
-
-## Fix: Relationship Lines, Scrollbars, and Navigator (commit 40e2f50)
-
-### 1. Relationship Lines (White → Black) ✅
-**Problem**: Sub-paintbox OnPaint handlers (`DoPaint_RelMiddle`, `DoPaint_RelEnd`, `DoPaint_Caption`, 
-`DoPaint_StartInterval`, `DoPaint_EndInterval`) were empty stubs. In LCL, each TPaintBox must repaint 
-itself in its own OnPaint handler — the parent's DoPaint painting to sub-paintbox canvases doesn't 
-persist after LCL repaints them.
-
-**Fix**: Filled in the empty OnPaint handlers to call the corresponding `PaintObj2Canvas_*` methods.
-
-### 2. Scrollbars ✅
-**Problem**: The EER form was embedded in `MainForm.EERPanel` with `Align := alClient`, `BorderStyle := bsNone`. 
-The EERModel panel (4096×2842) exceeded the visible area but no scrollbars appeared because LCL's AutoScroll 
-on an embedded form with `Align=alClient` doesn't properly activate scrollbars.
-
-**Fix**: Added a `TScrollBox` inside `TEERForm` that hosts the `EERModel` panel:
-- `ScrollBox := TScrollBox.Create(self); ScrollBox.Align := alClient; ScrollBox.AutoScroll := True;`
-- `EERModel.Parent := ScrollBox;` (reparented from form to scrollbox)
-- Changed all 56 `TForm(parent)` references in `EERModel.pas` → `TScrollingWinControl(parent)` (scrollbar/size access)
-- Changed 6 `TForm(Parent)` Caption/ClassNameIs references → `TForm(Owner)` / `Owner.ClassNameIs(...)` (Owner = the form)
-- Removed hardcoded `HorzScrollBar.Range = 33` / `VertScrollBar.Range = 33` from `EER.lfm`
-
-### 3. Navigator ✅
-**Problem**: Navigator (`PaletteNav.pas`) used `FActiveEERForm.HorzScrollBar.Range/Position` — the form's 
-scrollbars which were not active.
-
-**Fix**: Updated all references to use `TEERForm(FActiveEERForm).ScrollBox.HorzScrollBar/VertScrollBar`.
-Updated viewport size references from `FActiveEERForm.Width/Height` to `ScrollBox.ClientWidth/ClientHeight`.
-Also updated `EER.pas` `NavPaletteTimerTimer` to check `ScrollBox.HorzScrollBar` instead of form scrollbars.
-
-### Files Modified
-- `EERModel.pas`: Sub-paintbox OnPaint handlers + TForm(parent) → TScrollingWinControl(parent) (62 changes)
-- `EER.pas`: ScrollBox creation, reparenting, timer update
-- `EER.lfm`: Removed AutoScroll and hardcoded scrollbar ranges  
-- `PaletteNav.pas`: ScrollBox scrollbar references
-
 ## Important: Selftest Timeout
 When running the selftest (`bin/DBDesignerFork --selftest`), use **at least 300 seconds** for timeout:
 ```bash
@@ -370,21 +313,7 @@ The `{$R *.lfm}` directive embeds form data into the `.ppu`/`.o` file at unit co
 2. Ran `lazbuild --build-all` → 58,102 lines compiled (full rebuild), binary had NEW caption
 
 
-## UITestRunner: Phase 8 Added (commit a1c49e649)
-
-Added `Phase8_AdditionalEditors` procedure to `src/UITestRunner.pas` testing 5 previously-untested editor dialogs/buttons:
-
-1. **TEditorImageForm** (image editor) — creates a TEERImage in the model via `Model.NewImage(50,50,100,100,True)`, then opens editor via `SetImage(Img)` + `ShowModal` with `ScheduleModalClose(800)`.
-2. **TZoomSelForm** (zoom selection) — `FocusZoom(1.0)` + `ShowModal`.
-3. **TPaletteDataTypesReplaceForm** (datatype replace) — `SetModel(Model)` + `ShowModal`.
-4. **TEERPageSetupForm** (page setup) — `SetModel(Model)` + `ShowModal`.
-5. **SnapToGridBtn** — fixes prior `[SKIP] no OnClick handler` by directly invoking `OnMouseUp(Sender, mbLeft, [], 5, 5)` twice (toggles state on/off).
-
-All 5 tests now PASS, 0 FAIL. Pattern reused from existing Phase 3 (Options/ModelOptions/SQL Script). New units imported: `EditorImage, ZoomSel, PaletteDataTypesReplace, EERPageSetup`.
-
-Test totals after Phase 8: 171 tests / 93 PASS / 0 FAIL / 78 SKIP. Phase 8 procedure inserted at ~line 896 of UITestRunner.pas (before "Main entry point" comment); call inserted in RunUITests at ~line 1135.
-
-### How to add more editor tests
+## How to add more editor tests
 - Pattern: `Frm := TXxxForm.Create(AMainForm); Frm.SetXxx(...); ScheduleModalClose(800); Frm.ShowModal; Frm.Free;`
 - Wrap in try/except, increment PassCount/FailCount counters, log [PASS]/[FAIL]/[SKIP].
 - Editors NOT yet tested directly: TEditorTableForm, TEditorQueryForm, TEditorString/Datatype/Note/Region/Relation, TEERReverseEngineering/StoreInDatabase/Synchronisation, TPlaceModelForm, TPrinterSettingsForm.
