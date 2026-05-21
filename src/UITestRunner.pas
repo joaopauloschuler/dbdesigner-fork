@@ -29,7 +29,7 @@ function HasSelfTestParam: Boolean;
 
 implementation
 
-uses EER, EERModel, EERExportSQLScript, OptionsModel, Options, Main, StrUtils;
+uses EER, EERModel, EERExportSQLScript, OptionsModel, Options, Main, MainDM, Dialogs, StrUtils;
 
 type
   TTestResult = (trPass, trFail, trSkip);
@@ -1492,6 +1492,8 @@ begin
 
   Log('');
 end;
+
+{$I ../bpsa/new_test_phases.pas}
 // ===========================================================================
 // Main entry point
 // ===========================================================================
@@ -1586,6 +1588,38 @@ begin
 
     Phase18_TestModelRefresh(AMainForm, PassCount, FailCount, SkipCount);
     FlushLog(ActualLogFile);
+
+
+    Phase19_TestNoteEditor(AMainForm, PassCount, FailCount, SkipCount);
+    FlushLog(ActualLogFile);
+
+    Phase20_TestRegionEditor(AMainForm, PassCount, FailCount, SkipCount);
+    FlushLog(ActualLogFile);
+
+    Phase21_TestRelationEditor(AMainForm, PassCount, FailCount, SkipCount);
+    FlushLog(ActualLogFile);
+
+    Phase22_TestStringEditor(AMainForm, PassCount, FailCount, SkipCount);
+    FlushLog(ActualLogFile);
+
+    Phase23_TestTableColumnOperations(AMainForm, PassCount, FailCount, SkipCount);
+    FlushLog(ActualLogFile);
+
+    Phase24_TestSQLContentVerification(AMainForm, PassCount, FailCount, SkipCount);
+    FlushLog(ActualLogFile);
+
+    Phase25_TestModelConsistency(AMainForm, PassCount, FailCount, SkipCount);
+    FlushLog(ActualLogFile);
+
+    Phase26_TestObjectEnumeration(AMainForm, PassCount, FailCount, SkipCount);
+    FlushLog(ActualLogFile);
+
+    Phase27_TestRegionOperations(AMainForm, PassCount, FailCount, SkipCount);
+    FlushLog(ActualLogFile);
+
+    Phase28_TestTableColumnMetadata(AMainForm, PassCount, FailCount, SkipCount);
+    FlushLog(ActualLogFile);
+
 
     // Summary
     LogSeparator;
