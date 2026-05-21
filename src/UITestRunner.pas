@@ -1528,6 +1528,7 @@ begin
 end;
 
 {$I ../bpsa/new_test_phases.pas}
+{$I ../bpsa/new_phases_p31_p32_p33_p34.pas}
 // ===========================================================================
 // Main entry point
 // ===========================================================================
@@ -1621,6 +1622,17 @@ begin
     FlushLog(ActualLogFile);
 
     Phase18_TestModelRefresh(AMainForm, PassCount, FailCount, SkipCount);
+    FlushLog(ActualLogFile);
+    Phase31_TestPaletteDataTypesImages(AMainForm, PassCount, FailCount, SkipCount);
+    FlushLog(ActualLogFile);
+
+    Phase32_TestPaletteToolsImages(AMainForm, PassCount, FailCount, SkipCount);
+    FlushLog(ActualLogFile);
+
+    Phase33_TestMainDMUtilities(AMainForm, PassCount, FailCount, SkipCount);
+    FlushLog(ActualLogFile);
+
+    Phase34_ReservedForFuture(AMainForm, PassCount, FailCount, SkipCount);
     FlushLog(ActualLogFile);
 
 
