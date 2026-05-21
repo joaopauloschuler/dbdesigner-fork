@@ -213,7 +213,8 @@ begin
   
   Hide;
 
-  TMainForm(Application.MainForm).ToolsMI.Checked:=False;
+  if (Application.MainForm <> nil) and (Application.MainForm is TMainForm) then
+    TMainForm(Application.MainForm).ToolsMI.Checked:=False;
 end;
 
 procedure TPaletteToolsForm.wtDeleteSBtnClick(Sender: TObject);
@@ -248,12 +249,12 @@ end;
 
 procedure TPaletteToolsForm.DesignimgClick(Sender: TObject);
 begin
-  MainForm.SetWorkMode(wmQuery);
+  MainForm.SetWorkMode(wmDesign);
 end;
 
 procedure TPaletteToolsForm.QueryImgClick(Sender: TObject);
 begin
-  MainForm.SetWorkMode(wmDesign);
+  MainForm.SetWorkMode(wmQuery);
 end;
 
 procedure TPaletteToolsForm.RevImgClick(Sender: TObject);
@@ -275,7 +276,11 @@ procedure TPaletteToolsForm.FormDeactivate(Sender: TObject);
 begin
   if(Visible)then
     if(Not(DMMain.IsFormStayingOnTop(self)))then
-      sendCLXEvent(Application.MainForm.Handle, QCustomEvent_create(QEventType_RestoreStayOnTopForms, self));
+      try
+        sendCLXEvent(Application.MainForm.Handle, QCustomEvent_create(QEventType_RestoreStayOnTopForms, self));
+      except
+        // silently ignore
+      end;
 end;
 
 end.

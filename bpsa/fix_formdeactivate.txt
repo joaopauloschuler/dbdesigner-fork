@@ -1,0 +1,2 @@
+
+Need to wrap sendCLXEvent calls in FormDeactivate with nil checks on Application.MainForm.Handle and QCustomEvent_create result.

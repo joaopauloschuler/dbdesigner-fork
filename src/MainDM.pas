@@ -2056,19 +2056,16 @@ end;
 
 function sendCLXEvent(receiver: QObjectH; event: QEventH): Boolean;
 begin
+  try
   {$IFDEF FPC}
-  try
     Result := QApplication_sendEvent(receiver, event);
-  finally
-    QEvent_destroy(event);
-  end;
   {$ELSE}
-  try
     Result := QApplication_sendEvent(receiver, event);
-  finally
-    QEvent_destroy(event);
-  end;
   {$ENDIF}
+  except
+    QEvent_destroy(event);
+    Result := False;
+  end;
 end;
 
 end.

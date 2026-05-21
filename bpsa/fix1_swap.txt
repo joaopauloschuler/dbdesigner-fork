@@ -1,0 +1,2 @@
+MainForm.SetWorkMode(wmQuery);
+MainForm.SetWorkMode(wmDesign);

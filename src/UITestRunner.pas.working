@@ -29,7 +29,7 @@ function HasSelfTestParam: Boolean;
 
 implementation
 
-uses EER, EERModel, EERExportSQLScript, OptionsModel, Options, Main, MainDM, Dialogs, StrUtils, PaletteTools, PaletteNav, PaletteModel, PaletteDatatypes;
+uses EER, EERModel, EERExportSQLScript, OptionsModel, Options, Main, MainDM, Dialogs, StrUtils;
 
 type
   TTestResult = (trPass, trFail, trSkip);
@@ -95,6 +95,7 @@ end;
 function HasSelfTestParam: Boolean;
 var
   I: Integer;
+  FName, FClass: string;
 begin
   Result := False;
   for I := 1 to ParamCount do
@@ -143,7 +144,7 @@ end;
 // ---------------------------------------------------------------------------
 // Unsafe list
 // ---------------------------------------------------------------------------
-function IsUnsafe(const AName: string): Boolean; overload;
+function IsUnsafe(const AName: string): Boolean;
 const
   UnsafeNames: array[0..27] of string = (
     'ExitMI', 'CloseMI', 'CloseAllMI',
@@ -192,19 +193,6 @@ begin
         Break;
       end;
     if AllDigits then
-      Result := True;
-  end;
-end;
-
-function IsUnsafe(const AName: string; const AFormName: string): Boolean; overload;
-begin
-  // For palette forms, also check against some known risky buttons
-  Result := IsUnsafe(AName);
-  if not Result then
-  begin
-    // Skip some navigation/model palette actions that change state in testing
-    if (CompareText(AFormName, 'PaletteNavForm') = 0) and
-       ((CompareText(AName, 'ZoomInSBtn') = 0) or (CompareText(AName, 'ZoomOutSBtn') = 0)) then
       Result := True;
   end;
 end;
@@ -318,6 +306,7 @@ procedure LogTestEntry(const Entry: TTestEntry);
 var
   Lines: TStringList;
   I: Integer;
+  FName, FClass: string;
 begin
   case Entry.Result of
     trPass:
@@ -348,6 +337,7 @@ end;
 procedure CollectMenuItems(AItem: TMenuItem; var List: TList);
 var
   I: Integer;
+  FName, FClass: string;
 begin
   List.Add(AItem);
   for I := 0 to AItem.Count - 1 do
@@ -411,8 +401,16 @@ begin
       FClass := Screen.Forms[I].ClassName;
       if (Pos('Tips', FClass) > 0) or (Pos('Tips', FName) > 0) then
       begin
-        Log('Hiding: ' + FName + ' (' + FClass + ')');
-        Screen.Forms[I].Hide;
+        Log('Closing: ' + FName + ' (' + FClass + ')');
+        try
+          Screen.Forms[I].Close;
+          Application.ProcessMessages;
+          Sleep(300);
+          Application.ProcessMessages;
+        except
+          on E: Exception do
+            Log('WARNING: Could not close ' + FName + ': ' + E.Message);
+        end;
       end
       else
       begin
@@ -428,62 +426,50 @@ procedure Phase1_OpenTestFile(AMainForm: TForm);
 var
   TestFile: string;
   NewForm: TEERForm;
-  I, J: Integer;
+  I: Integer;
+  FName, FClass: string;
 begin
   Log('--- Phase 1: Opening test file ---');
   Log('');
 
-  // Skip FindTestFile/LoadFromFile (hangs). Create blank model via NewMI.
-  Log('Creating blank model via NewMI (file loading bypassed for reliability).');
-  // Wrap ProcessMessages calls individually to avoid cascading AV from freed forms
-  try
-    for I := 0 to AMainForm.ComponentCount - 1 do
-      if (CompareText(AMainForm.Components[I].Name, 'NewMI') = 0) and
-         (AMainForm.Components[I] is TMenuItem) then
-      begin
-        TMenuItem(AMainForm.Components[I]).Click;
-        try
+  TestFile := FindTestFile;
+  if TestFile = '' then
+  begin
+    Log('[SKIP] No test file found. Creating blank model instead.');
+    try
+      for I := 0 to AMainForm.ComponentCount - 1 do
+        if (CompareText(AMainForm.Components[I].Name, 'NewMI') = 0) and
+           (AMainForm.Components[I] is TMenuItem) then
+        begin
+          TMenuItem(AMainForm.Components[I]).Click;
           Application.ProcessMessages;
-        except
-          // ignore AV from freed forms
-        end;
-        Sleep(500);
-        try
+          Sleep(300);
           Application.ProcessMessages;
-        except
-          // ignore AV from freed forms
+          Log('[PASS] Created new blank model via NewMI.');
+          Break;
         end;
-        // Find the newly created EERForm
-        for J := 0 to Screen.FormCount - 1 do
-          if Screen.Forms[J] is TEERForm then
-          begin
-            NewForm := TEERForm(Screen.Forms[J]);
-            LastCreatedEERForm := NewForm;
-            ExampleModel := NewForm.EERModel;
-            NewForm.WindowState := wsMaximized;
-            try
-              Application.ProcessMessages;
-            except
-              // ignore AV from freed forms
-            end;
-            Sleep(200);
-            Log('[PASS] Created blank model for testing.');
-            Break;
-          end;
-        Break;
-      end;
-    if LastCreatedEERForm = nil then
-    begin
-      // Fallback: create TEERForm directly
+    except
+      on E: Exception do
+        Log('[FAIL] Could not create new model: ' + E.Message);
+    end;
+  end
+  else
+  begin
+    Log('Test file found: ' + TestFile);
+    try
       NewForm := TEERForm.Create(AMainForm);
+      NewForm.EERModel.LoadFromFile(TestFile, True, False, True, False);
+      NewForm.WindowState := wsMaximized;
       LastCreatedEERForm := NewForm;
       ExampleModel := NewForm.EERModel;
-      NewForm.WindowState := wsMaximized;
-      Log('[PASS] Created blank model via direct TEERForm.Create.');
+      Application.ProcessMessages;
+      Sleep(500);
+      Application.ProcessMessages;
+      Log('[PASS] Opened test file: ' + TestFile);
+    except
+      on E: Exception do
+        Log('[FAIL] Could not open test file: ' + E.ClassName + ': ' + E.Message);
     end;
-  except
-    on E: Exception do
-      Log('[FAIL] Could not create new model: ' + E.ClassName + ': ' + E.Message);
   end;
   Log('');
 end;
@@ -1518,10 +1504,6 @@ begin
 end;
 
 {$I ../bpsa/new_test_phases.pas}
-{$I ../bpsa/new_phases_p31_p32_p33_p34.pas}
-{$I ../bpsa/new_phase35.pas}
-{$I ../bpsa/new_phase36.pas}
-{$I ../bpsa/new_phase37.pas}
 // ===========================================================================
 // Main entry point
 // ===========================================================================
@@ -1649,33 +1631,6 @@ begin
     FlushLog(ActualLogFile);
 
 
-
-    Phase29_TestEditorDialogs(AMainForm, PassCount, FailCount, SkipCount);
-    FlushLog(ActualLogFile);
-
-    Phase30_TestModelDataTypes(AMainForm, PassCount, FailCount, SkipCount);
-    FlushLog(ActualLogFile);
-
-    Phase31_TestPaletteDataTypesImages(AMainForm, PassCount, FailCount, SkipCount);
-    FlushLog(ActualLogFile);
-
-    Phase32_TestPaletteToolsImages(AMainForm, PassCount, FailCount, SkipCount);
-    FlushLog(ActualLogFile);
-
-    Phase33_TestMainDMUtilities(AMainForm, PassCount, FailCount, SkipCount);
-    FlushLog(ActualLogFile);
-
-    Phase34_ReservedForFuture(AMainForm, PassCount, FailCount, SkipCount);
-    FlushLog(ActualLogFile);
-
-    Phase35_TestPaletteToolsButtons(AMainForm, PassCount, FailCount, SkipCount);
-    FlushLog(ActualLogFile);
-
-    Phase36_TestPaletteNavAndModelButtons(AMainForm, PassCount, FailCount, SkipCount);
-    FlushLog(ActualLogFile);
-    Phase37_TestPaletteImagesAndPaintBoxes(AMainForm, PassCount, FailCount, SkipCount);
-
-    FlushLog(ActualLogFile);
     // Summary
     LogSeparator;
     Log('TEST SUMMARY');

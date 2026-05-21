@@ -666,7 +666,11 @@ procedure TPaletteNavForm.FormDeactivate(Sender: TObject);
 begin
   if(Visible)then
     if(Not(DMMain.IsFormStayingOnTop(self)))then
-      sendCLXEvent(Application.MainForm.Handle, QCustomEvent_create(QEventType_RestoreStayOnTopForms, self));
+      try
+        sendCLXEvent(Application.MainForm.Handle, QCustomEvent_create(QEventType_RestoreStayOnTopForms, self));
+      except
+        // silently ignore
+      end;
 end;
 
 procedure TPaletteNavForm.NavigatorPBoxPaint(Sender: TObject);

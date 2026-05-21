@@ -1,0 +1,36 @@
+
+      // Schedule auto-close for menu items that open modal dialogs
+      if (CompareText(ItemName, 'AboutMI') = 0) or
+         (CompareText(ItemName, 'EERModelOptionsMI') = 0) or
+         (CompareText(ItemName, 'DBDesignerOptionsMI') = 0) or
+         (CompareText(ItemName, 'PageSetupMI') = 0) or
+         (CompareText(ItemName, 'SQLCreateScriptMI') = 0) or
+         (CompareText(ItemName, 'SQLDropScriptMI') = 0) or
+         (CompareText(ItemName, 'SQLOptimizeTableScriptMI') = 0) or
+         (CompareText(ItemName, 'SQLRepairTableScriptMI') = 0) or
+         (CompareText(ItemName, 'ShowLinkedModelsMI') = 0) or
+         (CompareText(ItemName, 'OpenMI') = 0) or
+         (CompareText(ItemName, 'SaveAsMI') = 0) or
+         (CompareText(ItemName, 'SaveMI') = 0) or
+         (CompareText(ItemName, 'PrintMI') = 0) or
+         (CompareText(ItemName, 'SaveModelasImageMI') = 0) or
+         (CompareText(ItemName, 'ExportSelectedObjectsAsImgMi') = 0) or
+         (CompareText(ItemName, 'ExportMDBXMLFileMI') = 0) or
+         (CompareText(ItemName, 'ImportERwin41XMLModelMI') = 0) or
+         (CompareText(ItemName, 'AddLinkModelFromFileMI') = 0) or
+         (CompareText(ItemName, 'AddLinkModelfromDBMI') = 0) or
+         (CompareText(ItemName, 'AddLinkModelfromOnlineLibraryMI') = 0) or
+         (CompareText(ItemName, 'StylePlatinumMI') = 0) or
+         (CompareText(ItemName, 'StyleSGIMI') = 0) or
+         (CompareText(ItemName, 'StyleMotifMI') = 0) or
+         (CompareText(ItemName, 'StyleStandardMI') = 0) or
+         (CompareText(ItemName, 'RefreshLinkedObjectsMI') = 0) or
+         (CompareText(ItemName, 'ConnecttoDatabaseMI') = 0) or
+         (CompareText(ItemName, 'DisconnectfromDatabaseMI') = 0) or
+         (CompareText(ItemName, 'ConnectionSBtn') = 0) or
+         (CompareText(ItemName, 'ReverseEngineeringMI') = 0) or
+         (CompareText(ItemName, 'DatabasesyncronisationMI') = 0) or
+         (CompareText(ItemName, 'SyncImg') = 0) then
+      begin
+        ScheduleModalClose(800);
+      end;

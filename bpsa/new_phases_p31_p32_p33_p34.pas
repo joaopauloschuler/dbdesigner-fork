@@ -115,7 +115,7 @@ var
   Component: TComponent;
   Entry: TTestEntry;
   ImgName: string;
-  SafeImages: array[0..0] of string = ('Designimg');  // QueryImg, CreatesImg, HeaderImg skipped - unsafe
+  SafeImages: array[0..2] of string = ('Designimg', 'QueryImg', 'CreatesImg');
 begin
   Log('--- Phase 32: Testing PaletteToolsForm clickable images ---');
   Log('');
@@ -149,6 +149,8 @@ begin
       Entry.ErrorMessage := '';
       Entry.StackTrace := '';
       try
+        if (CompareText(ImgName, 'CreatesImg') = 0) then
+          ScheduleModalClose(800);
         TImage(Component).OnClick(Component);
         Application.ProcessMessages;
         Sleep(50);
