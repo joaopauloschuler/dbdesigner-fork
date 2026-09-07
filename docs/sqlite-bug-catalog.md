@@ -1,0 +1,92 @@
+# SQLite database round-trip: bug catalog
+
+Date: 2026-09-07, branch `a2`, binary built with `lazbuild DBDesignerFork.lpi`.
+Model under test: `bin/Examples/order.xml` (14 tables: 12 own + 2 linked
+`Employee`/`News`, 7 auto-increment PKs, 11 relations, 2 explicit indexes).
+
+Scratch files (screenshots, logs, scripts, databases) live in
+`/tmp/claude-1001/-home-bpsa-app-dbdesigner-fork/e506f9cb-2d39-419c-bc88-17e433cbec7a/scratchpad/sqlite/`
+(referred to as `$S` below). Nothing there is in the repo.
+
+Repeatable part (stages B and D, no display needed):
+`tests/sqlite-roundtrip.sh <script.sql> <out.sqlite>` — loads the script with
+`sqlite3`, prints load errors, then tables / columns / PK / NOT NULL / foreign
+keys / indexes / AUTOINCREMENT / row counts per table.
+
+## Round-trip status
+
+| Stage | What | Status |
+|---|---|---|
+| A | Export `order.xml` to SQL create script, target "SQLite" (File > Export > SQL Create Script) | **works with defects** — file written (`$S/order_sqlite.sql`), but see #3, #4, #6 |
+| B | `sqlite3 order.sqlite < script` | **fails partially** — 12 tables created; 1 index and all standard inserts rejected (#3, #4); DB usable after `sed 's/info(100)/info/'` (`$S/order_fixed.sql`) |
+| C | New SQLite connection + connect + reverse engineer | **fails** — connection editor and connect work (status bar "Connected to Database @…/order.sqlite"), Reverse Engineering dialog never opens: "Transaction not set." (#2). Clicking the "SQLite" tree node on the way crashes (#1) |
+| D | Compare reverse-engineered model with original | **untested** (blocked by C). Relations would be missing anyway (#7) |
+| E | Database Synchronisation against the DB | **fails** — same "Transaction not set." (#2) right after connecting; would then hit MySQL-only SQL (#8) |
+| F | Query mode, simple SELECT | **fails** — connected, SQL typed, Execute button (and the other toolbar speed buttons) do nothing (#5) |
+
+## Entries
+
+### 1. Access violation when clicking a node in the "Network Hosts" tree of the connection selector
+- Severity: **crash**
+- Repro: Database > Connect to Database; click the "SQLite" folder (any node) in the left tree. Message box "Access violation. Press OK to ignore and risk data corruption." Every later click in the tree repeats it.
+- Evidence: `$S/msgbox.png`; gdb backtrace `$S/gdb_run.txt`:
+  `#0 GETLEVEL (this=0x0) treeview.inc:1736`, `#1 DBConnTVItemClick (... Button=195, Node=0x0 ...) src/DBConnSelect.pas:775`, called from `TControl.Click`.
+- Cause: `src/DBConnSelect.lfm:408` wires `OnClick = DBConnTVItemClick`, but the handler keeps the CLX `OnItemClick` signature `(Sender; Button: TMouseButton; Node: TTreeNode; const Pt: TPoint)` (`src/DBConnSelect.pas:765`). LCL calls it as a `TNotifyEvent`, so `Node` is garbage/nil and `Node.Level` dereferences nil. Same pattern may exist in other forms that had CLX `OnItemClick` (grep `OnItemClick`/`Node: TTreeNode; const Pt` in `src/`).
+- Fix idea: call it from `OnMouseDown`/`OnClick` wrapper using `DBConnTV.Selected` (or `GetNodeAt`) as the node. Complexity: **small**.
+- Side effect: because the crash happens on the node click, the "NewSQLiteConn" child node coded at `DBConnSelect.pas:280` is never reachable; the workaround is to leave "All Connections" selected and use "New Database Connection", then pick "SQLite" in the editor's Driver combo (works, `$S/conneditor2.png`).
+
+### 2. "Transaction not set." on the first schema query after connecting (blocks reverse engineering and synchronisation)
+- Severity: **crash** (unhandled exception dialog "Press OK to ignore and risk data corruption"; the dialog that was being opened is silently abandoned)
+- Repro: connect to a SQLite connection (Driver SQLite, Database File = `$S/order.sqlite`); Database > Reverse Engineering (or Database > Database Synchronisation with the order model active) > select the connection > Connect. Status bar says connected, but the message box appears (it opens off to the top-right at +1266+20 and is easy to miss) and no Reverse Engineering / Synchronisation dialog is shown.
+- Evidence: `$S/msgbox2.png`, `$S/sync_msgbox.png`, `$S/main_rev2c.png` (connected, no dialog).
+- Cause (high confidence): the shim creates the `TSQLTransaction` lazily in `TSQLConnection.Open` (`src/clx_shims/sqlexpr.pas:154-159`). `DMDB.SchemaSQLQuery` is a `TSQLDataSet` streamed from `src/DBDM.lfm:47-49` with `Database = SQLConn`; SQLDB copies the connection's transaction into a query only at the time `Database` is assigned, and at that moment it is nil. So `SchemaSQLQuery.Transaction` stays nil and `TCustomSQLQuery` raises "Transaction not set" in `TDMDB.GetDBTables` (`src/DBDM.pas:586-604`, `SELECT name FROM sqlite_master`). The standalone test `tests/TestSQLExprShim.pas` does not see this because it assigns `DS.SQLConnection := Conn` after `Conn.Open`. Same problem for every other `TSQLDataSet` streamed with `Database = ...` (`src/DBDM.lfm:31 OutputQry`, `src/EditorTableData.lfm:1157`), and for `EditorQuery` whose `OutputQry.SQLConnection := DMDB.SQLConn` (`src/EditorQuery.pas:355`) runs at form creation, before any connection is open.
+- Fix idea: create the transaction in the shim's `TSQLConnection` constructor (so it exists when `.lfm` links are resolved), and/or in `TSQLDataSet.SetSQLConnection`/before `Open` set `Transaction := SQLConnection.Transaction` when nil. Complexity: **small**.
+
+### 3. SQLite (and probably every) SQL create script contains each table's standard inserts twice
+- Severity: **wrong result**
+- Repro: File > Export > SQL Create Script, Target Data Base "SQLite", "Output Standard Inserts" checked (default), Save Script to file. In the script every `INSERT` block appears two times in a row (`$S/order_sqlite.sql`, e.g. lines 8-19 for `productgroup`). Loading it: `UNIQUE constraint failed` for every table with inserts (`$S/roundtrip_summary.txt`, 16 errors).
+- The model holds each insert once (`StandardInserts` attribute in `bin/Examples/order.xml`), so the duplication happens on load or export. Suspects: `TEERTable.GetSQLCreateCode` (`src/EERModel.pas:9284-9287`, single append) and the XML attribute decoding used by the two loaders (`src/EERModel.pas:9704` via the `xmlintf` shim `AttributeNodes[...].Text`, and `:10033` via the fast parser) — check whether `StandardInserts.Text` already contains the text twice after loading (Table editor, "Standard Inserts" tab, would show it). Not tested with a MySQL target; likely target-independent. Complexity: **medium** (small once located).
+
+### 4. SQLite export emits MySQL index-prefix syntax `column(length)`
+- Severity: **wrong result**
+- Repro: same export as #3. `CREATE INDEX product_name ON product (name, info(100));` — sqlite3: `Parse error near line 81: no such function: info`; the index is not created (only `product_ean` and the two autoindexes exist afterwards).
+- Cause: `src/EERModel.pas:9108-9109` appends `ColumnParams` (the MySQL prefix length stored as `LengthParam` in the model) to every index column regardless of `DatabaseType`; the SQLite branch of the export dialog (`src/EERExportSQLScript.pas:709-721`) only toggles check boxes. Fix: skip the `(n)` suffix unless target is MySQL. Complexity: **small**.
+
+### 5. Query-mode toolbar buttons do nothing (Execute SQL etc.)
+- Severity: **wrong result** (feature unusable)
+- Repro: connect to the SQLite DB; Display > Query Mode; type `SELECT idproduct, name, price FROM product` in the SQL memo; click the "Execute SQL Query" speed button (green arrow, left of the result grid), also tried press/release and the second button ("save SQL"). No result rows, no error dialog, status bar caption unchanged (it should become "Query opened. N Record(s) fetched…" from `src/EditorQuery.pas:1120`), no window opens.
+- Evidence: `$S/query_result2c.png`, `$S/query_result5c.png`, `$S/status3.png`.
+- Hypothesis: the `TSpeedButton`s in the `EditorQuery` frame do not receive clicks (compare ui-bug-catalog #19 "disabled OK/Cancel speed buttons"), or `ExecSQLBtnClick` (`src/EditorQuery.pas:963`) exits early at `GetSQLMemoText=''` (`:1004`) because the visible memo is not `SQLMemo`. Could not attach gdb (`ptrace_scope=1`); running the app under gdb with a breakpoint on `ExecSQLBtnClick` would settle it in a minute. Even once the button works, the SELECT will hit #2 through `OutputQry` (`src/EditorQuery.pas:355`, `:1092`). Complexity: **medium**.
+
+### 6. Auto-increment is dropped when exporting for SQLite
+- Severity: **limitation**
+- The model has 7 `AutoInc="1"` PK columns (`idproduct`, `idonlineorder`, `idonlinecustomer`, `idproductgroup`, `idcreditcard`, `idNews`, `idEmployee`). The SQLite target disables the auto-increment options (`src/EERExportSQLScript.pas:718-720`) and emits `idproduct INTEGER NOT NULL … PRIMARY KEY(idproduct)`, so the round trip cannot recover auto-increment (`tests/sqlite-roundtrip.sh` prints `autoincrement: no` for every table).
+- SQLite supports `INTEGER PRIMARY KEY AUTOINCREMENT` (single-column integer PK only); the export could emit that inline for single-column integer auto-inc PKs. Complexity: **small**.
+
+### 7. Reverse engineering from SQLite never creates relations
+- Severity: **limitation** (untested at runtime, blocked by #2; established from code)
+- `TDMDBEER.EERSQLiteReverseEngineer` (`src/DBEERDM.pas:1210-1368`) lists tables from `sqlite_master`, parses each table's `CREATE TABLE` text for columns (`GetColumnFromSQLCmd`) and optionally creates standard inserts; the `BuildRelations`/`BuildRelUsingPrimKey` parameters are never used (no call to `EERReverseEngineerMakeRelations` at `:1746`, unlike the MySQL/ODBC paths at `:462/:697/:1090`). Foreign keys that the export did emit (`carthasproduct`, `onlineorderhasproduct`, visible via `PRAGMA foreign_key_list` in `$S/roundtrip_summary.txt`) would therefore be lost.
+- What SQLite offers: `PRAGMA foreign_key_list('<table>')` (columns `id, seq, table, from, to, on_update, on_delete, match`) gives referenced table, column pairs and the ON UPDATE/ON DELETE actions — enough to build `TEERRel` with `FKFields` `pkcol=fkcol` exactly like the MSSQL `sp_fkeys` loop at `:1666-1700`. `PRAGMA index_list` + `PRAGMA index_info` give indexes and uniqueness (the shim's `SetSchemaInfo(stIndexes)` already works per docs/notes-to-myself.md). Complexity: **medium**.
+
+### 8. Database Synchronisation is MySQL-only
+- Severity: **limitation** (untested at runtime, blocked by #2)
+- `TEERSynchronisationForm` always calls `DMDBEER.EERMySQLSyncDB` (`src/EERSynchronisation.pas:213`), which starts with `SET FOREIGN_KEY_CHECKS=0` (`src/DBEERDM.pas:1946`), uses MySQL `SHOW`/`ALTER` style statements and MySQL create syntax. Against SQLite it will fail at the first statement. "Store model in database" (File > Save in Database) likewise assumes a `DBDesigner4` table with MySQL DDL (not tried).
+- Fix would be a `CreateTableSyntax`-aware branch (the enum at `src/DBEERDM.pas:64` already lists SQLite) using `PRAGMA table_info` for the diff. Complexity: **large**.
+
+### 9. Cosmetic issues seen on the way
+- Severity: **cosmetic**
+- Main window title stays "DBDesigner Fork - order" after File > New although the new model ("Noname2" in the Windows menu) is active (`$S/main_newc.png`, `$S/winmenu2.png`).
+- The exception message boxes (#1, #2) open at the top-right screen corner, not centred on the app.
+- Exported script formatting: runs of spaces before commas (`groupname Varchar(45)      ,`), `PRIMARY KEY(idproduct)    );`, 5-6 blank lines between tables.
+
+## Observations that are not bugs
+- Only 2 of 11 relations are exported as `FOREIGN KEY` (`OnlineorderRel`, `CartRel`): those are the only ones with `CreateRefDef="1"` in `order.xml`, and the export option is "Define Foreign Key References when enabled in Relations' Editors". Model setting, not a bug.
+- Linked tables `Employee` and `News` (`IsLinkedObject="1"`) are not exported; 12 of 14 tables is the expected count.
+- Connection editor, "Database File:" label for SQLite, saving the connection and connecting to a SQLite file all work (`$S/conneditor2.png`, `$S/connselect_new.png`, `$S/statusbar.png`); `PRAGMA`-free schema listing in `TDMDB.GetDBTables` is correct for SQLite once #2 is fixed.
+
+## Not tested
+- Stage D comparison (blocked by #2) — the data type mapping of `Varchar(45)`, `FLOAT(10,2)`, `LONGBLOB`, `DATETIME` back into model datatypes, NOT NULL and PK recovery, index recovery (`SetSchemaInfo(stIndexes)`), datatype substitution list, "Build relations using primary keys" option.
+- Stage E/F beyond the failures above; editing rows in the query grid; BLOB viewer; stored SQL commands.
+- File > Open from Database / Save in Database, SQL Drop/Optimize/Repair scripts, DataImporter plugin against SQLite.
+- MySQL, ODBC, Oracle, MSSQL connections (no servers).
+- Export with a non-SQLite target (to confirm #3 is target-independent).
