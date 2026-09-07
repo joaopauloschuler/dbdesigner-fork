@@ -22,7 +22,7 @@ keys / indexes / AUTOINCREMENT / row counts per table.
 | C | New SQLite connection + connect + reverse engineer | **works** after #1/#2 were fixed — tree node clicks, connection editor, connect and the Reverse Engineering dialog (12 tables listed) all work; Execute adds 12 tables to the model |
 | D | Compare reverse-engineered model with original | **works** after #10/#7 (re-checked after #3/#4/#6 with `$S/fix03-reveng.xml`: same result, 5 AutoInc PKs recovered) — 12 tables with all columns (datatype, PK, NOT NULL, AutoInc, default), all indexes and 10 of 11 relations (the self-relation `forumpost` -> `forumpost` is not recoverable: no FK in the DB); compared with `$S/compare_models.py` (`$S/fix10-reveng.xml`) |
 | E | Database Synchronisation against the DB | **fails** — same "Transaction not set." (#2) right after connecting; would then hit MySQL-only SQL (#8) |
-| F | Query mode, simple SELECT | **fails** — connected, SQL typed, Execute button (and the other toolbar speed buttons) do nothing (#5) |
+| F | Query mode, simple SELECT | **works** after #5 — `SELECT * FROM product` shows the 3 rows in the grid, status bar "Query opened. 3 Record(s) fetched" (`$S/fix05-final-grid.png`); an invalid statement shows the SQLite error (`$S/fix05-sqlerror.png`) |
 
 ## Entries
 
@@ -57,6 +57,7 @@ keys / indexes / AUTOINCREMENT / row counts per table.
 - Cause: `src/EERModel.pas:9108-9109` appends `ColumnParams` (the MySQL prefix length stored as `LengthParam` in the model) to every index column regardless of `DatabaseType`; the SQLite branch of the export dialog (`src/EERExportSQLScript.pas:709-721`) only toggles check boxes. Fix: skip the `(n)` suffix unless target is MySQL. Complexity: **small**.
 
 ### 5. Query-mode toolbar buttons do nothing (Execute SQL etc.)
+- Status: **FIXED** — the button did fire; `src/EditorQuery.lfm` and `src/DBDM.lfm` had lost `ProviderName = 'OutputDataSetProvider'` on `OutputClientDataSet`, and the shim `TClientDataSet` (`src/clx_shims/dbclient.pas`) could not open anyway (fields assigned inside `InternalOpen`, where `TBufDataset` already demands them) and swallowed the source query's exception. The shim now opens the provider dataset and `CopyFromDataset`s it; error dialogs were being shown but were filtered out of my window listing (see notes). Verified: 3 product rows + status text; invalid SQL -> SQLite error message.
 - Severity: **wrong result** (feature unusable)
 - Repro: connect to the SQLite DB; Display > Query Mode; type `SELECT idproduct, name, price FROM product` in the SQL memo; click the "Execute SQL Query" speed button (green arrow, left of the result grid), also tried press/release and the second button ("save SQL"). No result rows, no error dialog, status bar caption unchanged (it should become "Query opened. N Record(s) fetched…" from `src/EditorQuery.pas:1120`), no window opens.
 - Evidence: `$S/query_result2c.png`, `$S/query_result5c.png`, `$S/status3.png`.
@@ -88,9 +89,14 @@ keys / indexes / AUTOINCREMENT / row counts per table.
 
 ### 9. Cosmetic issues seen on the way
 - Severity: **cosmetic**
-- Main window title stays "DBDesigner Fork - order" after File > New although the new model ("Noname2" in the Windows menu) is active (`$S/main_newc.png`, `$S/winmenu2.png`).
-- The exception message boxes (#1, #2) open at the top-right screen corner, not centred on the app.
+- Main window title stays "DBDesigner Fork - order" after File > New although the new model ("Noname2" in the Windows menu) is active (`$S/main_newc.png`, `$S/winmenu2.png`). **FIXED** — `RegisterEERForm`/`SwitchToEERForm` now update the caption (`TMainForm.UpdateCaptionForEERForm`); `ModelNameChanged` fired before the new form was the active one.
+- The exception message boxes (#1, #2) open at the top-right screen corner, not centred on the app. **FIXED** — `Application.OnException` (`TMainForm.AppException`) shows an own dialog centred on the main window; the LCL's GTK message box is parented to an invisible widget, so mutter placed it.
 - Exported script formatting: runs of spaces before commas (`groupname Varchar(45)      ,`), `PRIMARY KEY(idproduct)    );`, 5-6 blank lines between tables. **FIXED for the SQLite target only** (MySQL output is kept byte-for-byte): column definitions are collapsed to single blanks and right-trimmed, the two-space indent is only written in front of an inline index (not for portable ones, which went to `CREATE INDEX` anyway), `TidySQLiteScript` drops trailing blanks and repeated empty lines, and the export dialog separates SQLite tables with one empty line.
+
+### 11. Reverse Engineering dialog: "Build Relations", "Use Datatype Substitution", "Create Standard Inserts" check boxes clipped to a sliver
+- Status: **FIXED** — the three check boxes were Delphi "group box caption" check boxes drawn over the top edge of their `TGroupBox` (Height 13); GTK2 paints the group box over them. `src/EERReverseEngineering.lfm` now places them entirely above the boxes (Height 21) and shortens the boxes. Other check boxes/buttons in this dialog, the SQL export dialog and the connection editor (both tabs) are not clipped.
+- Severity: **cosmetic** (the options could not be read or toggled reliably)
+- Evidence: `$S/fix05-revdlg-before.png` (before), `$S/fix05-revdlg-after.png` (after).
 
 ## Observations that are not bugs
 - Only 2 of 11 relations are exported as `FOREIGN KEY` (`OnlineorderRel`, `CartRel`): those are the only ones with `CreateRefDef="1"` in `order.xml`, and the export option is "Define Foreign Key References when enabled in Relations' Editors". Model setting, not a bug.
@@ -99,7 +105,7 @@ keys / indexes / AUTOINCREMENT / row counts per table.
 
 ## Not tested
 - Stage D comparison (blocked by #2) — the data type mapping of `Varchar(45)`, `FLOAT(10,2)`, `LONGBLOB`, `DATETIME` back into model datatypes, NOT NULL and PK recovery, index recovery (`SetSchemaInfo(stIndexes)`), datatype substitution list, "Build relations using primary keys" option.
-- Stage E/F beyond the failures above; editing rows in the query grid; BLOB viewer; stored SQL commands.
+- Stage E beyond #2 (blocked by #8); in Query mode: editing rows in the query grid, BLOB viewer, stored SQL commands.
 - File > Open from Database / Save in Database, SQL Drop/Optimize/Repair scripts, DataImporter plugin against SQLite.
 - MySQL, ODBC, Oracle, MSSQL connections (no servers).
 - Export with a non-SQLite target (to confirm #3 is target-independent).

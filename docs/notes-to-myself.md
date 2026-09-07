@@ -810,3 +810,77 @@ navigation (`Down`x4 `Right` for File > Open Recent). Shots: `fix13-*`.
   (FireBird, My SQL, Oracle, PostgreSQL, SQL Server, SQLite, 30 px apart). The GTK save
   dialog asks to overwrite an existing file - use a fresh name. stderr from the app is
   block-buffered: a killed instance loses the tail of the log.
+
+## Fix: Query mode Execute shows nothing, File > New title, exception boxes off-screen, clipped Reverse Engineering check boxes (sqlite-bug-catalog #5, #9, #11)
+
+- **#5 is not a click problem.** `ExecSQLBtnClick` runs (checked with a temporary
+  `writeln(stderr)` and an `Application.AddOnUserInputHandler` that printed the control
+  under every `LM_LBUTTONDOWN`); F9 reaches it too. What looked like "nothing happens"
+  were two things: (a) the LCL `MessageDlg` *was* shown ("ERROR while executing Query ...
+  Missing (compatible) underlying dataset, can not open") but my `xwininfo` filter
+  dropped every window whose class line contains `DBDesignerFork`, i.e. the dialog
+  itself, and (b) the first `xdotool click` after typing into the memo is regularly
+  lost on XWayland unless `xdotool windowactivate` precedes it (8/8 clicks register with
+  it, see the ui-bug-catalog #13 gotcha). The remaining silence was real, though: the
+  error came from the client dataset, not from SQLite.
+- Cause: `src/EditorQuery.lfm` (and `src/DBDM.lfm`) lost `ProviderName =
+  'OutputDataSetProvider'` on the `TClientDataSet` when the `.xfm` was converted
+  (`EditorTableData.lfm` kept it), so the shim `TClientDataSet` (`clx_shims/dbclient.pas`)
+  never found `OutputQry` and opened an empty `TBufDataset`, which refuses with
+  `SErrNoDataset`. Even with the name in place the shim could not work: it assigned
+  `FieldDefs` inside `InternalOpen`, but `TCustomBufDataset.InternalOpen` requires the
+  `Fields` to exist already (`Fields.Count=0` -> same error); memory datasets are
+  prepared with `CreateDataset` *before* `Open`. It also swallowed the source
+  dataset's exception (`try FSourceDataSet.Open except FSourceDataSet:=nil`), which is
+  why an invalid statement never showed the SQL error.
+- Fix: `ProviderName` restored in both `.lfm`s; `TCustomClientDataSet.Open` (shim) now
+  opens the provider's dataset (exceptions propagate), then calls
+  `CopyFromDataset(Source, True)` - it builds the `FieldDefs` from the source fields,
+  `CreateDataset`, opens the buffer and appends every row - with `ReadOnly` temporarily
+  off (the copy needs `Append`/`Post`), then `First`. `InternalOpen` is plain
+  `inherited`. `tests/TestSQLExprShim.pas` now wires `TSQLDataSet -> TDataSetProvider ->
+  TClientDataSet` by `ProviderName` exactly like the `.lfm`, checks 3 rows / first row
+  and that `SELECT * FROM nosuch` raises the SQLite message (compile as in the
+  "no symlink" section above).
+- Verified on DISPLAY=:0 with `[OrderSQLite]`: Display > Query Mode, `SELECT * FROM
+  product`, Execute -> connection dialog -> Connect -> grid with 3 rows and status bar
+  "Query opened. 3 Record(s) fetched. Time: 00:00:019" (`$S/fix05-result.png`,
+  `$S/fix05-final-grid.png`); `SELECT * FROM nosuch` -> "ERROR while executing Query ...
+  TSQLite3Connection : no such table: nosuch" (`$S/fix05-sqlerror.png`). Observation, not
+  fixed: the focused cell of the first grid row is drawn empty and the first row uses a
+  smaller font (DBGrid in-place editor of the LCL port).
+- **#9 title after File > New**: `TEERForm.FormCreate` fires `ModelNameChanged` while
+  `MainForm.FActiveEERForm` is still the previous form, so the guard in
+  `TEERForm.ModelNameChanged` skipped the main caption, and `RegisterEERForm` /
+  `SwitchToEERForm` set `FActiveEERForm` without touching it. New
+  `TMainForm.UpdateCaptionForEERForm`, called from both. Verified: title becomes
+  "DBDesigner Fork - Noname2" (`xdotool getwindowname`).
+- **#9 exception boxes at the top-right**: `TApplication.ShowException` uses the widget
+  set's `PromptUser`; GTK2 creates that `gtk_message_dialog_new` with the invisible
+  LCL desktop widget as parent, so mutter has no window to centre on and (when the
+  exception is raised while no app window is focused, e.g. right after a modal closed)
+  falls back to first-fit placement at the top-right. `Application.OnException` is now
+  `TMainForm.AppException`: a plain `TForm.CreateNew` dialog (message measured with
+  `DrawText(DT_CALCRECT or DT_WORDBREAK)`, OK = ignore, Abort = `Halt(1)`, same wording as
+  the LCL) positioned with explicit bounds at the main window centre. Tested with a
+  temporary timer raising `Exception.Create('Test exception')`: dialog centre 981/512 =
+  main window centre (`$S/fix05-excdlg2.png`). A first version with `AutoSize` + a
+  word-wrapped `TLabel` came out 112 px wide (the label wraps at its initial width) and
+  off-centre, hence the explicit layout. Do not raise test exceptions from inside a
+  mouse handler: the aborted GTK button-press left a grab and no later click reached
+  the app.
+- **#11 (new)**: in `EERReverseEngineering.lfm` the check boxes `BuildRelationsCBox`,
+  `UseSubstCBox` and `CreateStdInsertsCBox` are Delphi-style "caption" check boxes
+  placed over the top edge of their `TGroupBox` (Height 13, Top 4-8 px above the box).
+  On GTK2 the group box paints over the sibling, leaving a 5 px sliver. They now sit
+  entirely above the boxes (Height 21, Top 4/190) and `DataTypeSubstGroupBox`,
+  `RelGroupBox`, `StdInsertsGroupBox` start 12-26 px lower with their height reduced
+  (radio buttons moved up 12 px). Before/after: `$S/fix05-revdlg-before.png`,
+  `$S/fix05-revdlg-after.png`. The SQL export dialog (`$S/fix03-exportdlg.png`) and
+  both tabs of the connection editor (`$S/fix05-conned-adv.png`) have no clipped check
+  boxes or buttons.
+- Driving notes: menu popups are the viewable 213x188 / 234x135 `DBDesignerFork` windows
+  (`xwininfo -id <w> | grep IsViewable`); the connection selector opens at +608+271 with
+  the connection row at (290,62), Connect (682,237), Abort (682,267); Escape does not
+  close it. The Reverse Engineering dialog's Close is at (515,573).
+

@@ -2025,6 +2025,7 @@ object EditorQueryForm: TEditorQueryForm
     Top = 292
   end
   object OutputClientDataSet: TClientDataSet
+    ProviderName = 'OutputDataSetProvider'
     AfterOpen = OutputClientDataSetAfterOpen
     Left = 292
     Top = 292

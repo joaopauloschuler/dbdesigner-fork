@@ -6,12 +6,17 @@ program TestSQLExprShim;
 uses
   {$IFDEF UNIX}cthreads,{$ENDIF}
   Classes, SysUtils, DB, SQLDB, SQLite3Conn,
-  SqlExpr;  // Our shim!
+  SqlExpr,  // Our shim!
+  DBClient, Provider;  // TClientDataSet / TDataSetProvider shims
 
 var
   Conn: SqlExpr.TSQLConnection;  // Our shim TSQLConnection
   DS: SqlExpr.TSQLDataSet;       // Our shim TSQLDataSet
   DBPath: string;
+  Owner: TComponent;
+  Prov: TDataSetProvider;
+  CDS: TClientDataSet;
+  Failed: Boolean;
 begin
   WriteLn('=== SQLExpr Shim Test (Delphi-compatible API → SQLDB) ===');
   WriteLn;
@@ -82,6 +87,54 @@ begin
       DS.Next;
     end;
     DS.Close;
+
+    // TClientDataSet fed by a TDataSetProvider, wired by name exactly like
+    // EditorQuery.lfm (OutputQry -> OutputDataSetProvider -> OutputClientDataSet,
+    // sqlite-bug-catalog #5): the client dataset must copy the rows and an
+    // invalid statement must raise the SQL error, not the TBufDataset one.
+    WriteLn;
+    WriteLn('Testing TClientDataSet via ProviderName:');
+    Owner := TComponent.Create(nil);
+    try
+      Prov := TDataSetProvider.Create(Owner);
+      Prov.Name := 'OutputDataSetProvider';
+      Prov.DataSet := DS;
+      CDS := TClientDataSet.Create(Owner);
+      CDS.Name := 'OutputClientDataSet';
+      CDS.ProviderName := 'OutputDataSetProvider';
+      CDS.ReadOnly := True;
+
+      DS.SQL.Text := 'SELECT * FROM customers ORDER BY id';
+      CDS.Open;
+      if (CDS.RecordCount <> 3) or (CDS.FieldByName('name').AsString <> 'Alice') then
+      begin
+        WriteLn('FAIL: client dataset has ', CDS.RecordCount, ' rows, first name "',
+          CDS.FieldByName('name').AsString, '" (expected 3 / Alice)');
+        Halt(1);
+      end;
+      WriteLn('  ', CDS.RecordCount, ' rows copied, first row: ', CDS.FieldByName('name').AsString);
+      CDS.Close;
+      DS.Close;
+
+      DS.SQL.Text := 'SELECT * FROM nosuch';
+      Failed := False;
+      try
+        CDS.Open;
+      except
+        on E: Exception do
+        begin
+          Failed := Pos('nosuch', E.Message) > 0;
+          WriteLn('  invalid statement raised: ', E.Message);
+        end;
+      end;
+      if not Failed then
+      begin
+        WriteLn('FAIL: invalid statement did not raise the SQL error');
+        Halt(1);
+      end;
+    finally
+      Owner.Free;
+    end;
 
     Conn.Close;
     WriteLn;

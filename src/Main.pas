@@ -375,6 +375,8 @@ type
 
     procedure SetApplStyle(ApplStyle: integer);
     procedure SetWorkMode(theWorkMode: integer);
+    procedure AppException(Sender: TObject; E: Exception);
+    procedure UpdateCaptionForEERForm(F: TEERForm);
     procedure DisplaySelectedWorkTool(WorkTool: integer);
 
     procedure ApplicationRestore(Sender: TObject);
@@ -492,6 +494,81 @@ uses MainDM, ZoomSel,
   EditorImage, GUIDM, DBDM, EditorQuery, EditorQueryDragTarget,
   Tips, EERPlaceModel, DBEERDM, EERExportImportDM,
   UITestRunner;
+
+procedure TMainForm.AppException(Sender: TObject; E: Exception);
+const
+  TextWidth = 460;
+  Margin = 16;
+var Msg: string;
+  Dlg: TForm;
+  Lbl: TLabel;
+  OkBtn, AbortBtn: TButton;
+  R: TRect;
+begin
+  Msg:=E.Message;
+  if(Msg<>'')and(Msg[Length(Msg)]<>'.')then
+    Msg:=Msg+'.';
+  Msg:=Msg+LineEnding+
+    'Press OK to ignore and risk data corruption.'+LineEnding+
+    'Press Abort to kill the program.';
+
+  Dlg:=TForm.CreateNew(nil);
+  try
+    Dlg.Caption:=Application.Title;
+    Dlg.BorderStyle:=bsDialog;
+    Dlg.BorderIcons:=[biSystemMenu];
+    Dlg.Position:=poDesigned;
+
+    //Measure the wrapped message with the dialog's font
+    Dlg.Canvas.Font:=Dlg.Font;
+    R:=Rect(0, 0, TextWidth, 0);
+    DrawText(Dlg.Canvas.Handle, PChar(Msg), Length(Msg), R,
+      DT_CALCRECT or DT_WORDBREAK or DT_NOPREFIX);
+
+    Lbl:=TLabel.Create(Dlg);
+    Lbl.Parent:=Dlg;
+    Lbl.AutoSize:=False;
+    Lbl.WordWrap:=True;
+    Lbl.SetBounds(Margin, Margin, TextWidth, R.Bottom+4);
+    Lbl.Caption:=Msg;
+
+    OkBtn:=TButton.Create(Dlg);
+    OkBtn.Parent:=Dlg;
+    OkBtn.Caption:='OK';
+    OkBtn.ModalResult:=mrOk;
+    OkBtn.Default:=True;
+    OkBtn.Cancel:=True;
+    OkBtn.SetBounds(Margin+TextWidth-2*90-8, Lbl.Top+Lbl.Height+Margin, 90, 28);
+
+    AbortBtn:=TButton.Create(Dlg);
+    AbortBtn.Parent:=Dlg;
+    AbortBtn.Caption:='Abort';
+    AbortBtn.ModalResult:=mrAbort;
+    AbortBtn.SetBounds(Margin+TextWidth-90, OkBtn.Top, 90, 28);
+
+    Dlg.ClientWidth:=TextWidth+2*Margin;
+    Dlg.ClientHeight:=OkBtn.Top+OkBtn.Height+Margin;
+    //Centre on the main window (poMainFormCenter would do the same, but
+    //explicit bounds do not depend on the auto-size timing)
+    Dlg.Left:=Left+(Width-Dlg.Width) div 2;
+    Dlg.Top:=Top+(Height-Dlg.Height) div 2;
+
+    if(Dlg.ShowModal=mrAbort)then
+    begin
+      Dlg.Free;
+      Dlg:=nil;
+      Halt(1);
+    end;
+  finally
+    Dlg.Free;
+  end;
+end;
+
+procedure TMainForm.UpdateCaptionForEERForm(F: TEERForm);
+begin
+  if(F<>nil)and(F.EERModel<>nil)then
+    Caption:='DBDesigner Fork - '+F.EERModel.GetModelName;
+end;
 
 procedure TMainForm.FormCreate(Sender: TObject);
 begin
@@ -1648,6 +1725,10 @@ begin
   ResetPalettePositionsMIClick(self);
   {$ENDIF}
 
+  //Unhandled exceptions: show them centred on the main window (the LCL's
+  //native GTK message box has no parent window and lands wherever the window
+  //manager puts it - usually the top-right screen corner)
+  Application.OnException:=AppException;
   //Dock Query Pnl
   try
     DockedEditorQueryForm:=TEditorQueryForm.Create(self);
@@ -3762,6 +3843,7 @@ begin
     FEERFormList.Add(F);
   F.Visible := True;
   FActiveEERForm := F;
+  UpdateCaptionForEERForm(F);
 end;
 
 procedure TMainForm.UnregisterEERForm(F: TEERForm);
@@ -3791,6 +3873,7 @@ begin
   // Show the requested one
   F.Visible := True;
   FActiveEERForm := F;
+  UpdateCaptionForEERForm(F);
 end;
 finalization
   StartupErrors.Free;
