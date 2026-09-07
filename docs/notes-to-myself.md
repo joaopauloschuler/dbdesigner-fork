@@ -705,3 +705,57 @@ navigation (`Down`x4 `Right` for File > Open Recent). Shots: `fix13-*`.
   keyboard `Down`xN + `Return` picks items; the GTK save dialog accepts a typed absolute
   path + `Return` (`ctrl+a` first). `xdotool windowsize` on the main window works
   to get a usable canvas (the saved 600x426 size is tiny).
+
+## Fix: SQLite reverse engineering returns columns, indexes and relations (sqlite-bug-catalog #10, #7)
+
+- `TDMDBEER.EERSQLiteReverseEngineer` (`src/DBEERDM.pas`) no longer parses the
+  `CREATE TABLE` text; the two stubs `GetColumnCountFromSQLCmd`/`GetColumnFromSQLCmd`
+  are deleted (nothing else used them). Everything comes from SQLite's own metadata
+  through the `pragma_*` table-valued functions, run as plain SELECTs on
+  `DMDB.SchemaSQLQuery` (the shim's `stColumns`/`stIndexes` do the same):
+  - `pragma_table_info(t)`: name, declared type, `notnull`, `dflt_value`, `pk`.
+    PK = `pk>0`; NOT NULL = `notnull=1` or PK; default value with one pair of
+    enclosing quotes stripped (`'NULL'` ignored); `TEERTable.CheckPrimaryIndex`
+    builds the PRIMARY index (an `INTEGER PRIMARY KEY` has no autoindex row, so
+    `pragma_index_list` cannot be used for it).
+  - AUTOINCREMENT: not visible through the pragmas, so the `sqlite_master.sql`
+    text is still fetched and searched for the keyword (only a single-column PK
+    gets `AutoInc`).
+  - Datatypes: new `GetSQLiteDatatype` splits `Varchar(45)` into name + params,
+    looks the name up (with the substitution list, then the first word for
+    `INT UNSIGNED`), and falls back to SQLite's affinity rules (INT -> INTEGER,
+    CHAR/CLOB/TEXT -> VARCHAR/TEXT, REAL/FLOA/DOUB -> FLOAT, BLOB/empty -> BLOB,
+    BOOL, DATE/TIME -> DATETIME, else DECIMAL) before the model's default type.
+    Datatype options (UNSIGNED, ZEROFILL) are matched in the declared type like
+    the MySQL path does.
+  - `pragma_index_list` + `pragma_index_info`, `origin<>'pk'`: `unique` ->
+    `ik_UNIQUE_INDEX`; `sqlite_autoindex_*` (UNIQUE constraints) renamed to
+    `<table>_unique_<seq>`; expression index columns (NULL name) skipped.
+  - Relations (when "Build Relations" is on): first `pragma_foreign_key_list`
+    (grouped by `id`, `seq`), parent = referenced table, child = the table with
+    the FK, `FKFields` `pk=fk`, `CreateRefDef=True`, ON DELETE/UPDATE mapped to
+    the `RefDef` codes (RESTRICT 0, CASCADE 1, SET NULL 2, NO ACTION 3, SET
+    DEFAULT 4), `rk_1n` when all FK columns are in the child's PK else
+    `rk_1nNonId`; a NULL `to` column means "the parent's PK, in order".
+    Then `EERReverseEngineerMakeRelations` runs with the new optional
+    `SkipExisting` parameter (default False, so MySQL/ODBC are unchanged) so the
+    name/PK heuristic does not duplicate the native ones.
+- Verified on DISPLAY=:0 against `$S/order_ai.sqlite` (the exported script with
+  `INTEGER PRIMARY KEY AUTOINCREMENT` and the `info(100)` index hand-fixed, see
+  `$S/order_ai.sql`; the app's connection is `~/.DBDesigner4/DBConn.ini`
+  `[OrderSQLite]`, which did not exist before - the earlier session never saved
+  one). Saved as `$S/fix10-reveng.xml`, compared with `$S/compare_models.py`
+  against `Examples/order.xml`: all 12 tables, every column (name, datatype +
+  params, PK, NOT NULL, AutoInc, default), all 12 PRIMARY + 2 explicit indexes
+  match; 10 of 11 relations with the right endpoints, kind and FK mapping. Missing:
+  the self-relation `forumpost.idforumpost_parent -> forumpost` (no FK in the DB,
+  the heuristic only matches `id<table>`). The guessed relations get
+  `CreateRefDef=1` (new-model default `ActivateRefDefForNewRelations`) and
+  NO ACTION where the original had RESTRICT - that information is not in the DB.
+- Driving gotchas: the Reverse Engineering dialog closes itself after Execute -
+  `import -window` on its old id hangs forever (use `timeout`). GTK menu popups are
+  reused windows named "DBDesignerFork" (`xwininfo -root -tree`, 212x399 = File,
+  234x135 = Database). `xdotool search --name` also returns dead windows from
+  earlier instances; take ids from the tree instead. The "Build Relations",
+  "Use Datatype Substitution" and "Create Standard Inserts" check boxes in the
+  dialog are clipped to a sliver (cosmetic, not fixed here).

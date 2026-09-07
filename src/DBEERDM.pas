@@ -74,7 +74,7 @@ type
     procedure EERMySQLReverseEngineer2(theModel: Pointer; DBConn: Pointer; theTables: TStringList; XCount: integer; BuildRelations: Boolean; BuildRelUsingPrimKey: Boolean; DatatypeSubst: TStringList; StatusLbl: TLabel = nil; CreateStdInserts: Boolean = False; limitStdIns: integer = 0);
     procedure BuildTableFromCreateStatement(theTable: TEERTable; theCreateStatement: string; Syntax: CreateTableSyntax);
 
-    procedure EERReverseEngineerMakeRelations(theModel: Pointer; theTables: TList; BuildRelUsingPrimKey: Boolean);
+    procedure EERReverseEngineerMakeRelations(theModel: Pointer; theTables: TList; BuildRelUsingPrimKey: Boolean; SkipExisting: Boolean = False);
     procedure EERReverseEngineerCreateStdInserts(theModel: Pointer; theTables: TList; limit: integer;
       StatusLbl: TLabel = nil; ImportSchema: Boolean = False);
 
@@ -85,8 +85,8 @@ type
     procedure DataModuleDestroy(Sender: TObject);
 
     function RemoveCommentsFromSQLCmd(cmd: string): string;
-    function GetColumnCountFromSQLCmd(cmd: string): integer;
-    procedure GetColumnFromSQLCmd(cmd: string; i: integer; var col: TEERColumn);
+    function GetSQLiteDatatype(theModel: Pointer; DeclType: string; DatatypeSubst: TStringList; var DatatypeParams: string): Pointer;
+    function SQLiteRefActionCode(action: string): string;
   private
     { Private declarations }
   public
@@ -1210,11 +1210,16 @@ end;
 procedure TDMDBEER.EERSQLiteReverseEngineer(theModel: Pointer; DBConn: Pointer; theTables: TStringList; XCount: integer; BuildRelations: Boolean; BuildRelUsingPrimKey: Boolean; DatatypeSubst: TStringList; StatusLbl: TLabel = nil; CreateStdInserts: Boolean = False; limitStdIns: integer = 0);
 var EERModel: TEERModel;
   i, j, xpos, ypos, xanz, defwidth, defheight: integer;
-  tblAtPos: Boolean;
+  tblAtPos, AllFKColsArePK, HasAutoInc: Boolean;
   DbTables: TList;
-  theTable, tmpTbl: TEERTable;
-  theCol, theSQLCol: TEERColumn;
-  sqlcmd: string;
+  theTable, tmpTbl, parentTbl: TEERTable;
+  theColumn: TEERColumn;
+  theIndex: TEERIndex;
+  theDatatype: TEERDatatype;
+  theRel: TEERRel;
+  sqlcmd, quotedName, DeclType, DatatypeParams, DefVal,
+    prevIndex, fkId, pkColName, fkColName: string;
+  pkCount, pkColCount: integer;
 begin
   EERModel:=theModel;
 
@@ -1240,7 +1245,7 @@ begin
 
     DMDB.SchemaSQLQuery.SetSchemaInfo(stNoSchema, '', '');
     DMDB.SchemaSQLQuery.SQL.Text:='SELECT name FROM sqlite_master '+
-      'WHERE type=''table'' '+
+      'WHERE type=''table'' AND name NOT LIKE ''sqlite_%'' '+
       'ORDER BY name';
     DMDB.SchemaSQLQuery.Open;
 
@@ -1260,42 +1265,133 @@ begin
     end;
     DMDB.SchemaSQLQuery.Close;
 
-    //Get the columns
+    //Get the columns and indices (SQLite's own metadata via the
+    //pragma_* table-valued functions; the CREATE TABLE text is only
+    //used to detect the AUTOINCREMENT keyword)
     for i:=0 to DbTables.Count-1 do
     begin
+      theTable:=TEERTable(DbTables[i]);
+
       if(StatusLbl<>nil)then
       begin
         StatusLbl.Caption:=DMMain.GetTranslatedMessage('Fetching Table Columns/Indices (%s)', 148,
-          TEERTable(DbTables[i]).ObjName);
+          theTable.ObjName);
         StatusLbl.Refresh;
         Application.ProcessMessages;
       end;
 
-      //Get SQL Create cmd
-      sqlcmd:='SELECT sql FROM sqlite_master '+
-        'WHERE type=''table'' AND name='''+TEERTable(DbTables[i]).ObjName+'''';
-      DMDB.SchemaSQLQuery.SQL.Text:=sqlcmd;
+      quotedName:=StringReplace(theTable.ObjName, '''', '''''', [rfReplaceAll]);
+
+      //Get SQL Create cmd (AUTOINCREMENT is not visible through the pragmas)
+      sqlcmd:='';
+      DMDB.SchemaSQLQuery.SQL.Text:='SELECT sql FROM sqlite_master '+
+        'WHERE type=''table'' AND name='''+quotedName+'''';
       DMDB.SchemaSQLQuery.Open;
       if(Not(DMDB.SchemaSQLQuery.EOF))then
         sqlcmd:=DMDB.SchemaSQLQuery.Fields[0].AsString;
       DMDB.SchemaSQLQuery.Close;
+      HasAutoInc:=(Pos('AUTOINCREMENT', UpperCase(RemoveCommentsFromSQLCmd(sqlcmd)))>0);
 
-      sqlcmd:=RemoveCommentsFromSQLCmd(sqlcmd);
+      //Columns
+      pkColCount:=0;
+      DMDB.SchemaSQLQuery.SQL.Text:='SELECT cid, name, type, "notnull" AS colnotnull, '+
+        'dflt_value, pk FROM pragma_table_info('''+quotedName+''') ORDER BY cid';
+      DMDB.SchemaSQLQuery.Open;
+      while(Not(DMDB.SchemaSQLQuery.EOF))do
+      begin
+        theColumn:=TEERColumn.Create(theTable);
+        theTable.Columns.Add(theColumn);
 
-      theSQLCol:=TEERColumn.Create(nil);
-      try
-        for j:=0 to GetColumnCountFromSQLCmd(sqlcmd)-1 do
-        begin
-          GetColumnFromSQLCmd(sqlcmd, j, theSQLCol);
-          if(theSQLCol.ColName<>'')then
-          begin
-            theCol:=TEERColumn.Create(TEERTable(DbTables[i]));
-            theCol.Assign(theSQLCol);
-          end;
-        end;
-      finally
-        theSQLCol.Free;
+        theColumn.ColName:=DMDB.SchemaSQLQuery.FieldByName('name').AsString;
+        theColumn.Obj_id:=DMMain.GetNextGlobalID;
+        theColumn.Pos:=theTable.Columns.Count;
+        theColumn.PrimaryKey:=(DMDB.SchemaSQLQuery.FieldByName('pk').AsInteger>0);
+        if(theColumn.PrimaryKey)then
+          inc(pkColCount);
+        theColumn.NotNull:=(DMDB.SchemaSQLQuery.FieldByName('colnotnull').AsInteger=1)or
+          (theColumn.PrimaryKey);
+        theColumn.AutoInc:=False;
+        theColumn.IsForeignKey:=False;
+
+        //Default value: SQLite returns it as written in the DDL,
+        //strip one pair of enclosing quotes like MySQL's SHOW FIELDS does
+        DefVal:='';
+        if(Not(DMDB.SchemaSQLQuery.FieldByName('dflt_value').IsNull))then
+          DefVal:=DMDB.SchemaSQLQuery.FieldByName('dflt_value').AsString;
+        if(Length(DefVal)>=2)and(DefVal[1]='''')and(DefVal[Length(DefVal)]='''')then
+          DefVal:=Copy(DefVal, 2, Length(DefVal)-2);
+        if(CompareText(DefVal, 'NULL')<>0)then
+          theColumn.DefaultValue:=DefVal;
+
+        //Datatype
+        DeclType:=DMDB.SchemaSQLQuery.FieldByName('type').AsString;
+        theDatatype:=TEERDatatype(GetSQLiteDatatype(EERModel, DeclType, DatatypeSubst, DatatypeParams));
+        theColumn.idDatatype:=theDatatype.id;
+        theColumn.DatatypeParams:=DatatypeParams;
+
+        //Get Options (UNSIGNED, ZEROFILL, ...)
+        for j:=0 to theDatatype.OptionCount-1 do
+          theColumn.OptionSelected[j]:=
+            (Pos(UpperCase(theDatatype.Options[j]), UpperCase(DeclType))>0);
+
+        DMDB.SchemaSQLQuery.Next;
       end;
+      DMDB.SchemaSQLQuery.Close;
+
+      //AUTOINCREMENT: only valid for a single INTEGER PRIMARY KEY column
+      if(HasAutoInc)and(pkColCount=1)then
+        for j:=0 to theTable.Columns.Count-1 do
+          if(TEERColumn(theTable.Columns[j]).PrimaryKey)then
+            TEERColumn(theTable.Columns[j]).AutoInc:=True;
+
+      //Build the PRIMARY index from the PK columns (an INTEGER PRIMARY KEY
+      //has no entry in pragma_index_list)
+      theTable.CheckPrimaryIndex;
+
+      //Indices (skip the PK autoindex, handled above)
+      prevIndex:='';
+      theIndex:=nil;
+      DMDB.SchemaSQLQuery.SQL.Text:='SELECT il.seq AS idxseq, il.name AS idxname, '+
+        'il."unique" AS idxunique, il.origin AS idxorigin, ii.seqno AS colseq, '+
+        'ii.name AS colname '+
+        'FROM pragma_index_list('''+quotedName+''') il '+
+        'JOIN pragma_index_info(il.name) ii '+
+        'WHERE il.origin<>''pk'' ORDER BY il.seq, ii.seqno';
+      DMDB.SchemaSQLQuery.Open;
+      while(Not(DMDB.SchemaSQLQuery.EOF))do
+      begin
+        if(prevIndex<>DMDB.SchemaSQLQuery.FieldByName('idxname').AsString)then
+        begin
+          theIndex:=TEERIndex.Create(theTable);
+          theIndex.Obj_id:=DMMain.GetNextGlobalID;
+          theIndex.IndexName:=DMDB.SchemaSQLQuery.FieldByName('idxname').AsString;
+          //autoindexes of UNIQUE constraints have reserved names
+          if(Pos('sqlite_autoindex_', theIndex.IndexName)=1)then
+            theIndex.IndexName:=theTable.ObjName+'_unique_'+
+              DMDB.SchemaSQLQuery.FieldByName('idxseq').AsString;
+          if(DMDB.SchemaSQLQuery.FieldByName('idxunique').AsInteger=1)then
+            theIndex.IndexKind:=ik_UNIQUE_INDEX
+          else
+            theIndex.IndexKind:=ik_INDEX;
+          theTable.Indices.Add(theIndex);
+          theIndex.Pos:=theTable.Indices.Count-1;
+        end;
+
+        //expression indexes have no column name
+        if(Not(DMDB.SchemaSQLQuery.FieldByName('colname').IsNull))then
+        begin
+          theColumn:=TEERColumn(theTable.GetColumnByName(
+            DMDB.SchemaSQLQuery.FieldByName('colname').AsString));
+          if(theColumn<>nil)then
+            theIndex.Columns.Add(IntToStr(theColumn.Obj_id));
+        end;
+
+        prevIndex:=DMDB.SchemaSQLQuery.FieldByName('idxname').AsString;
+        DMDB.SchemaSQLQuery.Next;
+      end;
+      DMDB.SchemaSQLQuery.Close;
+
+      theTable.RefreshObj;
     end;
 
 
@@ -1353,6 +1449,105 @@ begin
 
     if(StatusLbl<>nil)then
     begin
+      StatusLbl.Caption:=DMMain.GetTranslatedMessage('Building Relations...', 149);
+      StatusLbl.Refresh;
+      Application.ProcessMessages;
+    end;
+    if(BuildRelations)then
+    begin
+      //1. Native relations from the FOREIGN KEY constraints
+      //   (PRAGMA foreign_key_list: one row per column pair, grouped by id)
+      for i:=0 to DbTables.Count-1 do
+      begin
+        theTable:=TEERTable(DbTables[i]);
+        quotedName:=StringReplace(theTable.ObjName, '''', '''''', [rfReplaceAll]);
+
+        DMDB.SchemaSQLQuery.SQL.Text:='SELECT id AS fkid, seq AS fkseq, '+
+          '"table" AS reftable, "from" AS fromcol, "to" AS tocol, '+
+          'on_update, on_delete FROM pragma_foreign_key_list('''+quotedName+''') '+
+          'ORDER BY id, seq';
+        DMDB.SchemaSQLQuery.Open;
+        while(Not(DMDB.SchemaSQLQuery.EOF))do
+        begin
+          fkId:=DMDB.SchemaSQLQuery.FieldByName('fkid').AsString;
+          parentTbl:=TEERTable(EERModel.GetEERObjectByName(EERTable,
+            DMDB.SchemaSQLQuery.FieldByName('reftable').AsString));
+
+          //Referenced table not in the model (or self reference): skip this FK
+          if(parentTbl=nil)or(parentTbl=theTable)then
+          begin
+            while(Not(DMDB.SchemaSQLQuery.EOF))and
+              (DMDB.SchemaSQLQuery.FieldByName('fkid').AsString=fkId)do
+              DMDB.SchemaSQLQuery.Next;
+            continue;
+          end;
+
+          theRel:=TEERRel(EERModel.NewRelation(rk_1nNonId, parentTbl, theTable, False));
+          theRel.FKFields.Clear;
+          theRel.FKFieldsComments.Clear;
+          theRel.CreateRefDef:=True;
+          theRel.RefDef.Values['OnDelete']:=
+            SQLiteRefActionCode(DMDB.SchemaSQLQuery.FieldByName('on_delete').AsString);
+          theRel.RefDef.Values['OnUpdate']:=
+            SQLiteRefActionCode(DMDB.SchemaSQLQuery.FieldByName('on_update').AsString);
+
+          //Build PK - FK Mapping
+          AllFKColsArePK:=True;
+          pkCount:=0;
+          while(Not(DMDB.SchemaSQLQuery.EOF))and
+            (DMDB.SchemaSQLQuery.FieldByName('fkid').AsString=fkId)do
+          begin
+            fkColName:=DMDB.SchemaSQLQuery.FieldByName('fromcol').AsString;
+            pkColName:='';
+            if(Not(DMDB.SchemaSQLQuery.FieldByName('tocol').IsNull))then
+              pkColName:=DMDB.SchemaSQLQuery.FieldByName('tocol').AsString;
+            //"to" is NULL when the FK references the parent's PK implicitly:
+            //take the parent's PK columns in order
+            if(pkColName='')then
+              for j:=0 to parentTbl.Columns.Count-1 do
+                if(TEERColumn(parentTbl.Columns[j]).PrimaryKey)then
+                begin
+                  if(pkCount=DMDB.SchemaSQLQuery.FieldByName('fkseq').AsInteger)then
+                  begin
+                    pkColName:=TEERColumn(parentTbl.Columns[j]).ColName;
+                    break;
+                  end;
+                  inc(pkCount);
+                end;
+
+            theRel.FKFields.Add(pkColName+'='+fkColName);
+            theRel.FKFieldsComments.Add('');
+
+            theColumn:=TEERColumn(theTable.GetColumnByName(fkColName));
+            if(theColumn<>nil)then
+            begin
+              theColumn.IsForeignKey:=True;
+              if(Not(theColumn.PrimaryKey))then
+                AllFKColsArePK:=False;
+            end
+            else
+              AllFKColsArePK:=False;
+
+            DMDB.SchemaSQLQuery.Next;
+          end;
+
+          //FK columns that are all part of the child's PK: identifying relation
+          if(AllFKColsArePK)then
+            theRel.RelKind:=rk_1n;
+
+          theRel.SrcTbl.RefreshRelations;
+          theRel.DestTbl.RefreshRelations;
+        end;
+        DMDB.SchemaSQLQuery.Close;
+      end;
+
+      //2. Guess the remaining ones by name / primary key like the other
+      //   drivers do, without duplicating the native ones
+      EERReverseEngineerMakeRelations(EERModel, DbTables, BuildRelUsingPrimKey, True);
+    end;
+
+    if(StatusLbl<>nil)then
+    begin
       StatusLbl.Caption:=DMMain.GetTranslatedMessage('Creating Standard Inserts...', 150);
       StatusLbl.Refresh;
       Application.ProcessMessages;
@@ -1364,6 +1559,88 @@ begin
   finally
     DbTables.Free;
   end;
+end;
+
+function TDMDBEER.GetSQLiteDatatype(theModel: Pointer; DeclType: string; DatatypeSubst: TStringList; var DatatypeParams: string): Pointer;
+var EERModel: TEERModel;
+  DatatypeName, s: string;
+  theDatatype: TEERDatatype;
+begin
+  EERModel:=theModel;
+
+  //Split "Varchar(45) UNSIGNED" into name "Varchar", params "(45)"
+  DatatypeName:=Trim(DeclType);
+  DatatypeParams:='';
+  if(Pos('(', DatatypeName)>0)then
+  begin
+    if(Pos(')', DatatypeName)>Pos('(', DatatypeName))then
+      DatatypeParams:=Copy(DatatypeName, Pos('(', DatatypeName),
+        Pos(')', DatatypeName)-Pos('(', DatatypeName)+1);
+    DatatypeName:=Trim(Copy(DatatypeName, 1, Pos('(', DatatypeName)-1));
+  end;
+
+  //Exact name (with substitution list), e.g. DOUBLE PRECISION
+  s:=DatatypeName;
+  if(Assigned(DatatypeSubst))then
+    if(DatatypeSubst.Values[DatatypeName]<>'')then
+      s:=DatatypeSubst.Values[DatatypeName];
+  theDatatype:=EERModel.GetDataTypeByName(s);
+
+  //First word only, e.g. "INT UNSIGNED" -> INT
+  if(theDatatype=nil)and(Pos(' ', DatatypeName)>0)then
+  begin
+    s:=Copy(DatatypeName, 1, Pos(' ', DatatypeName)-1);
+    if(Assigned(DatatypeSubst))then
+      if(DatatypeSubst.Values[s]<>'')then
+        s:=DatatypeSubst.Values[s];
+    theDatatype:=EERModel.GetDataTypeByName(s);
+  end;
+
+  //Unknown declared type: follow SQLite's type affinity rules
+  if(theDatatype=nil)then
+  begin
+    s:=UpperCase(DatatypeName);
+    if(s='')or(Pos('BLOB', s)>0)then
+      theDatatype:=EERModel.GetDataTypeByName('BLOB')
+    else if(Pos('INT', s)>0)then
+      theDatatype:=EERModel.GetDataTypeByName('INTEGER')
+    else if(Pos('CHAR', s)>0)or(Pos('CLOB', s)>0)or(Pos('TEXT', s)>0)or(Pos('STRING', s)>0)then
+    begin
+      if(DatatypeParams<>'')then
+        theDatatype:=EERModel.GetDataTypeByName('VARCHAR')
+      else
+        theDatatype:=EERModel.GetDataTypeByName('TEXT');
+    end
+    else if(Pos('REAL', s)>0)or(Pos('FLOA', s)>0)or(Pos('DOUB', s)>0)then
+      theDatatype:=EERModel.GetDataTypeByName('FLOAT')
+    else if(Pos('BOOL', s)>0)then
+      theDatatype:=EERModel.GetDataTypeByName('BOOL')
+    else if(Pos('DATE', s)>0)or(Pos('TIME', s)>0)then
+      theDatatype:=EERModel.GetDataTypeByName('DATETIME')
+    else
+      theDatatype:=EERModel.GetDataTypeByName('DECIMAL');
+  end;
+
+  if(theDatatype=nil)then
+    theDatatype:=TEERDatatype(EERModel.GetDataType(EERModel.DefaultDataType));
+
+  GetSQLiteDatatype:=theDatatype;
+end;
+
+function TDMDBEER.SQLiteRefActionCode(action: string): string;
+begin
+  //Codes as used by TEERRel.RefDef (see TEERTable.GetSQLCreateCode)
+  action:=UpperCase(Trim(action));
+  if(action='RESTRICT')then
+    SQLiteRefActionCode:='0'
+  else if(action='CASCADE')then
+    SQLiteRefActionCode:='1'
+  else if(action='SET NULL')then
+    SQLiteRefActionCode:='2'
+  else if(action='SET DEFAULT')then
+    SQLiteRefActionCode:='4'
+  else
+    SQLiteRefActionCode:='3'; //NO ACTION
 end;
 
 procedure TDMDBEER.EERMSSQLReverseEngineer(theModel: Pointer; DBConn: Pointer; theTables: TStringList; XCount: integer; BuildRelations: Boolean; BuildRelUsingPrimKey: Boolean; DatatypeSubst: TStringList; StatusLbl: TLabel = nil; CreateStdInserts: Boolean = False; limitStdIns: integer = 0; CollapseTables: Boolean = False);
@@ -1743,11 +2020,33 @@ begin
 end;
 
 
-procedure TDMDBEER.EERReverseEngineerMakeRelations(theModel: Pointer; theTables: TList; BuildRelUsingPrimKey: Boolean);
+procedure TDMDBEER.EERReverseEngineerMakeRelations(theModel: Pointer; theTables: TList; BuildRelUsingPrimKey: Boolean; SkipExisting: Boolean = False);
 var i, j, k, l: integer;
   EERModel: TEERModel;
   srcPKIndex: TEERIndex;
   FieldFound, AllFieldsFound, AllFieldsPKs: Boolean;
+
+  //SkipExisting: don't add a second relation between two tables that
+  //already got one (e.g. from the database's own FOREIGN KEY constraints)
+  function RelationExists(SrcTbl, DestTbl: TEERTable): Boolean;
+  var m: integer;
+  begin
+    RelationExists:=False;
+    if(Not(SkipExisting))then
+      exit;
+    for m:=0 to SrcTbl.RelStart.Count-1 do
+      if(TEERRel(SrcTbl.RelStart[m]).DestTbl=DestTbl)then
+      begin
+        RelationExists:=True;
+        exit;
+      end;
+    for m:=0 to SrcTbl.RelEnd.Count-1 do
+      if(TEERRel(SrcTbl.RelEnd[m]).SrcTbl=DestTbl)then
+      begin
+        RelationExists:=True;
+        exit;
+      end;
+  end;
 begin
   EERModel:=theModel;
 
@@ -1785,7 +2084,8 @@ begin
         for k:=0 to TEERTable(theTables[j]).Columns.Count-1 do
         begin
           if(CompareText('id'+TEERTable(theTables[i]).ObjName,
-            TEERColumn(TEERTable(theTables[j]).Columns[k]).ColName)=0)then
+            TEERColumn(TEERTable(theTables[j]).Columns[k]).ColName)=0)and
+            (Not(RelationExists(TEERTable(theTables[i]), TEERTable(theTables[j]))))then
           begin
             //New Relation
             EERModel.NewRelation(rk_1nNonId, theTables[i], theTables[j], False);
@@ -1821,7 +2121,8 @@ begin
         end;
 
         //New Relation
-        if(AllFieldsFound)then
+        if(AllFieldsFound)and
+          (Not(RelationExists(TEERTable(theTables[i]), TEERTable(theTables[j]))))then
         begin
           if(AllFieldsPKs)then
             //New 1n Relation
@@ -2960,16 +3261,6 @@ begin
       s:=Copy(s, 1, Pos('//', s));
 
   result := s;
-end;
-
-function TDMDBEER.GetColumnCountFromSQLCmd(cmd: string): integer;
-begin
-  GetColumnCountFromSQLCmd:=0;
-end;
-
-procedure TDMDBEER.GetColumnFromSQLCmd(cmd: string; i: integer; var col: TEERColumn);
-begin
-  col.ColName:='';
 end;
 
 
