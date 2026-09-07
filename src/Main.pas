@@ -435,6 +435,10 @@ type
   private
     { Private declarations }
     SelfTestTmr: TTimer;
+    // --selftest sequencing: the test may only start from the main loop's
+    // idle handler once ShowPalettesTmrTimer has finished (see SelfTestTmrTimer)
+    StartupComplete: Boolean;
+    SelfTestStarted: Boolean;
     KeyWasUp: Boolean;
 
     TabHidePalettes: TList;
@@ -452,6 +456,8 @@ type
     ActivateDeactivateCounter: integer;
     ApplicationIsDeactivated: Boolean;
     procedure SelfTestTmrTimer(Sender: TObject);
+    procedure SelfTestIdleHandler(Sender: TObject; var Done: Boolean);
+    procedure RunSelfTestNow;
   public
     { Public declarations }
     FActiveEERForm: TCustomForm;
@@ -559,11 +565,18 @@ begin
   ImportERwin41XMLModelMI.Enabled:=False;
 {$ENDIF}
 
+  // The form is designed maximized. Without a window manager (bare Xvfb,
+  // e.g. the headless --selftest) the maximize request is never honoured and
+  // LCL/GTK2 loop forever renegotiating the window size, so use a normal
+  // window there (RestoreWinPos sizes it to fit the screen).
+  if not DMMain.HasWindowManager then
+    WindowState := wsNormal;
+
   // --selftest: schedule automatic UI test after full initialization
   if HasSelfTestParam then
   begin
     SelfTestTmr := TTimer.Create(Self);
-    SelfTestTmr.Interval := 2000; // 2 second delay for full init
+    SelfTestTmr.Interval := 250; // polls until ShowPalettesTmrTimer is done, then defers to OnIdle
     SelfTestTmr.Enabled := True;
     SelfTestTmr.OnTimer := SelfTestTmrTimer;
   end;
@@ -1720,6 +1733,9 @@ begin
   //SplashForm.Close;
 
   Cursor:=crArrow;
+
+  // Startup finished: from now on the --selftest may be started (from idle)
+  StartupComplete:=True;
 end;
 
 procedure TMainForm.wtPointerSBtnClick(Sender: TObject);
@@ -3595,12 +3611,39 @@ begin
     DMMain.GetTranslatedMessage('', TPaintBox(Sender).Tag));
 end;
 
+{ The self-test must not start straight from the timer: a TTimer is a GLib
+  timeout, which fires even while startup (ShowPalettesTmrTimer) is still
+  running on a slow machine, and the fixed 2 s delay used before then ran the
+  tests nested inside startup. The timer only polls until startup is complete
+  and then hands over to an OnIdle handler, which the LCL calls once all
+  message queues are drained. }
 procedure TMainForm.SelfTestTmrTimer(Sender: TObject);
+begin
+  if SelfTestStarted then
+  begin
+    SelfTestTmr.Enabled := False;
+    Exit;
+  end;
+  if not StartupComplete then
+    Exit;  // keep polling until startup has finished
+  SelfTestTmr.Enabled := False;  // One-shot
+  Application.AddOnIdleHandler(SelfTestIdleHandler, True);
+end;
+
+procedure TMainForm.SelfTestIdleHandler(Sender: TObject; var Done: Boolean);
+begin
+  Application.RemoveOnIdleHandler(SelfTestIdleHandler);
+  if SelfTestStarted then
+    Exit;
+  SelfTestStarted := True;
+  RunSelfTestNow;
+end;
+
+procedure TMainForm.RunSelfTestNow;
 var
   FailCount: Integer;
   I: Integer;
 begin
-  SelfTestTmr.Enabled := False;  // One-shot
   WriteLn('=== DBDesigner Fork Self-Test Mode ===');
   WriteLn('Running UI tests...');
   WriteLn('');

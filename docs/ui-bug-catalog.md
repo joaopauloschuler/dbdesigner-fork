@@ -48,6 +48,7 @@ Summary: 21 entries — 6 crash, 7 unreadable, 8 cosmetic.
 - **Complexity:** small-medium (regenerate the glyphs from the original `.xfm`/bitmaps or strip them).
 
 ### 5. `--selftest` under Xvfb hangs before Phase 0 at 70 % CPU, never writes the log
+- **Status:** FIXED. Cause: the main form requests `wsMaximized` (from `Main.lfm` and the ini's `MainFormState=1`) on a display without a window manager (bare Xvfb); GTK2 never grants it and LCL-gtk2/GTK2 loop forever renegotiating the toplevel size between the form's `Constraints` minimum (600x430) and the requested bounds, which starves timers/idle and makes any `Application.ProcessMessages` spin. `TDMMain.HasWindowManager` (`_NET_SUPPORTING_WM_CHECK`) now gates maximizing, `RestoreWinPos` clamps the restored size to the screen (the ini held 1878x860 from a 1920x1080 display) and defaults to the design size instead of 140x140, and the self-test starts from OnIdle after startup instead of a fixed 2 s timer. Not timing of the timer alone: the original "stdout stops after Form:" symptom was just block-buffered stdout (Log now flushes).
 - **Severity:** crash (hang)
 - **Repro:** `xvfb-run -a ./bin/DBDesignerFork --selftest`. After >60 minutes the process is still alive, `/tmp/UITestResults.log` does not exist, stdout stops after the "Form: MainForm (TMainForm)" line, and the Tips dialog is still viewable on the Xvfb display.
 - **Screenshots:** `19-selftest-root-crop.png` (Xvfb root capture; note the same black table headers as entry 7)

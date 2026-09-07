@@ -63,6 +63,7 @@ begin
   if Assigned(TestLog) then
     TestLog.Add(Msg);
   WriteLn(Msg);
+  Flush(Output); // stdout is block-buffered when redirected; keep it live for hang diagnosis
 end;
 
 procedure LogSeparator;

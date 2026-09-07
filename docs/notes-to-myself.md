@@ -583,3 +583,34 @@ in the catalog yet). Workaround: one app launch per dialog (`fix16-cycle.sh` in 
 scratchpad: launch, close Tips at (782,617), Options menu at (364,82), item at
 (400,140)/(400,107), click tree rows at +75/+22+14*i, `import -window`, kill by PID).
 Model Options takes 3-5 s to appear (font enumeration); poll `xwininfo -root -tree`.
+
+## Fix: `--selftest` hang under Xvfb before Phase 0 (ui-bug-catalog #5)
+
+Cause: the main form is maximized (`Main.lfm` `WindowState = wsMaximized`, and
+`RestoreWinPos` re-applies `wsMaximized` from `MainFormState=1`). Under `xvfb-run` there is
+no window manager, so the maximize request is never answered; LCL-gtk2 and GTK2 then
+renegotiate the toplevel size forever between the form's `Constraints.MinWidth/MinHeight`
+(600x430) and the requested bounds (1878x890 from the ini saved on a 1920x1080 display, or
+the docked-content requisition 943x681 with a fresh HOME where the old default was 140x140).
+The loop lives in GTK's resize idle, so timers still fire but `Application.Idle` never runs
+and every `Application.ProcessMessages` (which loops until no GTK source is pending) spins at
+~70 % CPU. Whether the loop is entered depends on timing (X round trips on a loaded 2-core box,
+fontconfig cache on a fresh HOME), which is why the notes' 63-PASS run had worked and the
+catalog run did not. Found with an `LD_PRELOAD` shim sampling backtraces at
+`gtk_window_resize` (no gdb/perf available): the window "DBDesigner Fork" alternated
+600x430 / 1878x890 thousands of times per second, always from `SetWindowSizeAndPosition`.
+
+Fix (src/MainDM.pas, src/Main.pas, src/UITestRunner.pas):
+- `TDMMain.HasWindowManager` checks `_NET_SUPPORTING_WM_CHECK` on the root window (gdk2,
+  cached). `FormCreate` sets `WindowState:=wsNormal` and `RestoreWinPos` skips `wsMaximized`
+  when it is False.
+- `RestoreWinPos` clamps the restored width/height to the screen and to the form constraints
+  and defaults to the design size (was 140x140).
+- The self-test no longer starts from a fixed 2 s timer: the timer polls until
+  `ShowPalettesTmrTimer` has set `StartupComplete`, then `Application.AddOnIdleHandler`
+  starts `RunSelfTestNow` (re-entrancy guarded by `SelfTestStarted`).
+- `UITestRunner.Log` flushes stdout so a redirected run shows progress live.
+
+Verified: four parallel `xvfb-run -a ./bin/DBDesignerFork --selftest` runs (real HOME x2,
+empty HOME, copy of the ini) all finish with 93 PASS / 0 FAIL, exit 0; before the fix the
+empty-HOME and loaded runs hung 100 % of the time (A/B series in the session log).

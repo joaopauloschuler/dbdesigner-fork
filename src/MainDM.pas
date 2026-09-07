@@ -144,6 +144,10 @@ type
     procedure SaveWinPos(win: TForm; DoSize: Boolean);
     //Recalls Windowposition from INI File
     procedure RestoreWinPos(win: TForm; DoSize: Boolean);
+    //True when an (EWMH) window manager runs on the display. Without one
+    //(e.g. bare Xvfb) a maximize request is never answered and LCL/GTK2 end
+    //up in an endless resize loop, so callers must not use wsMaximized then.
+    function HasWindowManager: Boolean;
 
 
     //Create prozess
@@ -305,7 +309,37 @@ type
 implementation
 
 uses {$IFDEF LINUX}BaseUnix, Unix, {$ENDIF}
+  {$IFDEF LCLGTK2}glib2, gdk2, {$ENDIF}
   EditorString, StrUtils;
+
+var
+  WMChecked: Boolean = False;
+  WMPresent: Boolean = True;
+
+function TDMMain.HasWindowManager: Boolean;
+{$IFDEF LCLGTK2}
+const
+  XA_WINDOW = 33;
+var
+  AtomType: TGdkAtom;
+  AFormat, ALength: gint;
+  Data: Pointer;
+{$ENDIF}
+begin
+  if(Not(WMChecked))then
+  begin
+    WMChecked:=True;
+{$IFDEF LCLGTK2}
+    Data:=nil;
+    WMPresent:=gdk_property_get(gdk_get_default_root_window,
+      gdk_atom_intern('_NET_SUPPORTING_WM_CHECK', False), XA_WINDOW,
+      0, 4, 0, @AtomType, @AFormat, @ALength, @Data);
+    if(Data<>nil)then
+      g_free(Data);
+{$ENDIF}
+  end;
+  Result:=WMPresent;
+end;
 
 {$R *.lfm}
 
@@ -759,7 +793,7 @@ var theIni: TMemIniFile;
 {$IFDEF LINUX}
   theTimer: TTimer;
 {$ENDIF}
-  WinPos: TPoint;
+  WinPos, WinSize: TPoint;
 begin
   winname:=win.name;
 
@@ -811,11 +845,26 @@ begin
 
       if(DoSize)then
       begin
-        win.Width:=
-          theIni.ReadInteger('WindowPositions', winname+'Width', 140);
-        win.Height:=
-          theIni.ReadInteger('WindowPositions', winname+'Height', 140);
-        if(theIni.ReadInteger('WindowPositions', winname+'State', 0)=1)then
+        // Default to the form's design size (not 140x140, which is smaller
+        // than the docked content) and never restore a size that does not fit
+        // the current screen: the geometry was saved on another display and a
+        // window larger than the screen makes LCL/GTK2 fight over the size
+        // (endless resize loop, see docs/ui-bug-catalog.md #5).
+        WinSize.X:=theIni.ReadInteger('WindowPositions', winname+'Width', win.Width);
+        WinSize.Y:=theIni.ReadInteger('WindowPositions', winname+'Height', win.Height);
+        if(WinSize.X>Screen.Width-win.Left)then
+          WinSize.X:=Screen.Width-win.Left;
+        if(WinSize.Y>Screen.Height-win.Top)then
+          WinSize.Y:=Screen.Height-win.Top;
+        if(WinSize.X<win.Constraints.MinWidth)then
+          WinSize.X:=win.Constraints.MinWidth;
+        if(WinSize.Y<win.Constraints.MinHeight)then
+          WinSize.Y:=win.Constraints.MinHeight;
+        win.Width:=WinSize.X;
+        win.Height:=WinSize.Y;
+        //Only maximize when a window manager can actually do it
+        if(theIni.ReadInteger('WindowPositions', winname+'State', 0)=1)and
+          (HasWindowManager)then
           win.WindowState:=wsMaximized;
       end;
     except
