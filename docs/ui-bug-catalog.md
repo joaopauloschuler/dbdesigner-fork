@@ -105,6 +105,7 @@ Summary: 21 entries — 6 crash, 7 unreadable, 8 cosmetic.
 - **Screenshots:** `16-table-editor.png`, `16a-table-grid-header.png`
 - **Suspected files:** `src/EditorTable.pas` `ColumnGridDrawCell` (lines 698-850): header text is drawn at `Rect.Left+1-18` (lines 845/847, relying on CLX clipping/offset behaviour), and every icon/checkbox comes from `DatatypesImgList.Draw(...)` (lines 735-807) which draws nothing. Same image-list problem is visible in the DB-connection tree (entry 15) and the Indices "column" list is empty. Check `src/EditorTable.lfm:968` (`DatatypesImgList` bitmap stream is a CLX-format `Bitmap = {` blob that LCL may load as empty).
 - **Complexity:** medium (regenerate image lists in LCL format; fix header x offsets).
+- **Status:** FIXED. Cause: `src/imgl_to_lcl.py` assumed the Windows mask convention (1 = transparent) but the Kylix/Qt streams store 1 = opaque, so every coloured pixel got alpha 0; the converter now auto-detects the mask polarity and `EditorTable.lfm` was regenerated. The `-18` header offset (CLX did not clip the fixed row) was replaced by `Rect.Left+1`. Other image lists (#15) have the same cause and can be regenerated with the fixed script.
 
 ### 12. Datatype Editor "Datatype Name" field shows `ssssssssssssssssINTEGER`
 - **Severity:** unreadable
@@ -159,6 +160,7 @@ Summary: 21 entries — 6 crash, 7 unreadable, 8 cosmetic.
 - **Screenshots:** `16-table-editor-pages.png` (Advanced), `26-datatype-editor.png`
 - **Suspected files:** `src/EditorTable.lfm` (RAID group box), `src/EditorDatatype.lfm` (Parameter group height, label widths). Same font-metric cause as 16.
 - **Complexity:** small
+- **Status:** PARTIALLY FIXED (Table Editor part). RAID group box re-laid out in `src/EditorTable.lfm` (wider box, right-justified labels with `AutoSize = False` and explicit `Height`, 90 px combo/edits, "kB" inside the box). Datatype Editor part still open.
 
 ### 19. Visual Options "Header Preview" is a blank grey box
 - **Severity:** cosmetic

@@ -492,3 +492,38 @@ dropdown lists all families (`fix10-model-after.png`); typing "Z003" + OK re-ren
 table/relation label in that font (`fix10-canvas-after.png`), i.e. `EERModel.RefreshFont`
 does take effect; DBDesigner Options > Database Options shows "Helvetica" with a populated
 list (`fix10-dbd-options-database.png`).
+
+## Fix: Table Editor column grid (ui-bug-catalog #11) and Advanced page (#18, Table Editor part)
+
+Cause (icons): `src/imgl_to_lcl.py` (commit d7ece4f) converted the CLX `IMGL` image-list
+streams assuming the Windows mask convention "1 = transparent". Six of the seven streams
+are Kylix/Qt `QBitmap` masks where color0 = transparent and color1 = opaque, so every
+coloured pixel in `EditorTable.lfm`'s `DatatypesImgList` got alpha 0 and only the white
+background was opaque -> `DatatypesImgList.Draw` painted nothing visible. (PaletteDatatypes
+is the one list with the VCL convention, which is why the Datatypes palette icons worked.)
+The converter now auto-detects the polarity per stream: the transparent side of a mask
+covers exactly one key colour (white), so the mask value with a single distinct colour
+under it is the transparent one. It also accepts .lfm names on the command line
+(`python3 imgl_to_lcl.py EditorTable.lfm`) to regenerate one list. Only EditorTable.lfm
+was regenerated here; running it without arguments would fix the DBConnSelect,
+EERPlaceModel, EERStoreInDatabase, EditorQuery and PaletteModel lists too (catalog #15).
+
+Cause (headers): `ColumnGridDrawCell` drew "Column Name"/"DataType" at `Rect.Left+1-18`
+so the caption would span the 20 px icon column on the left (CLX did not clip the fixed
+row to the cell). LCL clips OnDrawCell output to the cell, so the first 18 px of the
+caption vanished ("umn Name", "aType"). Drawn at `Rect.Left+1` now; the icon columns keep
+their empty header.
+
+Cause (Advanced page): the RAID group box of `TabSheet1` was laid out for Tahoma 8. Under
+LCL the auto-sized "Use Table RAID" check box ran into "RAID Type:" (labels had a `Width`
+and `Alignment = taRightJustify` but no `AutoSize = False`, so the alignment was ignored),
+the 73 px combo showed "STRI" and "kB" fell outside the 283 px box. Layout only
+(`src/EditorTable.lfm`): box moved to Left 236/Top 0/Width 298, labels right-justified
+with `AutoSize = False` + explicit `Height = 15` (an LCL label without a Height is
+0 px high when AutoSize is off), edits/combo 90 px wide, "kB" at 279.
+Verified on DISPLAY=:0: `fix11-grid3.png`, `fix11-advanced3-c.png`.
+
+Gotcha while testing: `~/.DBDesigner4/DBDesignerFork_Settings.ini` `WorkMode=2` (Query
+mode, written by whichever instance exits last, including --selftest runs) makes a table
+double-click open "Select Database Connection" instead of the Table Editor. Set
+`WorkMode=1` or press Ctrl+Tab first.

@@ -143,6 +143,21 @@ def extract_icons_rgba(icon_w, icon_h, count, color_rows, mask_rows, bmp_w, bmp_
     """Extract individual icons as RGBA pixel data from the tiled grid."""
     cols = bmp_w // icon_w
     
+    # Mask polarity is NOT consistent between the streams: Kylix/Qt streams
+    # (QBitmap: color0 = transparent, color1 = opaque) store 1 = opaque, while
+    # lists created under Delphi/VCL store the Windows convention 1 = transparent.
+    # The transparent side of the mask always covers one uniform key colour
+    # (white), so the side with a single distinct colour is the transparent one.
+    transparent_bit = 1
+    if mask_rows is not None:
+        colours = [set(), set()]
+        for y in range(bmp_h):
+            for x in range(bmp_w):
+                colours[mask_rows[y][x]].add(color_rows[y][x])
+        if len(colours[0]) <= 1 and len(colours[1]) > 1:
+            transparent_bit = 0
+        print(f"  Mask polarity: bit {transparent_bit} = transparent")
+    
     icons = []
     for idx in range(count):
         col = idx % cols
@@ -156,10 +171,9 @@ def extract_icons_rgba(icon_w, icon_h, count, color_rows, mask_rows, bmp_w, bmp_
                 
                 r, g, b = color_rows[src_y][src_x]
                 
-                # Mask: in CLX, mask bit=1 means transparent, 0 means opaque
                 if mask_rows is not None:
                     mask_bit = mask_rows[src_y][src_x]
-                    alpha = 0 if mask_bit else 255
+                    alpha = 0 if mask_bit == transparent_bit else 255
                 else:
                     alpha = 255
                 
@@ -292,7 +306,10 @@ CONVERSIONS = [
 
 
 if __name__ == '__main__':
+    # Optional arguments restrict the run to the named .lfm files.
     for xfm, lfm, comp in CONVERSIONS:
+        if len(sys.argv) > 1 and lfm not in sys.argv[1:]:
+            continue
         try:
             hex_block = convert_imgl_to_lcl(xfm, comp)
             update_lfm_bitmap(lfm, comp, hex_block)

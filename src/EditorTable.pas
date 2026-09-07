@@ -842,9 +842,9 @@ begin
       begin
         Case ACol of
           1:
-            TextOut(Rect.Left+1-18, Rect.Top+2, ColumnGridColumnCaptions[0]);
+            TextOut(Rect.Left+1, Rect.Top+2, ColumnGridColumnCaptions[0]);
           3:
-            TextOut(Rect.Left+1-18, Rect.Top+2, ColumnGridColumnCaptions[1]);
+            TextOut(Rect.Left+1, Rect.Top+2, ColumnGridColumnCaptions[1]);
           4:
             TextOut(Rect.Left+1, Rect.Top+2, ColumnGridColumnCaptions[2]);
           5:
