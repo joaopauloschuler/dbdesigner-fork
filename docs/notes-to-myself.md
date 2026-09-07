@@ -894,3 +894,51 @@ navigation (`Down`x4 `Right` for File > Open Recent). Shots: `fix13-*`.
   user's connection list. Now the delete is skipped when `SettingsReadOnly` is set.
   Verified: `xvfb-run -a ./bin/DBDesignerFork --selftest` -> 0 FAIL, `DBConn.ini`
   md5 unchanged.
+
+## Fix: SQLite file locked while connected, duplicate tables on reverse engineering, File > Close (sqlite-bug-catalog #13, #14, #15)
+
+- **#13**: SQLDB's `TSQLite3Connection.StartDBTransaction` issues `BEGIN` and the shim
+  never committed after reads, so the first SELECT's SHARED lock stayed until
+  Disconnect (`Close` -> `Rollback`). Now `TSQLDataSet.InternalClose`
+  (`src/clx_shims/sqlexpr.pas`) calls `TSQLConnection.ReleaseIdleTransaction`: when no
+  dataset of the connection is `Active` any more it `CommitRetaining`s (sqlite: `COMMIT`
+  + deferred `BEGIN`, which takes no lock). `CommitRetaining` rather than `Commit`
+  because `Commit` runs `CloseDataSets` on every dataset of the transaction. `TDataSet`
+  sets `dsInactive` *before* `InternalClose`, so the closing dataset does not count.
+  Query mode kept `OutputQry` open after Execute (the rows live in the client dataset),
+  so the shim `TClientDataSet.Open` (`src/clx_shims/dbclient.pas`) now closes the
+  provider dataset again if it opened it - that is what Delphi's `TDataSetProvider`
+  does too. Datasets shown live (table data editor) still hold the lock while open;
+  that is the intended "only while a dataset is open" behaviour. Plain `SQLDB.TSQLQuery`
+  instances (the `TSQLQuery` alias) are not covered, only shim `TSQLDataSet`s.
+- `tests/TestSQLExprShim.pas` gained `CheckExternalWrite`: a second shim connection
+  INSERTs while the first is idle (after a closed SELECT, and while the client dataset is
+  open) and the first connection must see the row. Old shim: "FAIL: external write blocked
+  after a closed SELECT: database is locked".
+- **#14**: neither the MySQL nor the SQLite path checked for existing names, so both now
+  skip tables already in the model (`TEERModel.GetEERObjectByName(EERTable, name)`,
+  case-insensitive) and count them in `RevEngSkippedTables`. That is a *unit variable*
+  in `DBEERDM.pas`, not a field: `DMDBEER` is never instantiated (grep: no
+  `TDMDBEER.Create`/`CreateForm`), every `DMDBEER.EER...ReverseEngineer` call runs on
+  `nil` and only survives because the methods touch no fields - my first attempt with a
+  field crashed with an access violation on `RevEngSkippedTables:=0`. The status label
+  gets "Finished. N existing table(s) skipped." and `SubmitBtnClick` shows an information
+  box, because the dialog closes itself (`ModalResult:=mrOK`) right after. Relations of
+  skipped tables are not re-derived (the `DbTables` list only holds the new tables).
+- **#15**: not reproducible, see the catalog. Menu facts learned: all File items are
+  enabled whether or not connected, so Down x9 is always "Close" (x7 Save As, x8 Save in
+  Database); the title bar shows the model's internal name from the XML, not the file
+  name, and keeps it after the last model is closed.
+- Verification on DISPLAY=:0 (`$S/fix13-*`): connect via Database > Connect to Database
+  (Down x1) or through the Reverse Engineering dialog, `sqlite3 $S/sqlite/fix13.sqlite
+  "CREATE TABLE fix13_t(x)"` and INSERTs succeed while connected and after a reverse
+  engineering run; `xvfb-run -a ./bin/DBDesignerFork --selftest` passes, `DBConn.ini`
+  md5 unchanged (the connection was temporarily pointed at a copy of the db and restored).
+- Driving notes: `xdotool search --pid <pid> --name` plus an `IsViewable` filter avoids
+  the dead windows of earlier instances; menu popups that show as `IsViewable` in
+  `xwininfo -root -tree` can still be unmapped (`xwininfo -id` says `IsUnMapped`,
+  `import` fails with "Resource temporarily unavailable"). The Reverse Engineering dialog
+  asks for a connection on open even when the app is already connected. A quick
+  backtrace for an access violation: wrap the call in `try/except`, `writeln(stderr,
+  E.Message); DumpExceptionBackTrace(stderr)` - the .lpi has DWARF3 debug info, so
+  line numbers come out.

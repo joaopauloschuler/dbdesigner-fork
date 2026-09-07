@@ -95,6 +95,10 @@ type
 
 var
   DMDBEER: TDMDBEER;
+  //Number of tables skipped by the last reverse engineering run because a
+  //table of that name was already in the model (sqlite-bug-catalog #14).
+  //A unit variable: DMDBEER is never instantiated, its methods run on nil.
+  RevEngSkippedTables: integer = 0;
 
 implementation
 
@@ -503,6 +507,8 @@ begin
     Application.ProcessMessages;
   end;
 
+  RevEngSkippedTables:=0;
+
   //Get Tables
   DbTables:=TList.Create;
   try
@@ -515,12 +521,18 @@ begin
       //get only selected tables
       if(theTables.IndexOf(DMDB.SchemaSQLQuery.Fields[0].AsString)<>-1)then
       begin
-        theTable:=EERModel.NewTable(EERModel.EERModel_Width-250, 0, False);
-        theTable.ObjName:=DMDB.SchemaSQLQuery.Fields[0].AsString;
+        //Skip tables that are already in the model (sqlite-bug-catalog #14)
+        if(EERModel.GetEERObjectByName(EERTable, DMDB.SchemaSQLQuery.Fields[0].AsString)<>nil)then
+          inc(RevEngSkippedTables)
+        else
+        begin
+          theTable:=EERModel.NewTable(EERModel.EERModel_Width-250, 0, False);
+          theTable.ObjName:=DMDB.SchemaSQLQuery.Fields[0].AsString;
 
-        //theTable.RefreshObj;
+          //theTable.RefreshObj;
 
-        DbTables.Add(theTable);
+          DbTables.Add(theTable);
+        end;
       end;
 
       DMDB.SchemaSQLQuery.Next;
@@ -707,6 +719,8 @@ begin
       EERReverseEngineerCreateStdInserts(EERModel, DbTables, limitStdIns);
 
     StatusLbl.Caption:=DMMain.GetTranslatedMessage('Finished.', 151);
+    if(RevEngSkippedTables>0)then
+      StatusLbl.Caption:=StatusLbl.Caption+' '+IntToStr(RevEngSkippedTables)+' existing table(s) skipped.';
   finally
     DbTables.Free;
   end;
@@ -1238,6 +1252,8 @@ begin
 
   DMDB.SchemaSQLQuery.ParamCheck:=False;
 
+  RevEngSkippedTables:=0;
+
   //Get Tables
   DbTables:=TList.Create;
   try
@@ -1254,11 +1270,17 @@ begin
       //get only selected tables
       if(theTables.IndexOf(DMDB.SchemaSQLQuery.FieldByName('name').AsString)<>-1)then
       begin
-        theTable:=EERModel.NewTable(EERModel.EERModel_Width-250, 0, False);
-        theTable.ObjName:=DMDB.SchemaSQLQuery.FieldByName('name').AsString;
-        //theTable.TablePrefix:=0;
+        //Skip tables that are already in the model (sqlite-bug-catalog #14)
+        if(EERModel.GetEERObjectByName(EERTable, DMDB.SchemaSQLQuery.FieldByName('name').AsString)<>nil)then
+          inc(RevEngSkippedTables)
+        else
+        begin
+          theTable:=EERModel.NewTable(EERModel.EERModel_Width-250, 0, False);
+          theTable.ObjName:=DMDB.SchemaSQLQuery.FieldByName('name').AsString;
+          //theTable.TablePrefix:=0;
 
-        DbTables.Add(theTable);
+          DbTables.Add(theTable);
+        end;
       end;
 
       DMDB.SchemaSQLQuery.Next;
@@ -1556,6 +1578,8 @@ begin
       EERReverseEngineerCreateStdInserts(EERModel, DbTables, limitStdIns);
 
     StatusLbl.Caption:=DMMain.GetTranslatedMessage('Finished.', 151);
+    if(RevEngSkippedTables>0)then
+      StatusLbl.Caption:=StatusLbl.Caption+' '+IntToStr(RevEngSkippedTables)+' existing table(s) skipped.';
   finally
     DbTables.Free;
   end;

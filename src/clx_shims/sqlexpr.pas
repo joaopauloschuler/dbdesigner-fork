@@ -30,6 +30,7 @@ type
     procedure Open;
     procedure Close; reintroduce;
     procedure ExecuteDirect(const ASQL: string); reintroduce;
+    procedure ReleaseIdleTransaction;
     property ActiveStatements: Integer read FActiveStatements;
   published
     property DriverName: string read FDriverName write SetDriverNameEx;
@@ -46,6 +47,8 @@ type
   private
     function GetSQLConnection: TSQLConnection;
     procedure SetSQLConnection(Value: TSQLConnection);
+  protected
+    procedure InternalClose; override;
   public
     procedure SetSchemaInfo(SchemaType: Integer; const SchemaObjectName, SchemaPattern: string); reintroduce;
     function ExecSQL(ExecDirect: Boolean): Integer; overload;
@@ -185,7 +188,34 @@ begin
     Transaction.Commit;
 end;
 
+procedure TSQLConnection.ReleaseIdleTransaction;
+var
+  i: Integer;
+begin
+  // dbExpress reads are auto-committed; SQLDB keeps the transaction (and with
+  // SQLite its SHARED lock, which blocks every other writer) open until an
+  // explicit commit. Once no dataset of this connection is open any more,
+  // COMMIT and re-BEGIN (deferred, takes no lock) so that the file is free
+  // while the application is connected but idle (sqlite-bug-catalog #13).
+  if (Transaction = nil) or (not Transaction.Active) then
+    Exit;
+  for i := 0 to DataSetCount - 1 do
+    if DataSets[i].Active then
+      Exit;
+  Transaction.CommitRetaining;
+end;
+
 { TSQLDataSet }
+
+procedure TSQLDataSet.InternalClose;
+var
+  Conn: TSQLConnection;
+begin
+  inherited InternalClose;
+  Conn := GetSQLConnection;
+  if (Conn <> nil) and Conn.Connected then
+    Conn.ReleaseIdleTransaction;
+end;
 
 function TSQLDataSet.GetSQLConnection: TSQLConnection;
 begin

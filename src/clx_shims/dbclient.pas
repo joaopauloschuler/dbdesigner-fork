@@ -66,7 +66,7 @@ end;
 
 procedure TCustomClientDataSet.Open;
 var
-  WasReadOnly: Boolean;
+  WasReadOnly, SourceWasActive: Boolean;
 begin
   if Active then
     Exit;
@@ -84,7 +84,8 @@ begin
   // Open the provider's dataset; its exception (SQL error, no connection,
   // ...) must reach the caller - silently opening an empty buffer would only
   // give TBufDataset's "Missing (compatible) underlying dataset".
-  if not FSourceDataSet.Active then
+  SourceWasActive := FSourceDataSet.Active;
+  if not SourceWasActive then
     FSourceDataSet.Open;
 
   // CopyFromDataset builds the FieldDefs from the source fields, calls
@@ -96,6 +97,11 @@ begin
     CopyFromDataset(FSourceDataSet, True);
   finally
     ReadOnly := WasReadOnly;
+    // Like Delphi's TDataSetProvider: a source dataset the provider opened
+    // for the fetch is closed again afterwards (the rows live in this
+    // buffer), so no statement/lock stays behind (sqlite-bug-catalog #13).
+    if not SourceWasActive then
+      FSourceDataSet.Close;
   end;
   First;
 end;
