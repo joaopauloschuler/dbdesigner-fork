@@ -26,6 +26,7 @@ type
     procedure UpdateConnectorType;
     procedure ApplyParamsToConnection;
   public
+    constructor Create(AOwner: TComponent); override;
     procedure Open;
     procedure Close; reintroduce;
     procedure ExecuteDirect(const ASQL: string); reintroduce;
@@ -72,6 +73,17 @@ type
 implementation
 
 { TSQLConnection }
+
+constructor TSQLConnection.Create(AOwner: TComponent);
+begin
+  inherited Create(AOwner);
+  // dbExpress connections carry an implicit transaction, SQLDB needs an
+  // explicit TSQLTransaction. Own one from the start so that datasets linked
+  // to this connection while the .lfm is streamed (Database = SQLConn) or
+  // before Open inherit it in TCustomSQLQuery.SetDatabase - otherwise their
+  // Transaction stays nil and the first Open raises "Transaction not set".
+  Transaction := TSQLTransaction.Create(Self);
+end;
 
 procedure TSQLConnection.SetDriverNameEx(const Value: string);
 begin
@@ -151,22 +163,7 @@ begin
   // Map Params to SQLDB connection properties
   ApplyParamsToConnection;
 
-  // Ensure a transaction is available (SQLDB requires one)
-  if Transaction = nil then
-  begin
-    Transaction := TSQLTransaction.Create(Self);
-    Transaction.DataBase := Self;
-  end;
-
-  try
-    inherited;
-  except
-    on E: Exception do
-    begin
-      // Re-raise with more context
-      raise;
-    end;
-  end;
+  inherited Open;
 end;
 
 procedure TSQLConnection.Close;

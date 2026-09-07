@@ -29,6 +29,17 @@ begin
     Conn.DriverName := 'SQLite';
     Conn.Params.Values['Database'] := DBPath;
 
+    // Link the dataset BEFORE the connection is opened, exactly as the
+    // .lfm streaming of DBDM.lfm (Database = SQLConn) does. SQLDB copies the
+    // connection's transaction into the dataset at this moment, so the
+    // connection must already own one (sqlite-bug-catalog #2).
+    DS.SQLConnection := Conn;
+    if DS.Transaction = nil then
+    begin
+      WriteLn('FAIL: dataset linked before Open has no transaction');
+      Halt(1);
+    end;
+
     // Open connection (shim maps DriverName→ConnectorType)
     Conn.Open;
     WriteLn('Connected via shim DriverName="SQLite" → ConnectorType="', Conn.ConnectorType, '"');
@@ -44,8 +55,7 @@ begin
     Conn.ExecuteDirect('INSERT INTO customers VALUES (3, ''Charlie'', ''charlie@example.com'')');
     WriteLn('Inserted 3 rows');
 
-    // Query using our TSQLDataSet shim
-    DS.SQLConnection := Conn;  // Uses our shim's SQLConnection property
+    // Query using our TSQLDataSet shim (linked above)
     DS.SQL.Text := 'SELECT * FROM customers ORDER BY id';
     DS.Open;
 

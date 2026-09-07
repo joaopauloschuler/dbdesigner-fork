@@ -405,7 +405,7 @@ object DBConnSelectForm: TDBConnSelectForm
       TabOrder = 1
       OnAdvancedCustomDrawItem = DBConnTVCustomDrawItem
       OnExpanding = DBConnTVExpanding
-      OnClick = DBConnTVItemClick
+      OnClick = DBConnTVClick
       OnMouseDown = DBConnTVMouseDown
     end
   end

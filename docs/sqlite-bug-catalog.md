@@ -19,14 +19,15 @@ keys / indexes / AUTOINCREMENT / row counts per table.
 |---|---|---|
 | A | Export `order.xml` to SQL create script, target "SQLite" (File > Export > SQL Create Script) | **works with defects** — file written (`$S/order_sqlite.sql`), but see #3, #4, #6 |
 | B | `sqlite3 order.sqlite < script` | **fails partially** — 12 tables created; 1 index and all standard inserts rejected (#3, #4); DB usable after `sed 's/info(100)/info/'` (`$S/order_fixed.sql`) |
-| C | New SQLite connection + connect + reverse engineer | **fails** — connection editor and connect work (status bar "Connected to Database @…/order.sqlite"), Reverse Engineering dialog never opens: "Transaction not set." (#2). Clicking the "SQLite" tree node on the way crashes (#1) |
-| D | Compare reverse-engineered model with original | **untested** (blocked by C). Relations would be missing anyway (#7) |
+| C | New SQLite connection + connect + reverse engineer | **works** after #1/#2 were fixed — tree node clicks, connection editor, connect and the Reverse Engineering dialog (12 tables listed) all work; Execute adds 12 tables to the model |
+| D | Compare reverse-engineered model with original | **fails** — 12 of 12 table names come back, but with 0 columns, 0 indexes, 0 relations (#10, #7); no exception |
 | E | Database Synchronisation against the DB | **fails** — same "Transaction not set." (#2) right after connecting; would then hit MySQL-only SQL (#8) |
 | F | Query mode, simple SELECT | **fails** — connected, SQL typed, Execute button (and the other toolbar speed buttons) do nothing (#5) |
 
 ## Entries
 
 ### 1. Access violation when clicking a node in the "Network Hosts" tree of the connection selector
+- Status: **FIXED** — `DBConnTV.OnClick` now points at a new `TNotifyEvent` wrapper `DBConnTVClick` (`src/DBConnSelect.pas`) that resolves the clicked node with `GetNodeAt(ScreenToClient(Mouse.CursorPos))` and calls the old CLX-signature `DBConnTVItemClick`; the LCL was calling the 4-argument handler as a 1-argument one, so `Node` was garbage. Verified on the real display: SQLite / Network Hosts / Localhost / NewSQLiteConn clicks, no message box (`$S/fix01-connsel2..4.png`).
 - Severity: **crash**
 - Repro: Database > Connect to Database; click the "SQLite" folder (any node) in the left tree. Message box "Access violation. Press OK to ignore and risk data corruption." Every later click in the tree repeats it.
 - Evidence: `$S/msgbox.png`; gdb backtrace `$S/gdb_run.txt`:
@@ -36,6 +37,7 @@ keys / indexes / AUTOINCREMENT / row counts per table.
 - Side effect: because the crash happens on the node click, the "NewSQLiteConn" child node coded at `DBConnSelect.pas:280` is never reachable; the workaround is to leave "All Connections" selected and use "New Database Connection", then pick "SQLite" in the editor's Driver combo (works, `$S/conneditor2.png`).
 
 ### 2. "Transaction not set." on the first schema query after connecting (blocks reverse engineering and synchronisation)
+- Status: **FIXED** — the shim's `TSQLConnection` (`src/clx_shims/sqlexpr.pas`) now creates its `TSQLTransaction` in the constructor instead of lazily in `Open`, so datasets streamed with `Database = SQLConn` (or linked before `Open`) inherit it via SQLDB's `TCustomSQLQuery.SetDatabase`. `tests/TestSQLExprShim.pas` now links the dataset before `Open` and fails without the fix. Verified: Reverse Engineering dialog opens and lists the 12 tables (`$S/fix01-revdlg.png`). Stage C now proceeds; see the new entry #10 for what comes back.
 - Severity: **crash** (unhandled exception dialog "Press OK to ignore and risk data corruption"; the dialog that was being opened is silently abandoned)
 - Repro: connect to a SQLite connection (Driver SQLite, Database File = `$S/order.sqlite`); Database > Reverse Engineering (or Database > Database Synchronisation with the order model active) > select the connection > Connect. Status bar says connected, but the message box appears (it opens off to the top-right at +1266+20 and is easy to miss) and no Reverse Engineering / Synchronisation dialog is shown.
 - Evidence: `$S/msgbox2.png`, `$S/sync_msgbox.png`, `$S/main_rev2c.png` (connected, no dialog).
@@ -72,6 +74,12 @@ keys / indexes / AUTOINCREMENT / row counts per table.
 - Severity: **limitation** (untested at runtime, blocked by #2)
 - `TEERSynchronisationForm` always calls `DMDBEER.EERMySQLSyncDB` (`src/EERSynchronisation.pas:213`), which starts with `SET FOREIGN_KEY_CHECKS=0` (`src/DBEERDM.pas:1946`), uses MySQL `SHOW`/`ALTER` style statements and MySQL create syntax. Against SQLite it will fail at the first statement. "Store model in database" (File > Save in Database) likewise assumes a `DBDesigner4` table with MySQL DDL (not tried).
 - Fix would be a `CreateTableSyntax`-aware branch (the enum at `src/DBEERDM.pas:64` already lists SQLite) using `PRAGMA table_info` for the diff. Complexity: **large**.
+
+### 10. SQLite reverse engineering creates the tables but no columns, indexes or relations (found after fixing #2)
+- Severity: **wrong result** (silent, no exception)
+- Repro: connect to `$S/order.sqlite`, Database > Reverse Engineering, all 12 tables checked, Execute. The tables are added to the active model (`$S/fix01-main3.png`; saved as `$S/fix01-reveng.xml`) but every one of the 12 has zero `COLUMN`s, zero `INDEX`es and no `RELATION` touches them (the 11 relations in the saved file are the original ones). Stderr stays clean.
+- Cause: `TDMDBEER.GetColumnCountFromSQLCmd` and `GetColumnFromSQLCmd` (`src/DBEERDM.pas:2965-2973`) are stubs (`Result:=0`, `col.ColName:=''`), so the `CREATE TABLE` text fetched from `sqlite_master` (`:1274-1296`) is never parsed. Indexes/relations are #7. Fix: implement the parser (or use `pragma_table_info`, which `SetSchemaInfo(stColumns)` already wraps) — Complexity: **medium**.
+- Also seen: the status bar reads "Not connected to a Database" after the dialog closes, and the tables are added to the current model rather than a new one (matches the original DBDesigner 4 behaviour, not a bug).
 
 ### 9. Cosmetic issues seen on the way
 - Severity: **cosmetic**

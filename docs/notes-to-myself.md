@@ -673,3 +673,35 @@ navigation (`Down`x4 `Right` for File > Open Recent). Shots: `fix13-*`.
   (same for `TestSQLExprShim`); both print SUCCESS with an empty `LD_LIBRARY_PATH`, and
   `LD_DEBUG=libs` shows `find library=libsqlite3.so.0`.
 - `.gitignore`: `*.sqlite`, `*.sqlite3`, `*.db` (no tracked file matched).
+
+## Fix: connection-tree click crash and "Transaction not set." (sqlite-bug-catalog #1, #2)
+
+- **#1**: `DBConnSelect.lfm` wired the CLX `OnItemClick` handler
+  `DBConnTVItemClick(Sender; Button; Node; const Pt)` to the LCL `OnClick`
+  (`TNotifyEvent`), so `Node` was whatever happened to be in the register and
+  `Node.Level` dereferenced nil. New `DBConnTVClick(Sender)` finds the node under the
+  mouse (`GetNodeAt(ScreenToClient(Mouse.CursorPos))`) and calls the old handler;
+  clicks on empty tree space are ignored like CLX did. The internal caller at the
+  "Create new Database" branch still calls `DBConnTVItemClick` directly. Grep
+  `OnItemClick` finds no other victim (`DBConnSelect.xfm` is the untouched CLX form).
+- **#2**: SQLDB copies `Database.Transaction` into a `TSQLQuery` at the moment `Database`
+  is assigned (`TCustomSQLQuery.SetDatabase`). The shim only created the transaction in
+  `TSQLConnection.Open`, so `SchemaSQLQuery`/`OutputQry` streamed from `DBDM.lfm`
+  (`Database = SQLConn`) and the `OutputQry.SQLConnection := DMDB.SQLConn` lines in
+  `EditorQuery`/`EditorTableData` (run at form creation) kept `Transaction = nil`.
+  `sqlexpr.TSQLConnection` now overrides `Create` and owns a `TSQLTransaction` from
+  construction (dbExpress connections carry an implicit transaction); the lazy block
+  in `Open` and its no-op `try/except raise` are gone. `GetDBTables` re-assigns
+  `SchemaSQLQuery.SQLConnection` to a temporary connection and back - also fine, since
+  every shim connection now has a transaction and `SetDatabase` re-links it.
+- `tests/TestSQLExprShim.pas` links the dataset *before* `Conn.Open` and halts with
+  "FAIL: dataset linked before Open has no transaction" on the old shim; passes now
+  (`fpc -Mdelphi -Fusrc/clx_shims -FU<scratch> -o<scratch>/TestSQLExprShim tests/TestSQLExprShim.pas`).
+- Verified on DISPLAY=:0 (shots `$S/fix01-*`): tree clicks, "NewSQLiteConn" node preselects
+  the SQLite driver in the connection editor, connect, Reverse Engineering dialog lists
+  the 12 tables and Execute adds them. What comes back has no columns: catalog #10
+  (`GetColumnCountFromSQLCmd`/`GetColumnFromSQLCmd` are stubs in `DBEERDM.pas`).
+- Driving gotchas: the Database menu opens at client (185,12) of the main window and
+  keyboard `Down`xN + `Return` picks items; the GTK save dialog accepts a typed absolute
+  path + `Return` (`ctrl+a` first). `xdotool windowsize` on the main window works
+  to get a usable canvas (the saved 600x426 size is tiny).
