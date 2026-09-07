@@ -216,3 +216,38 @@ Tips dialog, all top-level menus (apart from the shortcut text), Export SQL Scri
 - Palette undocking (Windows > Dock Palettes / the palette items are disabled while docked), Reset Palette Positions.
 - DPI/HiDPI and dark-theme rendering.
 - The Xvfb self-test log could not be inspected because it never got written (entry 5); `gdb` is not installed, so no backtrace.
+
+---
+
+## Verification pass (2026-09-07, all eleven fix commits combined, HEAD after 1afa5a9)
+
+Procedure: `lazbuild -B` of the main project and the four plugins; `xvfb-run -a ./bin/DBDesignerFork --selftest` (exit 0, 93 PASS / 0 FAIL / 78 SKIP, 64 s); then `bin/DBDesignerFork Examples/order.xml` on the real display (GNOME/XWayland, per-window `import` captures, files `verify-*.png` in the session scratchpad `shots/` directory). `err.log` at the end held only the `canberra-gtk-module` message (plus `Terminated` from killing the plugins by PID) - no exceptions, GLib-CRITICAL or Pango warnings.
+
+Build: main and Demo/HTMLReport/SimpleWebFront compile cleanly. **DataImporter did not clean-build** (`src/EditorString.pas(78,10) Error: identifier idents no member "InitForm"`): the plugin directory still had its own reduced `MainDM.pas`, which FPC picked for `uses MainDM` in `DBDM.pas`/`Main.pas` before the `MainDM in '../../src/MainDM.pas'` clause of the .lpr (fixed by 4d342b2) was reached; the 4d342b2 binary only linked because a stale `.ppu` was reused. Fixed in a separate commit by removing the obsolete local `MainDM.pas`/`.lfm` (every member the plugin uses exists in `src/MainDM.pas`); the plugin then builds, starts and looks as before (`verify-plugin-dataimporter.png`).
+
+| # | Status | Note |
+|---|--------|------|
+| 1 | verified | Database > Connect to Database > New Database Connection opens the editor (`verify-dbconn-editor.png`); no exception on stderr. |
+| 2 | verified | Demo and HTMLReport start from the Plugins menu with their table lists filled (`verify-plugin-demo.png`, `verify-plugin-htmlreport.png`); no `Can not focus` on stderr. |
+| 3 | verified | DataImporter form loads (`verify-plugin-dataimporter.png`); see build note above. |
+| 4 | verified | SimpleWebFront starts, Views page and View Editor open, Table combo lists all 14 tables (`verify-plugin-swf.png`, `verify-plugin-swf-tablecombo-*.png`). |
+| 5 | verified | Headless self-test finishes: 171 tests, 93 PASS, 0 FAIL, 78 SKIP, exit 0. |
+| 6 | verified | Edit menu shows `Delete selected Object(s)  Ctrl+Del` (`verify-edit-menu.png`). |
+| 7 | verified | All table title bars painted with names (`verify-main-design-c1.png`). |
+| 8 | verified | Navigator thumbnail and Page Setup preview are scaled with no oversized text (`verify-navigator.png`, `verify-page-setup.png`). Pre-existing, not part of this entry: in the Page Setup preview the relation lines run on to the page edges; the original `04-page-setup.png` already shows this. |
+| 9 | verified | Both notes show their full text ("Stores all products in the customer's shopping cart", "This region contains all system tables."). |
+| 10 | verified | Model Options shows `Tahoma`; DBDesigner Options shows `Nimbus Sans L, 8` and `Helvetica` (`verify-model-options-1.png`, `verify-dbd-options-23.png`). |
+| 11 | verified | Table Editor grid: column headers, key/NN/AI check icons and datatype icons all visible (`verify-table-editor.png`). |
+| 12 | verified | Datatype Editor for INTEGER shows `INTEGER` (`verify-datatype-editor.png`). |
+| 13 | verified | Info tab activates after `windowactivate` (`verify-navigator-info.png`); the Width/Height label overlap on that page is the previously noted separate layout issue. |
+| 14 | verified | With Display > Display Relation Names on, all labels complete: CreditCardRel, CustOrderRel, OnlineorderRel, CartRel, ProductRel, ProductInCartRel, ProductgroupRel, postHasTopic, Parent. |
+| 15 | verified | Icons in the DB-connection tree, Datatypes palette and DB Model palette (`verify-dbconn-select.png`, `verify-palettes.png`). |
+| 16 | verified | All four DBDesigner Options pages fit; `Reset Personal Settings` and `Enable Snap to Grid` readable (`verify-dbd-options-1.png`, `-23.png`, `-4.png`). |
+| 17 | verified | Model Options Database page: `Table Prefixes:` label and hint text visible; Editing page snap-to-grid box above the grid group (`verify-model-options-23.png`). |
+| 18 | verified | Table Editor Advanced: RAID check box, labels, `kB` all legible, combo shows `STRIPED` (last letter touches the arrow); Datatype Editor `Edit values as strings` and `Enable Physical Datatype Mapping` visible (`verify-table-editor-advanced-c.png`, `verify-datatype-editor.png`). |
+| 19 | verified | Visual Options Header Preview shows the Apple2 gradient (`verify-dbd-options-23.png`). |
+| 20 | verified | Windows menu lists `order`; window title `DBDesigner Fork - order` (`verify-windows-menu.png`, `verify-main-design-c1.png`). |
+| 21 | verified | File > Open Recent has a single `order.xml`; stderr free of GLib/Pango warnings after Options, Page Setup, editors and plugins (`verify-recent-*.png`). |
+| 22 | verified | Table Editor and Datatype Editor closed with the mouse via the Cancel speed button, DBDesigner Options via OK, Model Options via Cancel. |
+
+Totals: 22 verified, 0 regressed, 0 not testable. Only new problem found: the DataImporter clean-build failure above (fixed). Observations outside the catalog: the palettes started undocked (saved session state, Windows > Dock Palettes unchecked) and the floating Navigator covered the menu bar until moved; the self-test run rewrote `WorkMode=2` (Query mode) into the settings ini, so the interactive session had to switch to Design mode first.
