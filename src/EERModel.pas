@@ -8298,8 +8298,10 @@ begin
 
         //Write Field Name
         if(Not(DMEER.DisableTextOutput))then
+        begin
           Brush.Style := bsClear;
           TextOut(xo+EvalZoomFac(4+16), yo+EvalZoomFac(20+17*ypos), txt);
+        end;
 
         //Store PK info for comparison with next column
         PK:=TEERColumn(Columns[i]).PrimaryKey;
@@ -8345,8 +8347,10 @@ begin
           Font.Style:=[fsItalic];
           Font.Color:=$00222222;
           if(Not(DMEER.DisableTextOutput))then
+          begin
             Brush.Style := bsClear;
             TextOut(xo+EvalZoomFac(4+16), yo+EvalZoomFac(20+17*ypos), TEERIndex(Indices[i]).IndexName);
+          end;
           Font.Style:=[];
           inc(ypos);
 
@@ -8374,8 +8378,10 @@ begin
                   ParentEERModel.FieldBmp);
 
               if(Not(DMEER.DisableTextOutput))then
+              begin
                 Brush.Style := bsClear;
                 TextOut(xo+EvalZoomFac(4+16+16), yo+EvalZoomFac(20+17*ypos), theCol.ColName);
+              end;
             end;
 
             inc(ypos);

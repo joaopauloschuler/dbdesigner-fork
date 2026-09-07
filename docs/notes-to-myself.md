@@ -344,3 +344,32 @@ Same latent pattern (locals `width, height` + `with theCanvas do`) still exists 
 likely the cause of catalog #9 (notes drawn 1 px high). Left untouched here on purpose.
 Catalog #19 (Visual Options header preview) has a different cause: the `panelbitmap.pas`
 shim stores `TPanel.Bitmap` but never paints it.
+
+## Fix: oversized text over the Navigator / Page Setup thumbnails (ui-bug-catalog #8)
+
+Cause: a missing `begin/end`, not a font-size or zoom-factor problem. `PaletteNav.pas` and
+`EERPageSetup.pas` call `EERModel.PaintModel(..., doDrawText=False)`, which sets
+`DMEER.DisableTextOutput`. In `TEERTable.PaintCachedImg` (src/EERModel.pas) the column
+name, index name and index-column name are written as
+
+    if(Not(DMEER.DisableTextOutput))then
+      Brush.Style := bsClear;
+      TextOut(...);
+
+so only the `Brush.Style` assignment was guarded and `TextOut` ran unconditionally. With
+text output disabled `Font.Height := ParentEERModel.GetFontHeight` is skipped too, so the
+strings came out at the canvas' default (100 %) size on a ~5 % thumbnail - hence the few
+huge "productgroup (FK)" strings covering the miniature. The table-name/header paths were
+properly bracketed, which is why only column names showed.
+
+Fix: wrapped the three pairs in `begin/end`. Verified on DISPLAY=:0 (shots
+`fix08-before-nav.png` -> `fix08-after-nav-zoom.png`, `fix08-after-pagesetup.png`): the
+Navigator shows the region/tables/relations miniature, Page Setup preview likewise.
+
+Driving the app with xdotool: the client window is at +42+69 (frame 42,32 + 37 px title),
+so menubar y is ~83, not 120. GTK menu popups are override-redirect windows; find them with
+`xwininfo -root -tree` (e.g. 212x399 for File), not `xdotool search`. The Tips dialog's
+"Close Tip Window" button is at client-relative (340,217).
+
+Catalog #13 (Navigator "Info" tab) not attempted: a misclick had switched the main window
+into query mode (palettes hidden) before I got to it; needs a fresh session.

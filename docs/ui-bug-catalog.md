@@ -76,6 +76,7 @@ Summary: 21 entries — 6 crash, 7 unreadable, 8 cosmetic.
 - **Symptom:** A few column names ("productgroup (FK)", "creditcard...") painted at ~100 % font size over a thumbnail that is ~5 % scale; the rest of the model is invisible.
 - **Suspected files:** `src/EERModel.pas` `PaintModel` (line 5111, sets `theCanvas.Font.Name` but each object's `PaintObj2Canvas` does `Font.Height := ParentEERModel.GetFontHeight` — lines 8222, 11254, 11344, 11398, 12371, 13038), `GetFontHeight` (line 1891: `Round(EvalZoomFac(12)*(72/DPI))`), `PaintModel` temporarily sets `DPI := theDPI` (line 5125). Hypothesis: for the preview canvas the font height is computed from the model's own zoom factor rather than the preview zoom (or `EvalZoomFac` uses the live `ZoomFac` while text positions use `theZoomfac`), and LCL treats a positive `Font.Height` differently from CLX. Callers: `src/PaletteNav.pas:252` and `:555`, `src/EERPageSetup.pas` preview.
 - **Complexity:** medium
+- **Status:** FIXED. Cause: in `TEERTable.PaintCachedImg` three `if(Not(DMEER.DisableTextOutput))then` guards were followed by two statements (`Brush.Style := bsClear; TextOut(...)`) without `begin/end`, so the column/index-name `TextOut` calls always ran - with the canvas default font, since `Font.Height` is only set when text output is enabled - even when `PaintModel(..., doDrawText=False)` was used by the Navigator and Page Setup previews. Wrapped them in `begin/end`.
 
 ### 9. Notes are rendered as a 1-pixel line (height collapsed)
 - **Severity:** unreadable
