@@ -84,6 +84,7 @@ Summary: 21 entries — 6 crash, 7 unreadable, 8 cosmetic.
 - **Screenshots:** `25-note-collapsed.png`, `23-main-after-edits-half.png` (thin lines at ~(400,130) and ~(175,240) in half-size coords)
 - **Suspected files:** `src/EERModel.pas` `TEERNote.RefreshObj` (line 12404: `Obj_H := ReEvalZoomFac(theSize.cy)+4-14`) and `TEERModel.GetTextExtent` (line 1902) which measures on `SelectionRect.Canvas` — `SelectionRect` is an invisible `TPaintBox` (line 1274) whose canvas has no handle under LCL, so `TextExtent` returns 0 and the note height becomes negative. Also `Font.Height` assignments there.
 - **Complexity:** small-medium (measure on a bitmap canvas or the model's own canvas).
+- **Status:** FIXED. Cause: `TEERModel.GetTextExtent` measured on the invisible `SelectionRect` paintbox whose canvas has no handle under LCL (TextExtent returned 0/one line), its font name was not updated when the loaded model set `DefModelFont`, and LCL's `TextExtent`/`TextRect` do not handle line breaks. Now measures line by line on a handle-bearing `TextMeasureBmp` bitmap canvas with the current model font, and `TEERNote` paints its lines one by one (the CLX-era `-14` was dropped).
 
 ### 10. Font combo boxes are empty / show the literal "FontCBox"
 - **Severity:** unreadable (cannot pick the model font or the SQL font)
@@ -124,6 +125,7 @@ Summary: 21 entries — 6 crash, 7 unreadable, 8 cosmetic.
 - **Screenshots:** `02c-tables.png`, `24-header-compare.png`
 - **Suspected files:** `src/EERModel.pas` `TEERRel` caption sizing (uses `GetTextExtent`, see entry 9) — the label box is sized with one font metric and drawn with another (`Font.Height` positive value interpreted differently by LCL). Likely the same root cause as entries 8/9 (font height / text measurement).
 - **Complexity:** small once entry 9 is fixed.
+- **Status:** FIXED. Cause: same measurement bug as #9 (text was measured with the default font on a handle-less canvas while drawn in the model font) plus the `EvalZoomFac(ReEvalZoomFac(cx)+6)` pixel->model->pixel round trip that lost 1-2 px at 75 % zoom; caption/interval boxes are now sized in pixels with a small margin, and the `width`/`height`-inside-`with theCanvas do` shadowing in the caption/interval/note/region/image painters was removed.
 
 ### 15. Tree views and lists show no icons (DB-connection tree, DB Model palette, Datatypes "All types")
 - **Severity:** cosmetic

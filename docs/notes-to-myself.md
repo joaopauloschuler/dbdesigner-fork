@@ -373,3 +373,34 @@ so menubar y is ~83, not 120. GTK menu popups are override-redirect windows; fin
 
 Catalog #13 (Navigator "Info" tab) not attempted: a misclick had switched the main window
 into query mode (palettes hidden) before I got to it; needs a fresh session.
+
+## Fix: notes collapsed to a 1-px line and clipped relation labels (ui-bug-catalog #9, #14)
+
+Cause: `TEERModel.GetTextExtent` (src/EERModel.pas) measured text on `SelectionRect.Canvas`.
+`SelectionRect` is an invisible `TPaintBox`; under LCL its canvas never gets a handle, so
+`TextExtent` returned nothing useful. Three more things hid behind that: (1) the measurement
+canvas kept the constructor font ("Nimbus Sans L") while loading a model set
+`DefModelFont` to "Tahoma" (substituted by fontconfig with the wider Noto Sans) on every
+object - so even measuring on a real canvas gave a narrower width than the paint; (2) LCL's
+`TextExtent` does not understand line breaks (it returns the summed width and one line
+height), and `TextRect` draws a single line, so the CLX-era `Obj_H := ... +4-14` gave a
+negative height; (3) `EvalZoomFac(ReEvalZoomFac(px)+6)` loses 1-2 px at 75 % zoom (the
+default for order.xml) and `TextRect` clips at `Width-2` with the text starting at 1+3 px,
+so the last glyph of "CreditCardRel" was cut.
+
+Fix: `TEERModel` now owns `TextMeasureBmp: TBitmap`; `GetTextExtent` re-applies
+`DefModelFont` on each call and measures line by line (widest line x lines*TextHeight,
+trailing line break ignored). `TEERNote.RefreshObj` uses `+4` instead of `+4-14` and adds a
+few pixels before the model-unit conversion; `TEERNote.PaintObj2Canvas` paints
+`NoteText[i]` per line. `RelCaption`/`RelStartInterval`/`RelEndInterval` are sized in
+pixels (`theSize.cx+EvalZoomFac(6)+2`). Also renamed the `width`/`height` locals in the
+note/region/image painters and introduced `capW`/`capH` in the three relation-label painters
+(they were resolving to `TCanvas.Width/Height` inside `with theCanvas do`, harmless on the
+control's own canvas but wrong when painting to an export canvas).
+
+Verified on DISPLAY=:0 (shots `fix09-before-half.png` -> `fix09-after-crop.png`,
+`fix09-zooms.png`): both notes show their full two-line text, "CreditCardRel",
+"ProductgroupRel", "OnlineorderRel" are complete.
+
+Gotcha for xdotool sessions: `pkill -f DBDesignerFork` kills the calling bash too when the
+command line mentions the binary; use `pkill -x DBDesignerFork`. Launch with `setsid`.

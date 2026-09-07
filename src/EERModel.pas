@@ -351,6 +351,11 @@ type
     //Selection PaintBox
     SelectionRect: TPaintBox;
 
+    //Off-screen bitmap used only for text measurement. Its canvas always
+    //has a handle, unlike the invisible SelectionRect paintbox (LCL returns
+    //0 from TextExtent on a handle-less canvas).
+    TextMeasureBmp: TBitmap;
+
     MouseOverObj: TObject;
     MouseOverSubObj: Pointer;
 
@@ -1278,6 +1283,12 @@ begin
   SelectionRect.Font.Name:=DefModelFont;
   SelectionRect.Canvas.Font.Name:=DefModelFont;
 
+  // Create text measurement bitmap
+  TextMeasureBmp:=TBitmap.Create;
+  TextMeasureBmp.Width:=1;
+  TextMeasureBmp.Height:=1;
+  TextMeasureBmp.Canvas.Font.Name:=DefModelFont;
+
   // Create GridPaintBox PaintBox
   GridPaintBox:=TPaintBox.Create(self);
   GridPaintBox.Parent:=self;
@@ -1414,6 +1425,7 @@ begin
   Field_FKBmp.Free;
 
   SelectionRect.Free;
+  TextMeasureBmp.Free;
   GridPaintBox.Free;
 
   //Delete all Actions in List
@@ -1801,6 +1813,7 @@ begin
   //Set Font for SelectionRect
   SelectionRect.Canvas.Font.Name:=DefModelFont;
   SelectionRect.ParentFont:=False;
+  TextMeasureBmp.Canvas.Font.Name:=DefModelFont;
 
   //Set Font for all EER-Objects
   for i:=ComponentCount-1 downto 0 do
@@ -1901,8 +1914,9 @@ end;
 
 function TEERModel.GetTextExtent(s: string): TSize;
 var theSize: TSize;
-  theFontHeight: integer;
+  theFontHeight, lineHeight, i: integer;
   reCalc: double;
+  lines: TStringList;
 begin
   //Get Font Size
   theFontHeight:=Round(EvalZoomFac(12));
@@ -1915,8 +1929,36 @@ begin
     theFontHeight:=8;
   end;
 
-  SelectionRect.Canvas.Font.Height:=theFontHeight;
-  theSize:=SelectionRect.Canvas.TextExtent(s);
+  //Measure on the bitmap canvas: SelectionRect is an invisible TPaintBox
+  //whose canvas has no handle under LCL, so TextExtent would return 0.
+  //The font name is re-applied on every call because DefModelFont changes
+  //when a model is loaded (and the objects are created with that font).
+  TextMeasureBmp.Canvas.Font.Name:=DefModelFont;
+  TextMeasureBmp.Canvas.Font.Height:=theFontHeight;
+
+  //LCL's TextExtent does not understand line breaks (it returns the width
+  //of all lines added together and the height of one line), so measure
+  //line by line: width = widest line, height = line count * line height.
+  //A trailing line break (TStrings.Text always ends with one) is ignored.
+  theSize.cx:=0;
+  theSize.cy:=0;
+  lines:=TStringList.Create;
+  try
+    lines.Text:=s;
+    while(lines.Count>0)and(lines[lines.Count-1]='')do
+      lines.Delete(lines.Count-1);
+    if(lines.Count=0)then
+      lines.Add('');
+    lineHeight:=TextMeasureBmp.Canvas.TextHeight('Wg');
+    for i:=0 to lines.Count-1 do
+    begin
+      if(TextMeasureBmp.Canvas.TextWidth(lines[i])>theSize.cx)then
+        theSize.cx:=TextMeasureBmp.Canvas.TextWidth(lines[i]);
+    end;
+    theSize.cy:=lines.Count*lineHeight;
+  finally
+    lines.Free;
+  end;
 
   if(reCalc<>1)then
   begin
@@ -11233,6 +11275,7 @@ begin
 end;
 
 procedure TEERRel.PaintObj2Canvas_RelCaption(theCanvas: TCanvas; xo, yo: integer);
+var capW, capH: integer;
 begin
   if(ParentEERModel.DisableModelRefresh)then
     Exit;
@@ -11246,6 +11289,11 @@ begin
   if(Not(DMEER.DisplayRelationNames))then
     Exit;
 
+  // Take the caption size from the paintbox itself: inside "with theCanvas do"
+  // width/height would resolve to TCanvas.Width/Height under LCL.
+  capW:=RelCaption.Width;
+  capH:=RelCaption.Height;
+
   with RelCaption do
   begin
     with theCanvas do
@@ -11255,13 +11303,13 @@ begin
       else
         Pen.Color:=clSilver;
       Brush.Color:=clWhite;
-      Rectangle(Rect(xo+0, yo+0, xo+width, yo+height));
+      Rectangle(Rect(xo+0, yo+0, xo+capW, yo+capH));
       Pen.Color:=clSilver;
 
       if(Not(DMEER.DisableTextOutput))then
       begin
         Font.Height:=ParentEERModel.GetFontHeight;
-        TextRect(Rect(xo+1, yo+1, xo+width-2, yo+height-2),
+        TextRect(Rect(xo+1, yo+1, xo+capW-2, yo+capH-2),
           xo+1+EvalZoomFac(3), yo+1, ObjName);
       end;
 
@@ -11270,17 +11318,17 @@ begin
       begin
         Pen.Color:=clWhite;
         MoveTo(xo+0, yo+0);
-        LineTo(xo+0, yo+height-1);
-        LineTo(xo+width-1, yo+height-1);
-        LineTo(xo+width-1, yo+0);
+        LineTo(xo+0, yo+capH-1);
+        LineTo(xo+capW-1, yo+capH-1);
+        LineTo(xo+capW-1, yo+0);
         LineTo(xo+0, yo+0);
 
         Pen.Color:=clBlack;
         Pen.Style:=psDot;
         MoveTo(xo+0, yo+0);
-        LineTo(xo+0, yo+height-1);
-        LineTo(xo+width-1, yo+height-1);
-        LineTo(xo+width-1, yo+0);
+        LineTo(xo+0, yo+capH-1);
+        LineTo(xo+capW-1, yo+capH-1);
+        LineTo(xo+capW-1, yo+0);
         LineTo(xo+0, yo+0);
 
         Pen.Style:=psSolid;
@@ -11326,6 +11374,7 @@ begin
 end;
 
 procedure TEERRel.PaintObj2Canvas_RelStartInterval(theCanvas: TCanvas; xo, yo: integer);
+var capW, capH: integer;
 begin
   if(ParentEERModel.DisableModelRefresh)then
     Exit;
@@ -11336,6 +11385,11 @@ begin
   if((Not(DMEER.Notation=noStandard2))or(RelKind=rk_11Sub))and
     (Not(Splitted))then
     Exit;
+
+  // See PaintObj2Canvas_RelCaption: width/height would resolve to
+  // TCanvas.Width/Height inside "with theCanvas do" under LCL.
+  capW:=RelStartInterval.Width;
+  capH:=RelStartInterval.Height;
 
   with RelStartInterval do
   begin
@@ -11346,12 +11400,12 @@ begin
       else
         Pen.Color:=clSilver;
       Brush.Color:=clWhite;
-      Rectangle(Rect(xo+0, yo+0, xo+width, yo+height));
+      Rectangle(Rect(xo+0, yo+0, xo+capW, yo+capH));
 
       if(Not(DMEER.DisableTextOutput))then
       begin
         Font.Height:=ParentEERModel.GetFontHeight;
-        TextRect(Rect(xo+1, yo+1, xo+width-2, yo+height-2),
+        TextRect(Rect(xo+1, yo+1, xo+capW-2, yo+capH-2),
           xo+1+EvalZoomFac(3), yo+1, GetIntervalTxt(True));
       end;
 
@@ -11360,17 +11414,17 @@ begin
       begin
         Pen.Color:=clWhite;
         MoveTo(xo+0, yo+0);
-        LineTo(xo+0, yo+height-1);
-        LineTo(xo+width-1, yo+height-1);
-        LineTo(xo+width-1, yo+0);
+        LineTo(xo+0, yo+capH-1);
+        LineTo(xo+capW-1, yo+capH-1);
+        LineTo(xo+capW-1, yo+0);
         LineTo(xo+0, yo+0);
 
         Pen.Color:=clBlack;
         Pen.Style:=psDot;
         MoveTo(xo+0, yo+0);
-        LineTo(xo+0, yo+height-1);
-        LineTo(xo+width-1, yo+height-1);
-        LineTo(xo+width-1, yo+0);
+        LineTo(xo+0, yo+capH-1);
+        LineTo(xo+capW-1, yo+capH-1);
+        LineTo(xo+capW-1, yo+0);
         LineTo(xo+0, yo+0);
 
         Pen.Style:=psSolid;
@@ -11380,6 +11434,7 @@ begin
 end;
 
 procedure TEERRel.PaintObj2Canvas_RelEndInterval(theCanvas: TCanvas; xo, yo: integer);
+var capW, capH: integer;
 begin
   if(ParentEERModel.DisableModelRefresh)then
     Exit;
@@ -11391,6 +11446,11 @@ begin
     (Not(Splitted))then
     Exit;
 
+  // See PaintObj2Canvas_RelCaption: width/height would resolve to
+  // TCanvas.Width/Height inside "with theCanvas do" under LCL.
+  capW:=RelEndInterval.Width;
+  capH:=RelEndInterval.Height;
+
   with RelEndInterval do
   begin
     with theCanvas do
@@ -11400,12 +11460,12 @@ begin
       else
         Pen.Color:=clSilver;
       Brush.Color:=clWhite;
-      Rectangle(Rect(xo+0, yo+0, xo+width, yo+height));
+      Rectangle(Rect(xo+0, yo+0, xo+capW, yo+capH));
 
       if(Not(DMEER.DisableTextOutput))then
       begin
         Font.Height:=ParentEERModel.GetFontHeight;
-        TextRect(Rect(xo+1, yo+1, xo+width-2, yo+height-2),
+        TextRect(Rect(xo+1, yo+1, xo+capW-2, yo+capH-2),
           xo+1+EvalZoomFac(3), yo+1, GetIntervalTxt(False));
       end;
 
@@ -11414,17 +11474,17 @@ begin
       begin
         Pen.Color:=clWhite;
         MoveTo(xo+0, yo+0);
-        LineTo(xo+0, yo+height-1);
-        LineTo(xo+width-1, yo+height-1);
-        LineTo(xo+width-1, yo+0);
+        LineTo(xo+0, yo+capH-1);
+        LineTo(xo+capW-1, yo+capH-1);
+        LineTo(xo+capW-1, yo+0);
         LineTo(xo+0, yo+0);
 
         Pen.Color:=clBlack;
         Pen.Style:=psDot;
         MoveTo(xo+0, yo+0);
-        LineTo(xo+0, yo+height-1);
-        LineTo(xo+width-1, yo+height-1);
-        LineTo(xo+width-1, yo+0);
+        LineTo(xo+0, yo+capH-1);
+        LineTo(xo+capW-1, yo+capH-1);
+        LineTo(xo+capW-1, yo+0);
         LineTo(xo+0, yo+0);
 
         Pen.Style:=psSolid;
@@ -11856,8 +11916,11 @@ begin
   //Calc Lable Size
   theSize:=ParentEERModel.GetTextExtent(ObjName);
 
-  RelCaption.Width:=EvalZoomFac(ReEvalZoomFac(theSize.cx)+6);
-  RelCaption.Height:=EvalZoomFac(ReEvalZoomFac(theSize.cy)+4);
+  //theSize is already in pixels; the old EvalZoomFac(ReEvalZoomFac(..))
+  //round trip lost pixels at zoom factors other than 100% and the caption
+  //text was clipped by TextRect (right edge at Width-2, text at 1+3px).
+  RelCaption.Width:=theSize.cx+EvalZoomFac(6)+2;
+  RelCaption.Height:=theSize.cy+EvalZoomFac(4);
 
   //Set Middle PaintBox Positions
   if(relDirection=re_right)or(relDirection=re_left)then
@@ -11931,12 +11994,12 @@ begin
   //Interval Notation and Splitted
 
   theSize:=ParentEERModel.GetTextExtent(GetIntervalTxt(True));
-  RelStartInterval.Width:=EvalZoomFac(ReEvalZoomFac(theSize.cx)+8);
-  RelStartInterval.Height:=EvalZoomFac(ReEvalZoomFac(theSize.cy)+4);
+  RelStartInterval.Width:=theSize.cx+EvalZoomFac(8)+2;
+  RelStartInterval.Height:=theSize.cy+EvalZoomFac(4);
 
   theSize:=ParentEERModel.GetTextExtent(GetIntervalTxt(False));
-  RelEndInterval.Width:=EvalZoomFac(ReEvalZoomFac(theSize.cx)+8);
-  RelEndInterval.Height:=EvalZoomFac(ReEvalZoomFac(theSize.cy)+4);
+  RelEndInterval.Width:=theSize.cx+EvalZoomFac(8)+2;
+  RelEndInterval.Height:=theSize.cy+EvalZoomFac(4);
 
   if(relDirection=re_right)then
   begin
@@ -12357,13 +12420,15 @@ begin
 end;
 
 procedure TEERNote.PaintObj2Canvas(theCanvas: TCanvas; xo, yo: integer);
-var width, height: integer;
+// NB: not named width/height - inside "with theCanvas do" those would
+// resolve to TCanvas.Width/Height under LCL (CLX had no such properties).
+var objW, objH, lineHeight, i: integer;
 begin
   if(ParentEERModel.DisableModelRefresh)then
     Exit;
     
-  width:=EvalZoomFac(Obj_W);
-  height:=EvalZoomFac(Obj_H);
+  objW:=EvalZoomFac(Obj_W);
+  objH:=EvalZoomFac(Obj_H);
 
   with theCanvas do
   begin
@@ -12373,13 +12438,17 @@ begin
     else
       Pen.Color:=clSilver;
     Brush.Color:=clWhite;
-    Rectangle(Rect(xo+0, yo+0, xo+width, yo+height));
+    Rectangle(Rect(xo+0, yo+0, xo+objW, yo+objH));
 
     if(Not(DMEER.DisableTextOutput))then
     begin
       Font.Height:=ParentEERModel.GetFontHeight;
-      TextRect(Rect(xo+1, yo+1, xo+width-2, yo+height-2),
-        xo+1+EvalZoomFac(3), yo+1, NoteText.Text);
+      //LCL's TextRect draws a single line only, so paint the note line by
+      //line (each line clipped to the note box).
+      lineHeight:=TextHeight('Wg');
+      for i:=0 to NoteText.Count-1 do
+        TextRect(Rect(xo+1, yo+1, xo+objW-2, yo+objH-2),
+          xo+1+EvalZoomFac(3), yo+1+i*lineHeight, NoteText[i]);
     end;
 
     // Paint selection
@@ -12387,17 +12456,17 @@ begin
     begin
       Pen.Color:=clWhite;
       MoveTo(xo+0, yo+0);
-      LineTo(xo+0, yo+height-1);
-      LineTo(xo+width-1, yo+height-1);
-      LineTo(xo+width-1, yo+0);
+      LineTo(xo+0, yo+objH-1);
+      LineTo(xo+objW-1, yo+objH-1);
+      LineTo(xo+objW-1, yo+0);
       LineTo(xo+0, yo+0);
 
       Pen.Color:=clBlack;
       Pen.Style:=psDot;
       MoveTo(xo+0, yo+0);
-      LineTo(xo+0, yo+height-1);
-      LineTo(xo+width-1, yo+height-1);
-      LineTo(xo+width-1, yo+0);
+      LineTo(xo+0, yo+objH-1);
+      LineTo(xo+objW-1, yo+objH-1);
+      LineTo(xo+objW-1, yo+0);
       LineTo(xo+0, yo+0);
 
       Pen.Style:=psSolid;
@@ -12414,8 +12483,13 @@ procedure TEERNote.RefreshObj;
 var theSize: TSize;
 begin
   theSize:=ParentEERModel.GetTextExtent(NoteText.Text);
-  Obj_W:=ReEvalZoomFac(theSize.cx)+6;
-  Obj_H:=ReEvalZoomFac(theSize.cy)+4-14;
+  //A few extra pixels are added before converting to model units, because
+  //the pixel->model->pixel round trip rounds and the text is clipped by
+  //TextRect at Width-2 (see PaintObj2Canvas).
+  Obj_W:=ReEvalZoomFac(theSize.cx+4)+6;
+  //GetTextExtent now ignores the trailing line break of NoteText.Text, so
+  //the old "-14" (one extra CLX text line) is no longer subtracted.
+  Obj_H:=ReEvalZoomFac(theSize.cy+2)+4;
 
   //Only reposition Obj when the model is not drawn to another canvas
   if(Not(ParentEERModel.PaintingToSpecialCanvas))then
@@ -13014,14 +13088,16 @@ begin
 end;
 
 procedure TEERRegion.PaintObj2Canvas(theCanvas: TCanvas; xo, yo: integer);
-var width, height: integer;
+// NB: not named width/height - inside "with theCanvas do" those would
+// resolve to TCanvas.Width/Height under LCL (CLX had no such properties).
+var objW, objH: integer;
   s: string;
 begin
   if(ParentEERModel.DisableModelRefresh)then
     Exit;
 
-  width:=EvalZoomFac(Obj_W);
-  height:=EvalZoomFac(Obj_H);
+  objW:=EvalZoomFac(Obj_W);
+  objH:=EvalZoomFac(Obj_H);
 
   with theCanvas do
   begin
@@ -13039,7 +13115,7 @@ begin
       Brush.Color:=$00DDE1FF;
     end;
 
-    Rectangle(Rect(xo+0, yo+0, xo+width, yo+height));
+    Rectangle(Rect(xo+0, yo+0, xo+objW, yo+objH));
 
     //Draw Region Name
     if(Not(DMEER.DisableTextOutput))then
@@ -13055,17 +13131,17 @@ begin
     begin
       Pen.Color:=clWhite;
       MoveTo(xo+0, yo+0);
-      LineTo(xo+0, yo+height-1);
-      LineTo(xo+width-1, yo+height-1);
-      LineTo(xo+width-1, yo+0);
+      LineTo(xo+0, yo+objH-1);
+      LineTo(xo+objW-1, yo+objH-1);
+      LineTo(xo+objW-1, yo+0);
       LineTo(xo+0, yo+0);
 
       Pen.Color:=clBlack;
       Pen.Style:=psDot;
       MoveTo(xo+0, yo+0);
-      LineTo(xo+0, yo+height-1);
-      LineTo(xo+width-1, yo+height-1);
-      LineTo(xo+width-1, yo+0);
+      LineTo(xo+0, yo+objH-1);
+      LineTo(xo+objW-1, yo+objH-1);
+      LineTo(xo+objW-1, yo+0);
       LineTo(xo+0, yo+0);
 
       Pen.Style:=psSolid;
@@ -13438,13 +13514,15 @@ begin
 end;
 
 procedure TEERImage.PaintObj2Canvas(theCanvas: TCanvas; xo, yo: integer);
-var width, height: integer;
+// NB: not named width/height - inside "with theCanvas do" those would
+// resolve to TCanvas.Width/Height under LCL (CLX had no such properties).
+var objW, objH: integer;
 begin
   if(ParentEERModel.DisableModelRefresh)then
     Exit;
 
-  width:=EvalZoomFac(Obj_W);
-  height:=EvalZoomFac(Obj_H);
+  objW:=EvalZoomFac(Obj_W);
+  objH:=EvalZoomFac(Obj_H);
 
   with theCanvas do
   begin
@@ -13452,7 +13530,7 @@ begin
     begin
       Pen.Style:=psClear;
       Brush.Color:=clWhite;
-      Rectangle(Rect(xo+0, yo+0, xo+width-1, yo+height-1));
+      Rectangle(Rect(xo+0, yo+0, xo+objW-1, yo+objH-1));
 
       if(StrechImg)then
         Draw(xo+0, yo+0, StrechedImg)
@@ -13464,12 +13542,12 @@ begin
       Pen.Style:=psSolid;
       Pen.Color:=clGray;
       Brush.Color:=clWhite;
-      Rectangle(Rect(xo+0, yo+0, xo+width-1, yo+height-1));
+      Rectangle(Rect(xo+0, yo+0, xo+objW-1, yo+objH-1));
 
       MoveTo(xo+0, yo+0);
-      LineTo(xo+width-1, yo+height-1);
-      MoveTo(xo+width-1, yo+0);
-      LineTo(xo+0, yo+height-1);
+      LineTo(xo+objW-1, yo+objH-1);
+      MoveTo(xo+objW-1, yo+0);
+      LineTo(xo+0, yo+objH-1);
     end;
 
     // Paint selection
@@ -13477,17 +13555,17 @@ begin
     begin
       Pen.Color:=clWhite;
       MoveTo(xo+0, yo+0);
-      LineTo(xo+0, yo+height-1);
-      LineTo(xo+width-1, yo+height-1);
-      LineTo(xo+width-1, yo+0);
+      LineTo(xo+0, yo+objH-1);
+      LineTo(xo+objW-1, yo+objH-1);
+      LineTo(xo+objW-1, yo+0);
       LineTo(xo+0, yo+0);
 
       Pen.Color:=clBlack;
       Pen.Style:=psDot;
       MoveTo(xo+0, yo+0);
-      LineTo(xo+0, yo+height-1);
-      LineTo(xo+width-1, yo+height-1);
-      LineTo(xo+width-1, yo+0);
+      LineTo(xo+0, yo+objH-1);
+      LineTo(xo+objW-1, yo+objH-1);
+      LineTo(xo+objW-1, yo+0);
       LineTo(xo+0, yo+0);
 
       Pen.Style:=psSolid;
