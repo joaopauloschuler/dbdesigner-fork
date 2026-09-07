@@ -347,7 +347,7 @@ begin
       theIni.WriteString('Host'+IntToStr(i), 'User_Name', NetworkHosts.Items[i-1].SubItems[2]);
     end;
 
-    theIni.UpdateFile;
+    UpdateIniFile(theIni);
   finally
     theIni.Free;
   end;

@@ -344,7 +344,7 @@ begin
       end;
     end;
 
-    theIni.UpdateFile;
+    UpdateIniFile(theIni);
   finally
     theIni.Free;
   end;
@@ -727,7 +727,7 @@ begin
     theIni.WriteString('GeneralSettings', 'DefaultDB',
       DefaultDatabaseType);
 
-    theIni.UpdateFile;
+    UpdateIniFile(theIni);
   finally
     theIni.Free;
   end;

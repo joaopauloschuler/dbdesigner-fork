@@ -727,7 +727,7 @@ begin
 
       theIni.WriteString('GeneralSettings', 'AddQuotesToDefVals', IntToStr(Ord(AddQuotesToDefVals)));
 
-      theIni.UpdateFile;
+      UpdateIniFile(theIni);
     finally
       theIni.Free;
     end;

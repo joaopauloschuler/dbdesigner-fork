@@ -366,7 +366,7 @@ begin
     theIni.WriteString('GeneralSettings', 'ApplicationFontStyle', s);
 
 
-    theIni.UpdateFile;
+    UpdateIniFile(theIni);
   finally
     theIni.Free;
   end;

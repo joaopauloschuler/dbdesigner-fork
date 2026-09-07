@@ -2,7 +2,7 @@
 unit SqlExpr;
 {$mode delphi}
 interface
-uses Classes, DB, SQLDB, SysUtils, DBXpress;
+uses Classes, DB, SQLDB, SysUtils, DBXpress, SQLite3Conn, SQLiteLib;
 
 const
   // Schema type constants (Delphi dbExpress)

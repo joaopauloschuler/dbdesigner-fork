@@ -42,7 +42,7 @@
 - `SetSchemaInfo(stTables)` returns correct table names ✅
 - `SetSchemaInfo(stColumns)` returns column name, position, type, typename, nullability ✅
 - `SetSchemaInfo(stIndexes)` returns index name, column name, uniqueness ✅
-- Requires `libsqlite3.so` symlink in `LD_LIBRARY_PATH`
+- Library name is picked at start-up by `clx_shims/sqlitelib.pas` (`libsqlite3.so.0` first, then `libsqlite3.so`) - no symlink or `LD_LIBRARY_PATH` needed
 
 ### Architecture: Shim Layer (`clx_shims/`)
 31 compatibility units mapping CLX/Delphi APIs to LCL/SQLDB:
@@ -648,3 +648,28 @@ Tips "Close Tip Window" glyph is at the left of the label, at about client
 (290,217), not under the text. Menu windows are the unnamed `DBDesignerFork`
 top-level windows in `xwininfo -root -tree`; submenus open reliably with keyboard
 navigation (`Down`x4 `Right` for File > Open Recent). Shots: `fix13-*`.
+
+## Fix: `--selftest` no longer persists settings; SQLite library found without a symlink
+
+- **Self-test settings**: `--selftest` used to save `WorkMode=2`, window positions,
+  recent files and `Language.ini` on exit, so the next interactive start came up in Query
+  mode. `MainDM.pas` now has a unit-level `SettingsReadOnly` flag (set in its
+  `initialization` from the `--selftest` parameter) and `UpdateIniFile(theIni)`, which
+  every settings writer calls instead of `theIni.UpdateFile` (12 sites in MainDM, DBDM,
+  GUIDM, EERDM, EditorQuery, EERExportSQLScript, DBConnEditor, DBConnSelect). Gotcha:
+  merely skipping `UpdateFile` is not enough - FPC's `TMemIniFile` sets `CacheUpdates`
+  and `TIniFile.Destroy` flushes a dirty file anyway. So in read-only mode the helper
+  `Rename`s the ini to `<tmp>/DBDesignerFork_selftest_discard.ini` before flushing.
+  Verified: WorkMode=1 in the ini, `xvfb-run -a ./bin/DBDesignerFork --selftest` ->
+  105 PASS / 0 FAIL, exit 0, ini mtime and md5 unchanged. (Noticed, not fixed: `DBDesignerFork_DatabaseInfo.ini`
+  still gets its mtime bumped at self-test start-up - size and contents stay the same, and
+  it is not one of the `UpdateFile` sites, so probably the ini version check in `GUIDM.CheckIniFiles`.)
+- **SQLite library name**: new `src/clx_shims/sqlitelib.pas` (Linux only) tries
+  `LoadLibrary('libsqlite3.so.0')` then `'libsqlite3.so'` at start-up and sets
+  `sqlite3dyn.SQLiteDefaultLibrary` to the first that loads; `sqlexpr.pas` uses it and
+  also `SQLite3Conn`, so the main binary now registers the `SQLite3` connector that the
+  `DriverName="SQLite"` mapping needs (previously not linked at all). Standalone tests:
+  `fpc -Mdelphi -Fusrc/clx_shims -FU<scratch> -o<scratch>/TestSQLite tests/TestSQLite.pas`
+  (same for `TestSQLExprShim`); both print SUCCESS with an empty `LD_LIBRARY_PATH`, and
+  `LD_DEBUG=libs` shows `find library=libsqlite3.so.0`.
+- `.gitignore`: `*.sqlite`, `*.sqlite3`, `*.db` (no tracked file matched).

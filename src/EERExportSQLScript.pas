@@ -549,7 +549,7 @@ begin
 
     theIni.WriteString('ExportSQLSettings', 'AutoIncrementSeqName', EdAutoIncrementSeqName.Text);
 
-    theIni.UpdateFile;
+    UpdateIniFile(theIni);
   finally
     theIni.Free;
   end;

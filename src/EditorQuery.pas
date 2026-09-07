@@ -808,7 +808,7 @@ begin
       theOpenDialog.Free;
     end;
 
-    theIni.UpdateFile;
+    UpdateIniFile(theIni);
   finally
     theIni.Free;
   end;
@@ -891,7 +891,7 @@ begin
       theSaveDialog.Free;
     end;
 
-    theIni.UpdateFile;
+    UpdateIniFile(theIni);
   finally
     theIni.Free;
   end;

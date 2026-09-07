@@ -299,6 +299,16 @@ const
 
 var
   DMMain: TDMMain;
+  // True when started with --selftest: every settings/ini writer must skip
+  // UpdateFile so an automated run never persists its state (WorkMode,
+  // window positions, recent files...) into the user's ~/.DBDesigner4.
+  SettingsReadOnly: Boolean = False;
+
+// Flush a settings/ini writer. With SettingsReadOnly the file is redirected to
+// a throw-away copy in the temp dir first: TMemIniFile.Destroy flushes dirty
+// contents on its own (FPC sets CacheUpdates), so merely skipping UpdateFile
+// would not prevent the write.
+procedure UpdateIniFile(theIni: TMemIniFile);
 {$IFDEF MSWINDOWS}
   global_winname: string;
 
@@ -778,7 +788,7 @@ begin
       end;
     end;
 
-    theIni.UpdateFile;
+    UpdateIniFile(theIni);
   finally
     theIni.Free;
   end;
@@ -1255,7 +1265,7 @@ begin
   try
     theIni.WriteString('GeneralSettings', 'Language', LanguageCode);
 
-    theIni.UpdateFile;
+    UpdateIniFile(theIni);
   finally
     theIni.Free;
   end;
@@ -1787,7 +1797,7 @@ begin
   theIni:=TMemIniFile.Create(SettingsPath+ProgName+'_Settings.ini');
   try
     theIni.WriteString(section, name, value);
-    theIni.UpdateFile;
+    UpdateIniFile(theIni);
   finally
     theIni.Free;
   end;
@@ -2163,5 +2173,26 @@ begin
   if(Result='')then
     Result:=DefaultFont;
 end;
+
+procedure UpdateIniFile(theIni: TMemIniFile);
+begin
+  if SettingsReadOnly then
+    theIni.Rename(IncludeTrailingPathDelimiter(GetTempDir(False))+
+      'DBDesignerFork_selftest_discard.ini', False);
+  theIni.UpdateFile;
+end;
+
+function RunningSelfTest: Boolean;
+var i: Integer;
+begin
+  Result:=False;
+  for i:=1 to ParamCount do
+    if (CompareText(ParamStr(i), '--selftest')=0) or
+       (CompareText(ParamStr(i), '-selftest')=0) then
+      Exit(True);
+end;
+
+initialization
+  SettingsReadOnly:=RunningSelfTest;
 
 end.

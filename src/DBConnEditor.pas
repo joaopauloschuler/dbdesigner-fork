@@ -213,7 +213,7 @@ begin
 
     DBConn.Name:=theName;
 
-    theIni.UpdateFile;
+    UpdateIniFile(theIni);
   finally
     theIni.Free;
   end;
