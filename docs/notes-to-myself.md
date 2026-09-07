@@ -556,3 +556,30 @@ Testing gotcha: after the Tips dialog is closed its X window stays in `xwininfo 
 as IsViewable and `xdotool getactivewindow` may still report it; do not rely on those to
 decide whether it is open. Also the dialog can be placed over the main menu bar
 (+28+20), so close it before clicking menus.
+
+## Fix: Options dialogs clipped/overlapping (ui-bug-catalog #16, #17)
+
+Cause: both forms were laid out for the Qt 8 pt font; LCL/GTK2 renders `Sans -11`
+wider, so fixed-width check boxes truncated and the `Various` group boxes (already
+overflowing the page by 20 px at design size) were cut at the page edge. Two more
+LCL-specific problems on the same pages: a check box placed over a group box caption
+(`UsePosGridCBox`, Top -1/1) is completely covered by the native group box under GTK2
+(seen before in EditorDatatype, #18), and a label whose converted .lfm carries
+`AutoSize = True` immediately followed by `AutoSize = False` without a Width ends up
+0 px wide and invisible (the grey hint labels under the Table Prefixes list).
+
+Fix (.lfm only): `src/Options.lfm` form 800x372 with every control that was anchored
+to the right/bottom edge widened explicitly (Anchors only act on later resizes), wider
+group boxes/check boxes, taller Reset button; `src/OptionsModel.lfm` "Table Prefixes:"
+label `AutoSize = False` at Left 270/Width 94, hint labels autosized, grid/canvas group
+boxes moved down so the snap check box is visible. Before/after: `fix16-before-*`,
+`fix16-after-*` in the shots dir.
+
+Testing gotchas: the DBDesigner Options dialog cannot be closed with xdotool: its
+OK/Cancel speed buttons are `Enabled = False` in the .lfm and are only enabled in
+`SubmitBtnMouseEnter`, which GTK2 never fires for a disabled control; Escape works only
+when the form itself has focus (no KeyPreview). Likely a real bug for users too (not
+in the catalog yet). Workaround: one app launch per dialog (`fix16-cycle.sh` in the
+scratchpad: launch, close Tips at (782,617), Options menu at (364,82), item at
+(400,140)/(400,107), click tree rows at +75/+22+14*i, `import -window`, kill by PID).
+Model Options takes 3-5 s to appear (font enumeration); poll `xwininfo -root -tree`.

@@ -4,8 +4,8 @@ object OptionsForm: TOptionsForm
   ActiveControl = PageControl
   BorderStyle = bsToolWindow
   Caption = 'DBDesigner Options'
-  ClientHeight = 342
-  ClientWidth = 744
+  ClientHeight = 372
+  ClientWidth = 800
   Color = clBtnFace
   FormStyle = fsStayOnTop
   Position = poMainFormCenter
@@ -19,7 +19,7 @@ object OptionsForm: TOptionsForm
   object PageControlTitleShape: TShape
     Left = 197
     Top = 14
-    Width = 527
+    Width = 583
     Height = 23
     Anchors = [akTop, akLeft, akRight]
     Brush.Color = clBtnFace
@@ -28,8 +28,8 @@ object OptionsForm: TOptionsForm
   object PageControl: TPageControl
     Left = 192
     Top = 40
-    Width = 535
-    Height = 263
+    Width = 591
+    Height = 293
     Anchors = [akTop, akLeft, akRight, akBottom]
     ActivePage = DBOptionsSheet
     ShowTabs = False
@@ -82,22 +82,22 @@ object OptionsForm: TOptionsForm
         end
       end
       object Various: TGroupBox
-        Left = 242
+        Left = 236
         Top = 0
-        Width = 313
-        Height = 255
+        Width = 345
+        Height = 262
         Caption = 'Various'
         TabOrder = 1
         object LimitUndoCBox: TCheckBox
           Left = 22
           Top = 21
-          Width = 199
+          Width = 226
           Height = 21
           Caption = 'Limit the number of Undo Actions to'
           TabOrder = 0
         end
         object UndoLimitEd: TEdit
-          Left = 216
+          Left = 250
           Top = 21
           Width = 45
           Height = 21
@@ -107,7 +107,7 @@ object OptionsForm: TOptionsForm
         object EditorsFloatOnTopCBox: TCheckBox
           Left = 22
           Top = 50
-          Width = 269
+          Width = 310
           Height = 21
           Caption = 'Normalize Editors when Application loses the Focus'
           TabOrder = 2
@@ -115,7 +115,7 @@ object OptionsForm: TOptionsForm
         object MinimizeOnCtrlShiftCCBox: TCheckBox
           Left = 22
           Top = 78
-          Width = 269
+          Width = 310
           Height = 21
           Caption = 'Minimize on [Ctrl+Shift+C] Copy Command'
           TabOrder = 3
@@ -123,7 +123,7 @@ object OptionsForm: TOptionsForm
         object HTMLBrowserCBox: TCheckBox
           Left = 22
           Top = 108
-          Width = 153
+          Width = 170
           Height = 21
           Hint = 'Enable this option to user a Browser different to IE/Konquerior'
           Caption = 'Use other HTML Browser:'
@@ -133,9 +133,9 @@ object OptionsForm: TOptionsForm
           OnClick = HTMLBrowserCBoxClick
         end
         object HTMLBrowserEd: TEdit
-          Left = 176
+          Left = 196
           Top = 108
-          Width = 119
+          Width = 130
           Height = 21
           Hint = 
             'Enter the browsers filename. When this file is not in the Path, ' +
@@ -148,7 +148,7 @@ object OptionsForm: TOptionsForm
         object UseSQLSyntaxHighlightingCBox: TCheckBox
           Left = 22
           Top = 138
-          Width = 267
+          Width = 310
           Height = 21
           Hint = 'This option enables syntax Highlighting in the Query Mode'
           Caption = 'Use SQL Syntax Highlighting'
@@ -160,7 +160,7 @@ object OptionsForm: TOptionsForm
         object IgnoreSQLHistoryChangeCBox: TCheckBox
           Left = 22
           Top = 168
-          Width = 277
+          Width = 310
           Height = 21
           Hint = 
             'If you don'#39't want to be asked to save your model after SQL Execu' +
@@ -174,7 +174,7 @@ object OptionsForm: TOptionsForm
         object ActivateNewXMLParserCBox: TCheckBox
           Left = 22
           Top = 196
-          Width = 277
+          Width = 310
           Height = 21
           Hint = 'Deactivate this option if you have troubles opening old models.'
           Caption = 'Activate new XML Parser'
@@ -186,7 +186,7 @@ object OptionsForm: TOptionsForm
         object OutputLinuxStyleLineBreaksCBox: TCheckBox
           Left = 22
           Top = 224
-          Width = 277
+          Width = 310
           Height = 21
           Hint = 'Used when exporting SQL Scripts'
           Caption = 'Use Linux style linebreaks'
@@ -231,7 +231,7 @@ object OptionsForm: TOptionsForm
           Left = 16
           Top = 22
           Width = 187
-          Height = 22
+          Height = 26
           Hint = 
             'Use this function to reset your local personal settings to the d' +
             'efaults.'
@@ -419,14 +419,14 @@ object OptionsForm: TOptionsForm
         Caption = 'Reserved Words:'
       end
       object GroupBox6: TGroupBox
-        Left = 326
+        Left = 320
         Top = 2
-        Width = 223
+        Width = 260
         Height = 199
         Caption = 'Various'
         TabOrder = 4
         object Label11: TLabel
-          Left = 0
+          Left = 14
           Top = 145
           Width = 102
           Alignment = taRightJustify
@@ -435,16 +435,16 @@ object OptionsForm: TOptionsForm
         object FontCBox: TComboBox
           Left = 16
           Top = 161
-          Width = 141
+          Width = 160
           Height = 21
           DropDownCount = 16
           ItemHeight = 15
           TabOrder = 1
         end
         object SQLFontSizeCBox: TComboBox
-          Left = 166
+          Left = 186
           Top = 161
-          Width = 41
+          Width = 55
           Height = 21
           Style = csDropDownList
           ItemHeight = 15
@@ -464,40 +464,40 @@ object OptionsForm: TOptionsForm
         object RenameReservedWordsCBox: TCheckBox
           Left = 14
           Top = 20
-          Width = 197
-          Height = 17
+          Width = 240
+          Height = 19
           Caption = 'Rename Reserved Words'
           TabOrder = 3
         end
         object EncloseNamesCBox: TCheckBox
           Left = 14
           Top = 44
-          Width = 195
-          Height = 17
+          Width = 240
+          Height = 19
           Caption = 'Enclose names by quote character'
           TabOrder = 4
         end
         object DonotuseRelNameCbox: TCheckBox
           Left = 14
           Top = 70
-          Width = 203
-          Height = 17
+          Width = 240
+          Height = 19
           Caption = 'Do not use Relation Name in Ref.Def.'
           TabOrder = 5
         end
         object SyncDatatypesOfForeignKeysCBox: TCheckBox
           Left = 14
           Top = 96
-          Width = 203
-          Height = 17
+          Width = 240
+          Height = 19
           Caption = 'Sync Datatypes of FKs with PKs'
           TabOrder = 6
         end
         object AddQuotesToDefValsCBox: TCheckBox
           Left = 14
           Top = 122
-          Width = 203
-          Height = 17
+          Width = 240
+          Height = 19
           Caption = 'Add quotes to Default Values'
           TabOrder = 7
         end
@@ -627,8 +627,8 @@ object OptionsForm: TOptionsForm
       end
       object GroupBox1: TGroupBox
         Left = 380
-        Top = 2
-        Width = 159
+        Top = 20
+        Width = 180
         Height = 83
         Caption = ' '
         TabOrder = 3
@@ -674,9 +674,9 @@ object OptionsForm: TOptionsForm
         end
       end
       object UsePosGridCBox: TCheckBox
-        Left = 390
-        Top = -1
-        Width = 121
+        Left = 384
+        Top = 0
+        Width = 150
         Height = 19
         Caption = 'Enable Snap to Grid'
         TabOrder = 2
@@ -715,14 +715,14 @@ object OptionsForm: TOptionsForm
   end
   object BottomPnl: TPanel
     Left = 0
-    Top = 307
-    Width = 744
+    Top = 337
+    Width = 800
     Height = 35
     Align = alBottom
     BevelOuter = bvNone
     TabOrder = 1
     object AbortBtn: TSpeedButton
-      Left = 702
+      Left = 758
       Top = 0
       Width = 23
       Height = 22
@@ -836,7 +836,7 @@ object OptionsForm: TOptionsForm
       OnMouseLeave = SubmitBtnMouseLeave
     end
     object SubmitBtn: TSpeedButton
-      Left = 674
+      Left = 730
       Top = 0
       Width = 23
       Height = 22
@@ -971,7 +971,7 @@ object OptionsForm: TOptionsForm
     Left = 17
     Top = 15
     Width = 170
-    Height = 284
+    Height = 314
     Anchors = [akTop, akLeft, akBottom]
     Items.Data = {
       0400000028000000FFFFFFFFFFFFFFFF7805AF09000000000000000000000000
@@ -987,7 +987,7 @@ object OptionsForm: TOptionsForm
   object PageControlTitlePnl: TPanel
     Left = 198
     Top = 15
-    Width = 525
+    Width = 581
     Height = 21
     Anchors = [akTop, akLeft, akRight]
     BevelOuter = bvNone

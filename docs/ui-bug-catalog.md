@@ -149,6 +149,7 @@ Summary: 21 entries — 6 crash, 7 unreadable, 8 cosmetic.
 - **Screenshots:** `12-dbd-options.png`, `12-dbd-options-pages.png`
 - **Suspected files:** `src/Options.lfm` — `Various` group at Left 242 Width 313 inside a `PageControl` of Width 535 (overflows by 20 px even at design size); check-box widths (e.g. `LimitUndoCBox` Width 199) are sized for the CLX 11-px font while LCL renders the form font `Sans -11` larger. Form-level `Font.Height = -11`/`Font.Name = 'Sans'` in most .lfm files.
 - **Complexity:** small-medium (widen controls / use `AutoSize`, or enlarge forms).
+- **Status:** FIXED. `src/Options.lfm`: form 744x342 -> 800x372 (page control, title panel/shape, tree view, bottom panel and buttons follow); General page `Various` group 236/345/262, check boxes 226..310 px wide, edit/browser edit moved right, `Reset Personal Settings` button 22 -> 26 px high; Database page `Various` group 320/260 with 240 px check boxes and wider font/size combos; Default Model page grid box widened to 180 and moved down so the `Enable Snap to Grid` check box (previously hidden under the group box under GTK2) sits above it. Verified all four pages: `fix16-after-dbd-all.png`.
 
 ### 17. Model Options > Database Options: "Table Prefixes" label overlapped by the datatype combo
 - **Severity:** cosmetic
@@ -156,6 +157,7 @@ Summary: 21 entries — 6 crash, 7 unreadable, 8 cosmetic.
 - **Screenshots:** `11-model-options-pages.png` (middle panel, "ble Prefixes:")
 - **Suspected files:** `src/OptionsModel.lfm` (label/combo positions on the Database page; same font-metric cause as 16).
 - **Complexity:** small
+- **Status:** FIXED. `src/OptionsModel.lfm`: `Label4` ("Table Prefixes:") got `AutoSize = False`, Left 270 / Width 94, so it right-justifies next to the list instead of autosizing from Left 248 under the combo; the six grey hint labels below the prefix list had `AutoSize = True` followed by `AutoSize = False` (no Width, invisible) and are now autosized; on the Editing page the `Enable Snap to Grid` check box was hidden under `GroupBox1` (same GTK2 issue as #16/#18) and now sits above it (grid and Canvas Size boxes moved 18 px down). Verified all four pages: `fix16-after-model-all.png`, `fix16-after2-model-tab2.png`.
 
 ### 18. Table Editor "Advanced" page: "Use Table RAID" check box overlaps "RAID Type:" label; combo shows "STRI"; "kB" clipped. Datatype Editor: "Edit values as strings" check box cut off, "Synonymgrp." label clipped
 - **Severity:** cosmetic
