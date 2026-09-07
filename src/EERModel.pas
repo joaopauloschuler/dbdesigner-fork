@@ -8139,17 +8139,20 @@ procedure TEERTable.PaintCachedImg(theCanvas: TCanvas; xo: integer = 0; yo: inte
 var PK: Boolean;
   i, j, ypos: integer;
   txt: string;
-  width, height: integer;
+  // NB: not named width/height - inside "with theCanvas do" those would
+  // resolve to TCanvas.Width/Height (which LCL has, CLX did not); they are 0
+  // until the bitmap canvas has a handle, so the first paint drew nothing.
+  tblWidth, tblHeight: integer;
   theCol: TEERColumn;
   SepLineDrawed: Boolean;
 begin
   SepLineDrawed:=False;
 
-  width:=EvalZoomFac(Obj_W);
-  height:=EvalZoomFac(Obj_H);
+  tblWidth:=EvalZoomFac(Obj_W);
+  tblHeight:=EvalZoomFac(Obj_H);
 
-  {StrechedImg.Width:=width;
-  StrechedImg.Height:=height;
+  {StrechedImg.Width:=tblWidth;
+  StrechedImg.Height:=tblHeight;
 
   StrechedImg.Canvas.Font:=Font;}
 
@@ -8157,7 +8160,7 @@ begin
   begin
 {$IFDEF LINUX}
     //Brush.Color:=clWhite;
-    //FillRect(Rect(xo+1, yo+1, xo+width-1, yo+height-1));
+    //FillRect(Rect(xo+1, yo+1, xo+tblWidth-1, yo+tblHeight-1));
 {$ENDIF}
 
     if(Not(DMEER.DisableTextOutput))then
@@ -8165,28 +8168,28 @@ begin
       if(Not(IsLinkedObject))then
       begin
         //Draw Header
-        StretchDraw(Rect(xo+1, yo+0, xo+width-3, yo+EvalZoomFac(18)),
+        StretchDraw(Rect(xo+1, yo+0, xo+tblWidth-3, yo+EvalZoomFac(18)),
           ParentEERModel.TblHeaderBmp);
 
         //Draw Header Right Part
         StretchDraw(
-          Rect(xo+width-3-EvalZoomFac(ParentEERModel.TblHeaderRightBmp.Width),
+          Rect(xo+tblWidth-3-EvalZoomFac(ParentEERModel.TblHeaderRightBmp.Width),
             yo+0,
-            xo+width-3,
+            xo+tblWidth-3,
             yo+EvalZoomFac(18)),
             ParentEERModel.TblHeaderRightBmp);
       end
       else
       begin
         //Draw Linked Header
-        StretchDraw(Rect(xo+1, yo+0, xo+width-3, yo+EvalZoomFac(18)),
+        StretchDraw(Rect(xo+1, yo+0, xo+tblWidth-3, yo+EvalZoomFac(18)),
           ParentEERModel.TblHeaderLinkedBmp);
 
         //Draw Linked Header Right Part
         StretchDraw(
-          Rect(xo+width-3-EvalZoomFac(ParentEERModel.TblHeaderRightBmp.Width),
+          Rect(xo+tblWidth-3-EvalZoomFac(ParentEERModel.TblHeaderRightBmp.Width),
             yo+0,
-            xo+width-3,
+            xo+tblWidth-3,
             yo+EvalZoomFac(18)),
             ParentEERModel.TblHeaderRightLinkedBmp);
       end;
@@ -8197,14 +8200,14 @@ begin
 
       if(Collapsed)then
         Polygon([
-          Point(xo+width-3-EvalZoomFac(8), yo+EvalZoomFac(5)),
-          Point(xo+width-3-EvalZoomFac(4), yo+EvalZoomFac(9)),
-          Point(xo+width-3-EvalZoomFac(8), yo+EvalZoomFac(13))])
+          Point(xo+tblWidth-3-EvalZoomFac(8), yo+EvalZoomFac(5)),
+          Point(xo+tblWidth-3-EvalZoomFac(4), yo+EvalZoomFac(9)),
+          Point(xo+tblWidth-3-EvalZoomFac(8), yo+EvalZoomFac(13))])
       else
         Polygon([
-          Point(xo+width-3-EvalZoomFac(10), yo+EvalZoomFac(8)),
-          Point(xo+width-3-EvalZoomFac(7), yo+EvalZoomFac(12)),
-          Point(xo+width-3-EvalZoomFac(3), yo+EvalZoomFac(8))]);
+          Point(xo+tblWidth-3-EvalZoomFac(10), yo+EvalZoomFac(8)),
+          Point(xo+tblWidth-3-EvalZoomFac(7), yo+EvalZoomFac(12)),
+          Point(xo+tblWidth-3-EvalZoomFac(3), yo+EvalZoomFac(8))]);
 
       Pen.Style:=psSolid;
     end;
@@ -8214,7 +8217,7 @@ begin
     Brush.Color:=clWhite;
 
     //FillBG
-    FillRect(Rect(xo+1, yo+EvalZoomFac(18)+1, xo+width-3, yo+height-3));
+    FillRect(Rect(xo+1, yo+EvalZoomFac(18)+1, xo+tblWidth-3, yo+tblHeight-3));
 
     //Draw Table Name
     if(Not(DMEER.DisableTextOutput))then
@@ -8276,7 +8279,7 @@ begin
             else
               Pen.Color:=clBtnShadow;
             MoveTo(xo+1, yo+EvalZoomFac(20+17*ypos-1));
-            LineTo(xo+width-4, yo+EvalZoomFac(20+17*ypos-1));
+            LineTo(xo+tblWidth-4, yo+EvalZoomFac(20+17*ypos-1));
 
             Pen.Color:=clBtnShadow;
           end;
@@ -8318,7 +8321,7 @@ begin
             else
               Pen.Color:=clBtnShadow;
             MoveTo(xo+1, yo+EvalZoomFac(20+17*ypos-1));
-            LineTo(xo+width-4, yo+EvalZoomFac(20+17*ypos-1));
+            LineTo(xo+tblWidth-4, yo+EvalZoomFac(20+17*ypos-1));
 
             Pen.Color:=clBtnShadow;
 
@@ -8393,15 +8396,15 @@ begin
       Pen.Color:=$00C66931;
 
     MoveTo(xo+0, yo+0);
-    LineTo(xo+0, yo+height-3);
-    LineTo(xo+width-3, yo+height-3);
-    LineTo(xo+width-3, yo+0);
+    LineTo(xo+0, yo+tblHeight-3);
+    LineTo(xo+tblWidth-3, yo+tblHeight-3);
+    LineTo(xo+tblWidth-3, yo+0);
     LineTo(xo+0, yo+0);
     Pen.Style:=psSolid;
 
     //HeaderLine
     MoveTo(xo+0, yo+EvalZoomFac(18));
-    LineTo(xo+width-3, yo+EvalZoomFac(18));
+    LineTo(xo+tblWidth-3, yo+EvalZoomFac(18));
 
     //Draw Shadow
     if(Not(DMEER.DisableTextOutput))then
@@ -8411,30 +8414,30 @@ begin
         Pen.Color:=$00363636
       else
         Pen.Color:=$00707070;
-      MoveTo(xo+width-2, yo);
-      LineTo(xo+width-2, yo+height-2);
-      LineTo(xo, yo+height-2);
+      MoveTo(xo+tblWidth-2, yo);
+      LineTo(xo+tblWidth-2, yo+tblHeight-2);
+      LineTo(xo, yo+tblHeight-2);
 
       if(IsLinkedObject)then
         Pen.Color:=$00B3B3B3
       else
         Pen.Color:=$00D0D0D0;
-      MoveTo(xo+width-1, yo);
-      LineTo(xo+width-1, yo+height-1);
-      LineTo(xo, yo+height-1);
+      MoveTo(xo+tblWidth-1, yo);
+      LineTo(xo+tblWidth-1, yo+tblHeight-1);
+      LineTo(xo, yo+tblHeight-1);
     end;
   end;
 end;
 
 procedure TEERTable.PaintObj2Canvas(theCanvas: TCanvas; xo, yo: integer);
-var width, height: integer;
+var tblWidth, tblHeight: integer;
 begin
   if(ParentEERModel.DisableModelRefresh)then
     Exit;
 
   //ParentEERModel.ClearMouseOverObj;
-  width:=EvalZoomFac(Obj_W);
-  height:=EvalZoomFac(Obj_H);
+  tblWidth:=EvalZoomFac(Obj_W);
+  tblHeight:=EvalZoomFac(Obj_H);
 
   //If the Table is NOT drawn to a special Canvas, use cached image
   if(Not(ParentEERModel.PaintingToSpecialCanvas))then
@@ -8444,8 +8447,8 @@ begin
     begin
       RefreshStrechedImg:=False;
 
-      StrechedImg.Width:=width;
-      StrechedImg.Height:=height;
+      StrechedImg.Width:=tblWidth;
+      StrechedImg.Height:=tblHeight;
 
       StrechedImg.Canvas.Font:=Font;
 
@@ -8470,17 +8473,17 @@ begin
     begin
       Pen.Color:=clWhite;
       MoveTo(xo+0, yo+0);
-      LineTo(xo+0, yo+height-3);
-      LineTo(xo+width-3, yo+height-3);
-      LineTo(xo+width-3, yo+0);
+      LineTo(xo+0, yo+tblHeight-3);
+      LineTo(xo+tblWidth-3, yo+tblHeight-3);
+      LineTo(xo+tblWidth-3, yo+0);
       LineTo(xo+0, yo+0);
 
       Pen.Color:=clBlack;
       Pen.Style:=psDot;
       MoveTo(xo+0, yo+0);
-      LineTo(xo+0, yo+height-3);
-      LineTo(xo+width-3, yo+height-3);
-      LineTo(xo+width-3, yo+0);
+      LineTo(xo+0, yo+tblHeight-3);
+      LineTo(xo+tblWidth-3, yo+tblHeight-3);
+      LineTo(xo+tblWidth-3, yo+0);
       LineTo(xo+0, yo+0);
 
       Pen.Style:=psSolid;

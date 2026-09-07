@@ -318,3 +318,29 @@ The `{$R *.lfm}` directive embeds form data into the `.ppu`/`.o` file at unit co
 - Wrap in try/except, increment PassCount/FailCount counters, log [PASS]/[FAIL]/[SKIP].
 - Editors NOT yet tested directly: TEditorTableForm, TEditorQueryForm, TEditorString/Datatype/Note/Region/Relation, TEERReverseEngineering/StoreInDatabase/Synchronisation, TPlaceModelForm, TPrinterSettingsForm.
 - See `src/UITestRunner.pas:386` Phase0 / `src/UITestRunner.pas:573` Phase3 for reference templates.
+
+
+## Fix: black table title bars after load (ui-bug-catalog #7)
+
+Cause: a Delphi/CLX-to-LCL scoping trap, not a bitmap problem. `TEERTable.PaintCachedImg`
+and `PaintObj2Canvas` declared locals `width, height` and used them inside
+`with theCanvas do`. Delphi's `TCanvas` has no `Width`/`Height`, so the locals were meant;
+LCL's `TCanvas` does have them, and the `with` scope wins. `TCanvas.Width` is 0 until the
+canvas has a handle, and the freshly resized `StrechedImg` cache bitmap gets its handle
+created *by the first drawing call* - so the header `StretchDraw` ran with
+`Rect(xo+1, 0, xo+0-3, 18)` (empty) and drew nothing; the uninitialised pixmap stayed black
+and the (black) table name was invisible on it. Every later call saw the real width, which
+is why the rest of the table was fine and why any recache (mode switch, zoom) "fixed" it.
+
+Fix: renamed the locals to `tblWidth`/`tblHeight` (src/EERModel.pas). Verified with
+`xdotool`/`import` screenshots on DISPLAY=:0: names visible right after load.
+
+How it was found: the GTK2 widgetset call for the very first op arrived with
+`rect=1,0,-3,14` (gdb breakpoint on `TGtk2WidgetSet.FillRect`); everything above and below
+it (bitmap handles, GC, drawable XIDs, masks) was fine.
+
+Same latent pattern (locals `width, height` + `with theCanvas do`) still exists in
+`src/EERModel.pas` around lines 12351, 13008 and 13432 (note/image/region-type paints);
+likely the cause of catalog #9 (notes drawn 1 px high). Left untouched here on purpose.
+Catalog #19 (Visual Options header preview) has a different cause: the `panelbitmap.pas`
+shim stores `TPanel.Bitmap` but never paints it.

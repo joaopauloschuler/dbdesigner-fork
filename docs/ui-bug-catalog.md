@@ -62,6 +62,7 @@ Summary: 21 entries — 6 crash, 7 unreadable, 8 cosmetic.
 ## Unreadable
 
 ### 7. Table title bars are solid black with no table name after a model is loaded
+- **Status:** FIXED. Cause: in `TEERTable.PaintCachedImg`/`PaintObj2Canvas` the locals `width`/`height` were used inside `with theCanvas do`, where LCL resolves them to `TCanvas.Width`/`Height`; these are 0 while the fresh cached bitmap has no handle, so the header rectangle was empty and never painted (renamed to `tblWidth`/`tblHeight`). Not a bitmap-loading problem.
 - **Severity:** unreadable
 - **Repro:** Launch `./DBDesignerFork Examples/order.xml`, close Tips. Every table header is a black box. Reproduces with fresh settings (design mode) and with the persisted query mode. Switching Display > Query Mode then Display > Design Mode (any `SetWorkMode` call) repaints the headers correctly; after that they stay correct in both modes.
 - **Screenshots:** `02c-tables.png` (broken), `33a-fresh-tables.png` (broken, fresh settings), `24-header-compare.png` (correct after mode switch)
@@ -155,6 +156,7 @@ Summary: 21 entries — 6 crash, 7 unreadable, 8 cosmetic.
 - **Repro:** Options > DBDesigner Options > Visual Options.
 - **Screenshots:** `12-dbd-options-pages.png` (top panel)
 - **Suspected files:** `src/Options.pas` header-preview paint (draws `Header_<style>.bmp` like `TEERTable.PaintCachedImg`). Shares the header-bitmap drawing problem of entry 7.
+- **Note (after fixing 7):** does NOT share the cause of 7. `TblHeaderBGPnl.Bitmap` is served by the `src/clx_shims/panelbitmap.pas` class helper, which only stores the bitmap in a hash list; nothing paints it onto the panel (CLX's `TPanel.Bitmap` was drawn as the panel background). Needs an `OnPaint`/custom-draw in the shim or in `Options.pas`.
 - **Complexity:** small once 7 is fixed.
 
 ### 20. Windows menu lists the loaded model as "Noname1"; main window title lacks the file name
