@@ -316,7 +316,8 @@ begin
           EdLastDeleteColName.Text,
           EdLastDeleteTriggerPrefix.Text
           )
-          +#13#10#13#10
+          //SQLite: the table code is tidied, one empty line between tables
+          +IfThen(TargetDatabase = 'SQLite', #13#10, #13#10#13#10)
       else if(ScriptMode=1)then
         s:=s+theEERTbl.GetSQLDropCode(DropIfExists)+#13#10#13#10
       else if(ScriptMode=2)then

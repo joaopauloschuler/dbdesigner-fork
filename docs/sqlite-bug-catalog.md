@@ -17,10 +17,10 @@ keys / indexes / AUTOINCREMENT / row counts per table.
 
 | Stage | What | Status |
 |---|---|---|
-| A | Export `order.xml` to SQL create script, target "SQLite" (File > Export > SQL Create Script) | **works with defects** — file written (`$S/order_sqlite.sql`), but see #3, #4, #6 |
-| B | `sqlite3 order.sqlite < script` | **fails partially** — 12 tables created; 1 index and all standard inserts rejected (#3, #4); DB usable after `sed 's/info(100)/info/'` (`$S/order_fixed.sql`) |
+| A | Export `order.xml` to SQL create script, target "SQLite" (File > Export > SQL Create Script) | **works** after #3/#4/#6 — `$S/fix03-after2.sql`: inserts once, `INTEGER PRIMARY KEY AUTOINCREMENT`, no index prefix lengths, tidy whitespace |
+| B | `sqlite3 order.sqlite < script` | **works** — `tests/sqlite-roundtrip.sh` on `$S/fix03-after2.sql`: zero errors, 12 tables, both explicit indexes, 2 FKs, 5 tables with AUTOINCREMENT, rows loaded once (`$S/fix03-roundtrip.txt`) |
 | C | New SQLite connection + connect + reverse engineer | **works** after #1/#2 were fixed — tree node clicks, connection editor, connect and the Reverse Engineering dialog (12 tables listed) all work; Execute adds 12 tables to the model |
-| D | Compare reverse-engineered model with original | **works** after #10/#7 — 12 tables with all columns (datatype, PK, NOT NULL, AutoInc, default), all indexes and 10 of 11 relations (the self-relation `forumpost` -> `forumpost` is not recoverable: no FK in the DB); compared with `$S/compare_models.py` (`$S/fix10-reveng.xml`) |
+| D | Compare reverse-engineered model with original | **works** after #10/#7 (re-checked after #3/#4/#6 with `$S/fix03-reveng.xml`: same result, 5 AutoInc PKs recovered) — 12 tables with all columns (datatype, PK, NOT NULL, AutoInc, default), all indexes and 10 of 11 relations (the self-relation `forumpost` -> `forumpost` is not recoverable: no FK in the DB); compared with `$S/compare_models.py` (`$S/fix10-reveng.xml`) |
 | E | Database Synchronisation against the DB | **fails** — same "Transaction not set." (#2) right after connecting; would then hit MySQL-only SQL (#8) |
 | F | Query mode, simple SELECT | **fails** — connected, SQL typed, Execute button (and the other toolbar speed buttons) do nothing (#5) |
 
@@ -45,11 +45,13 @@ keys / indexes / AUTOINCREMENT / row counts per table.
 - Fix idea: create the transaction in the shim's `TSQLConnection` constructor (so it exists when `.lfm` links are resolved), and/or in `TSQLDataSet.SetSQLConnection`/before `Open` set `Transaction := SQLConnection.Transaction` when nil. Complexity: **small**.
 
 ### 3. SQLite (and probably every) SQL create script contains each table's standard inserts twice
+- Status: **FIXED** — `TEERTable.getSqlTableComment` (`src/EERModel.pas`) never initialised its `result`; FPC passes the caller's temporary string in, which held the tail of the script (the inserts block just appended), so with "Output Comments" checked the tail was appended a second time for every target. Now `result := ''`.
 - Severity: **wrong result**
 - Repro: File > Export > SQL Create Script, Target Data Base "SQLite", "Output Standard Inserts" checked (default), Save Script to file. In the script every `INSERT` block appears two times in a row (`$S/order_sqlite.sql`, e.g. lines 8-19 for `productgroup`). Loading it: `UNIQUE constraint failed` for every table with inserts (`$S/roundtrip_summary.txt`, 16 errors).
 - The model holds each insert once (`StandardInserts` attribute in `bin/Examples/order.xml`), so the duplication happens on load or export. Suspects: `TEERTable.GetSQLCreateCode` (`src/EERModel.pas:9284-9287`, single append) and the XML attribute decoding used by the two loaders (`src/EERModel.pas:9704` via the `xmlintf` shim `AttributeNodes[...].Text`, and `:10033` via the fast parser) — check whether `StandardInserts.Text` already contains the text twice after loading (Table editor, "Standard Inserts" tab, would show it). Not tested with a MySQL target; likely target-independent. Complexity: **medium** (small once located).
 
 ### 4. SQLite export emits MySQL index-prefix syntax `column(length)`
+- Status: **FIXED** — the `(n)` suffix from `ColumnParams` is only emitted when `DatabaseType = 'My SQL'` (`TEERTable.GetSQLCreateCode`); the script now has `CREATE INDEX product_name ON product (name, info);` and sqlite3 creates it.
 - Severity: **wrong result**
 - Repro: same export as #3. `CREATE INDEX product_name ON product (name, info(100));` — sqlite3: `Parse error near line 81: no such function: info`; the index is not created (only `product_ean` and the two autoindexes exist afterwards).
 - Cause: `src/EERModel.pas:9108-9109` appends `ColumnParams` (the MySQL prefix length stored as `LengthParam` in the model) to every index column regardless of `DatabaseType`; the SQLite branch of the export dialog (`src/EERExportSQLScript.pas:709-721`) only toggles check boxes. Fix: skip the `(n)` suffix unless target is MySQL. Complexity: **small**.
@@ -61,6 +63,7 @@ keys / indexes / AUTOINCREMENT / row counts per table.
 - Hypothesis: the `TSpeedButton`s in the `EditorQuery` frame do not receive clicks (compare ui-bug-catalog #19 "disabled OK/Cancel speed buttons"), or `ExecSQLBtnClick` (`src/EditorQuery.pas:963`) exits early at `GetSQLMemoText=''` (`:1004`) because the visible memo is not `SQLMemo`. Could not attach gdb (`ptrace_scope=1`); running the app under gdb with a breakpoint on `ExecSQLBtnClick` would settle it in a minute. Even once the button works, the SELECT will hit #2 through `OutputQry` (`src/EditorQuery.pas:355`, `:1092`). Complexity: **medium**.
 
 ### 6. Auto-increment is dropped when exporting for SQLite
+- Status: **FIXED** — new `TEERTable.IsSQLiteAutoIncPK`: a single-column PRIMARY index on an integer-typed `AutoInc` column is emitted inline as `INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT` (`GetSQLColumnCreateDefCode`) and the `PRIMARY KEY(...)` table constraint is skipped for it (`GetSQLCreateCode`). 5 of the 12 exported tables carry it; the reverse engineering recovers all 5 `AutoInc` flags.
 - Severity: **limitation**
 - The model has 7 `AutoInc="1"` PK columns (`idproduct`, `idonlineorder`, `idonlinecustomer`, `idproductgroup`, `idcreditcard`, `idNews`, `idEmployee`). The SQLite target disables the auto-increment options (`src/EERExportSQLScript.pas:718-720`) and emits `idproduct INTEGER NOT NULL … PRIMARY KEY(idproduct)`, so the round trip cannot recover auto-increment (`tests/sqlite-roundtrip.sh` prints `autoincrement: no` for every table).
 - SQLite supports `INTEGER PRIMARY KEY AUTOINCREMENT` (single-column integer PK only); the export could emit that inline for single-column integer auto-inc PKs. Complexity: **small**.
@@ -87,7 +90,7 @@ keys / indexes / AUTOINCREMENT / row counts per table.
 - Severity: **cosmetic**
 - Main window title stays "DBDesigner Fork - order" after File > New although the new model ("Noname2" in the Windows menu) is active (`$S/main_newc.png`, `$S/winmenu2.png`).
 - The exception message boxes (#1, #2) open at the top-right screen corner, not centred on the app.
-- Exported script formatting: runs of spaces before commas (`groupname Varchar(45)      ,`), `PRIMARY KEY(idproduct)    );`, 5-6 blank lines between tables.
+- Exported script formatting: runs of spaces before commas (`groupname Varchar(45)      ,`), `PRIMARY KEY(idproduct)    );`, 5-6 blank lines between tables. **FIXED for the SQLite target only** (MySQL output is kept byte-for-byte): column definitions are collapsed to single blanks and right-trimmed, the two-space indent is only written in front of an inline index (not for portable ones, which went to `CREATE INDEX` anyway), `TidySQLiteScript` drops trailing blanks and repeated empty lines, and the export dialog separates SQLite tables with one empty line.
 
 ## Observations that are not bugs
 - Only 2 of 11 relations are exported as `FOREIGN KEY` (`OnlineorderRel`, `CartRel`): those are the only ones with `CreateRefDef="1"` in `order.xml`, and the export option is "Define Foreign Key References when enabled in Relations' Editors". Model setting, not a bug.

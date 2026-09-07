@@ -759,3 +759,54 @@ navigation (`Down`x4 `Right` for File > Open Recent). Shots: `fix13-*`.
   earlier instances; take ids from the tree instead. The "Build Relations",
   "Use Datatype Substitution" and "Create Standard Inserts" check boxes in the
   dialog are clipped to a sliver (cosmetic, not fixed here).
+
+## Fix: SQLite SQL create script - duplicated inserts, index prefix, AUTOINCREMENT, whitespace (sqlite-bug-catalog #3, #4, #6, #9)
+
+- **#3 (duplicated standard inserts)**: not a loader problem. `TEERTable.GetSQLCreateCode`
+  appends `StandardInserts.Text` once (checked with a temporary `writeln(stderr)`: one call
+  per table, 5 lines / 222 bytes for `productgroup`), but right after it does
+  `s:=s + #13#10 + getSqlTableComment(...)` and `getSqlTableComment` (`src/EERModel.pas`)
+  never assigned `result` for non-Oracle targets. FPC passes an AnsiString function result
+  by reference and the caller's temporary still held the tail of `s` (the inserts block
+  just appended), so that tail came back as the "comment" and was appended a second time.
+  Any target with "Output Comments" checked was affected (MySQL too). Fix: `result := ''`.
+  The `¦`-placeholder trick in `TDMMain.ReplaceString` (`ReplaceString2(txt, such, '¦')`
+  then `'¦' -> ers`) looked like an empty-string bug in a terminal without UTF-8 - it is
+  fine; `DecodeXMLText` really does turn `\n` into CRLF (verified with a verbatim copy of
+  both functions, `$S/fix03-dup2.pas`).
+- **#4**: the `column(n)` index prefix (`TEERIndex.ColumnParams`) is now only written for
+  `DatabaseType = 'My SQL'`; every other target got invalid SQL (SQLite: "no such
+  function: info").
+- **#6**: `TEERTable.IsSQLiteAutoIncPK(ColIdx)` is true when the column is `AutoInc`,
+  `PrimaryKey`, the PRIMARY index consists of exactly that column and the physical type
+  name is INTEGER/INT/BIGINT/MEDIUMINT/SMALLINT/TINYINT (SQLite only auto-increments an
+  `INTEGER PRIMARY KEY`, the type name must literally be INTEGER, so the params are
+  dropped). `GetSQLColumnCreateDefCode` then emits `INTEGER NOT NULL PRIMARY KEY
+  AUTOINCREMENT` and `GetSQLCreateCode` skips the PRIMARY index for that table (otherwise
+  sqlite3 rejects the second PRIMARY KEY). Multi-column PKs keep the table constraint.
+- **#9 whitespace (SQLite only)**: column definitions are collapsed to single blanks and
+  right-trimmed; the two-space indent before an index is only written for inline indexes
+  (portable ones are `CREATE INDEX` statements after the table and left stray blanks
+  before `)`); `TidySQLiteScript` right-trims every line, keeps at most one empty line in
+  a row and none at the end; `TEERExportSQLScriptFrom.GetSQLScript` separates SQLite
+  tables with one CRLF instead of two. All of this is guarded by `DatabaseType = 'SQLite'`
+  so the MySQL script is byte-for-byte what it was (checked by exporting "My SQL" from the
+  same dialog: `info(100)`, `AUTO_INCREMENT`, old spacing, inserts once).
+- Foreign keys: the export already writes `FOREIGN KEY(...) REFERENCES ...` inside
+  `CREATE TABLE` (the only form SQLite accepts) for relations with `CreateRefDef=1`. The
+  only invalid variant was the MySQL `FOREIGN KEY name(cols)` form used when the option
+  `DoNotUseRelNameInRefDef` is off; SQLite now gets `CONSTRAINT name FOREIGN KEY(cols)`.
+- Verified on DISPLAY=:0: File > Export > SQL Create Script, target SQLite, Save Script
+  to file -> `$S/fix03-after2.sql`; `tests/sqlite-roundtrip.sh` -> zero load errors, 12
+  tables, `product_name` + `product_ean`, 2 FKs (`carthasproduct`,
+  `onlineorderhasproduct`), AUTOINCREMENT on 5 tables (the other two auto-inc PKs are the
+  linked tables `Employee`/`News`, which are not exported), row counts 3/2/3/4/2/2/2
+  (inserts loaded once). Then `[OrderSQLite]` in `~/.DBDesigner4/DBConn.ini` pointed at
+  `$S/fix03-order.sqlite`, File > New, Database > Reverse Engineering, Execute, Save As
+  `$S/fix03-reveng.xml`; `compare_models.py` against `Examples/order.xml`: 12 tables, all
+  columns and indexes OK, 5 `AutoInc`, 10 of 11 relations (same as commit e26d472).
+- Driving gotchas: the export dialog remembers the last target in the settings ini, so
+  check the combo (`$S/fix03-exportdlg.png`); the dropdown is a popup window of 140x184
+  (FireBird, My SQL, Oracle, PostgreSQL, SQL Server, SQLite, 30 px apart). The GTK save
+  dialog asks to overwrite an existing file - use a fresh name. stderr from the app is
+  block-buffered: a killed instance loses the tail of the log.

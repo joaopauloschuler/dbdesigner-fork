@@ -656,6 +656,13 @@ type
     // get SQL table comment
     function getSqlTableComment(TableName, Comment, DatabaseType:string): string;
 
+    // SQLite: column is the single integer auto-increment PK column
+    // (emitted inline as INTEGER PRIMARY KEY AUTOINCREMENT)
+    function IsSQLiteAutoIncPK(ColIdx: integer): Boolean;
+
+    // SQLite: trim trailing blanks, at most one empty line in a row
+    function TidySQLiteScript(const Script: string): string;
+
     // get SQL column comment
     function getSqlColumnComment(TableName, ColumnName, Comment, DatabaseType:string): string;
 
@@ -9076,6 +9083,15 @@ begin
     if(Not(CreateIndices))and(TEERIndex(Indices[i]).IndexName<>'PRIMARY')then
       continue;
 
+    //SQLite: the PRIMARY KEY of an AUTOINCREMENT column is already inline
+    if(DatabaseType = 'SQLite')and(TEERIndex(Indices[i]).IndexKind=ik_PRIMARY)and
+      (TEERIndex(Indices[i]).Columns.Count=1)then
+    begin
+      j:=Columns.IndexOf(GetColumnByID(StrToIntDef(TEERIndex(Indices[i]).Columns[0], -1)));
+      if(IsSQLiteAutoIncPK(j))then
+        continue;
+    end;
+
     indexPortable := PortableIndices and (TEERIndex(Indices[i]).IndexKind <> ik_PRIMARY);
     sIndex := '';
 
@@ -9089,7 +9105,8 @@ begin
       indexOnTable := '';
     end;
 
-    s:=s+'  ';
+    if(DatabaseType <> 'SQLite')then
+      s:=s+'  ';
     case TEERIndex(Indices[i]).IndexKind of
       ik_PRIMARY:
         sIndex:=sIndex+'PRIMARY KEY(';
@@ -9105,7 +9122,9 @@ begin
     begin
       sIndex:=sIndex+DBQuote+TEERColumn(GetColumnByID(StrToInt(TEERIndex(Indices[i]).Columns[j]))).ColName+DBQuote;
 
-      if(TEERIndex(Indices[i]).ColumnParams.Values[TEERIndex(Indices[i]).Columns[j]]<>'')then
+      //Index prefix length column(n) is MySQL syntax
+      if(DatabaseType = 'My SQL')and
+        (TEERIndex(Indices[i]).ColumnParams.Values[TEERIndex(Indices[i]).Columns[j]]<>'')then
         sIndex:=sIndex+'('+TEERIndex(Indices[i]).ColumnParams.Values[TEERIndex(Indices[i]).Columns[j]]+')';
 
       if(j<TEERIndex(Indices[i]).Columns.Count-1)then
@@ -9127,6 +9146,8 @@ begin
     begin
       s:=s+',';
       s:=s+#13#10;
+      if(DatabaseType = 'SQLite')then
+        s:=s+'  ';
       s:=s + sIndex;
     end;
   end;
@@ -9156,6 +9177,9 @@ begin
         //s:=s+'  INDEX '+theRel.ObjName+'('+s1+'),'+#13#10; //Add this for INNODB
         if(DMEER.DoNotUseRelNameInRefDef)then
           s:=s+'  FOREIGN KEY('+s1+')'+#13#10
+        else if(DatabaseType = 'SQLite')then
+          //FOREIGN KEY name(...) is MySQL syntax; SQLite names it via CONSTRAINT
+          s:=s+'  CONSTRAINT '+DBQuote+theRel.ObjName+DBQuote+' FOREIGN KEY('+s1+')'+#13#10
         else
           s:=s+'  FOREIGN KEY '+DBQuote+theRel.ObjName+DBQuote+'('+s1+')'+#13#10;
 
@@ -9322,6 +9346,9 @@ begin
 
   PkColumns.Free;
 
+  if(DatabaseType = 'SQLite')then
+    s:=TidySQLiteScript(s);
+
   GetSQLCreateCode:=s;
 end;
 
@@ -9357,12 +9384,18 @@ begin
   begin
     //Datatype
     theDatatype:=ParentEERModel.GetDataType(TEERColumn(Columns[i]).idDatatype);
-    //Datatype name (INTEGER)
-    s:=s+theDatatype.GetPhysicalTypeName;
+    if(DatabaseType = 'SQLite')and(IsSQLiteAutoIncPK(i))then
+      //SQLite: AUTOINCREMENT needs exactly INTEGER PRIMARY KEY, no params
+      s:=s+'INTEGER'
+    else
+    begin
+      //Datatype name (INTEGER)
+      s:=s+theDatatype.GetPhysicalTypeName;
 
-    //Datatype parameters (10, 2)
-    if(TEERColumn(Columns[i]).DatatypeParams<>'')then
-      s:=s+TEERColumn(Columns[i]).DatatypeParams;
+      //Datatype parameters (10, 2)
+      if(TEERColumn(Columns[i]).DatatypeParams<>'')then
+        s:=s+TEERColumn(Columns[i]).DatatypeParams;
+    end;
     s:=s+' ';
   end;
 
@@ -9417,6 +9450,14 @@ begin
       s:=s+' IDENTITY ';
       TableFieldGen := '';
     end else
+    if DatabaseType = 'SQLite' then
+    begin
+      //Only a single-column INTEGER PRIMARY KEY can auto-increment; the
+      //PRIMARY KEY table constraint is then skipped in GetSQLCreateCode
+      if(IsSQLiteAutoIncPK(i))then
+        s:=s+' PRIMARY KEY AUTOINCREMENT';
+      TableFieldGen := '';
+    end else
     begin
       TableFieldGen := TEERColumn(Columns[i]).ColName;
     end;
@@ -9433,6 +9474,14 @@ begin
     begin
       s := s+' COMMENT '''+ColComment+''' ';
     end;
+  end;
+
+  //SQLite: single blanks, no trailing blanks
+  if DatabaseType = 'SQLite' then
+  begin
+    while(Pos('  ', s)>0)do
+      s:=StringReplace(s, '  ', ' ', [rfReplaceAll]);
+    s:=TrimRight(s);
   end;
 
   GetSQLColumnCreateDefCode:=s;
@@ -14191,6 +14240,78 @@ begin
   inherited Create;
 end;
 
+function TEERTable.IsSQLiteAutoIncPK(ColIdx: integer): Boolean;
+var i: integer;
+  theIndex: TEERIndex;
+  theColumn: TEERColumn;
+  theDatatype: TEERDatatype;
+  TypeName: string;
+begin
+  Result:=False;
+  if(ColIdx<0)or(ColIdx>=Columns.Count)then
+    Exit;
+
+  theColumn:=TEERColumn(Columns[ColIdx]);
+  if(Not(theColumn.AutoInc))or(Not(theColumn.PrimaryKey))then
+    Exit;
+
+  //The PRIMARY index has to consist of this column alone
+  theIndex:=nil;
+  for i:=0 to Indices.Count-1 do
+    if(TEERIndex(Indices[i]).IndexKind=ik_PRIMARY)then
+    begin
+      theIndex:=TEERIndex(Indices[i]);
+      break;
+    end;
+
+  if(theIndex=nil)or(theIndex.Columns.Count<>1)or
+    (StrToIntDef(theIndex.Columns[0], -1)<>theColumn.Obj_id)then
+    Exit;
+
+  //SQLite only auto-increments an INTEGER PRIMARY KEY
+  theDatatype:=ParentEERModel.GetDataType(theColumn.idDatatype);
+  if(theDatatype=nil)then
+    Exit;
+
+  TypeName:=UpperCase(Trim(theDatatype.GetPhysicalTypeName));
+  Result:=(TypeName='INTEGER')or(TypeName='INT')or(TypeName='BIGINT')or
+    (TypeName='MEDIUMINT')or(TypeName='SMALLINT')or(TypeName='TINYINT');
+end;
+
+function TEERTable.TidySQLiteScript(const Script: string): string;
+var theLines: TStringList;
+  i, emptyRun: integer;
+  Line: string;
+begin
+  Result:='';
+  theLines:=TStringList.Create;
+  try
+    theLines.Text:=Script;
+
+    emptyRun:=0;
+    for i:=0 to theLines.Count-1 do
+    begin
+      Line:=TrimRight(theLines[i]);
+
+      if(Line='')then
+        inc(emptyRun)
+      else
+        emptyRun:=0;
+
+      if(emptyRun>1)then
+        continue;
+
+      Result:=Result+Line+#13#10;
+    end;
+
+    //no trailing empty lines, the caller separates the statements
+    while(Copy(Result, Length(Result)-3, 4)=#13#10#13#10)do
+      Delete(Result, Length(Result)-1, 2);
+  finally
+    theLines.Free;
+  end;
+end;
+
 function TEERTable.getSqlTableComment(TableName, Comment,
   DatabaseType: string): string;
 var
@@ -14198,6 +14319,9 @@ var
   ColComment : string; //Column Comment
   i : integer;
 begin
+  //Result was never initialised: FPC hands the caller's temporary string in,
+  //so the tail of the script (the standard inserts) got appended twice
+  result := '';
   RemoveCRFromString(Comment);
 
   if (DatabaseType = 'Oracle') and (length(trim(Comment))>0) then
