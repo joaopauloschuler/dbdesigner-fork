@@ -95,6 +95,10 @@ type
     function GetLanguageCode: string;
     procedure SetLanguageCode(LanguageCode: string);
 
+    //Font combo boxes (Model Options / DBDesigner Options)
+    procedure FillFontCBox(CBox: TComboBox; const CurrentFont: string);
+    function GetFontCBoxSelection(CBox: TComboBox; const DefaultFont: string): string;
+
     //Copies a file
     procedure CopyDiskFile(sourcefile, destinationfile: string; PromtBeforeOverwrite: Boolean = True);
 
@@ -2071,6 +2075,44 @@ begin
   {$ENDIF}
 end;
 
+// Fill a font combo with the installed font families and select CurrentFont.
+// A saved font name (e.g. "Tahoma" from a model created on Windows, or the
+// old "Nimbus Sans L" name) is often not installed on this machine; it is
+// then inserted at the top of the list so it remains visible and selectable
+// instead of leaving the combo blank (or showing the design-time text).
+procedure TDMMain.FillFontCBox(CBox: TComboBox; const CurrentFont: string);
+var i: integer;
+begin
+  CBox.Items.BeginUpdate;
+  try
+    CBox.Items.Assign(Screen.Fonts);
+    if(CurrentFont<>'')then
+    begin
+      i:=CBox.Items.IndexOf(CurrentFont);
+      if(i=-1)then
+      begin
+        CBox.Items.Insert(0, CurrentFont);
+        i:=0;
+      end;
+    end
+    else
+      i:=-1;
+  finally
+    CBox.Items.EndUpdate;
+  end;
+  CBox.ItemIndex:=i;
+  CBox.Text:=CurrentFont;
+end;
+
+// Return the font chosen in a font combo. The user may pick a list entry
+// or type a name; an empty text falls back to DefaultFont.
+function TDMMain.GetFontCBoxSelection(CBox: TComboBox; const DefaultFont: string): string;
+begin
+  Result:=Trim(CBox.Text);
+  if(Result='')and(CBox.ItemIndex>=0)then
+    Result:=CBox.Items[CBox.ItemIndex];
+  if(Result='')then
+    Result:=DefaultFont;
+end;
+
 end.
-
-

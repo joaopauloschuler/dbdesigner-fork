@@ -440,7 +440,6 @@ object OptionsForm: TOptionsForm
           DropDownCount = 16
           ItemHeight = 15
           TabOrder = 1
-          Text = 'FontCBox'
         end
         object SQLFontSizeCBox: TComboBox
           Left = 166

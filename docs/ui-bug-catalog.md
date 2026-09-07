@@ -97,6 +97,7 @@ Summary: 21 entries — 6 crash, 7 unreadable, 8 cosmetic.
 - **Screenshots:** `11-model-options.png`, `12-dbd-options-pages.png`
 - **Suspected files:** `src/OptionsModel.pas:185` and `src/Options.pas:245` (`FontCBox.Items.Assign(Screen.Fonts)`). `Screen.Fonts` is apparently empty on this LCL/GTK2 build, so `IndexOf` returns -1 and the design-time `Text` remains. The Visual Options page shows the current font ("Nimbus Sans L, 8") via a different path, which works.
 - **Complexity:** small (verify `Screen.Fonts` under GTK2; fall back to fontconfig list or `FontDialog`).
+- **Status:** FIXED. Cause: `Screen.Fonts` was fine (236 families); the stored font (`Tahoma` from the model file, `Nimbus Sans L`, `Helvetica`) is not installed, so `IndexOf` gave -1 and the combo text stayed blank/design-time. `TDMMain.FillFontCBox` now inserts the current font into the list and sets `Text`; OK reads `Text`.
 
 ### 11. Table Editor column grid: header captions clipped, no key/NN/AI/flag icons
 - **Severity:** unreadable (column properties NN/AI/flags cannot be seen; "Column Name" shows as "umn Name", "DataType" as "aType")

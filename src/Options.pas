@@ -242,8 +242,7 @@ begin
   ReservedWordsMemo.SelStart:=0;
   ReservedWordsMemo.SelLength:=0;
 
-  FontCBox.Items.Assign(Screen.Fonts);
-  FontCBox.ItemIndex:=FontCBox.Items.IndexOf(DMGUI.SQLTextFont);
+  DMMain.FillFontCBox(FontCBox, DMGUI.SQLTextFont);
 
   SQLFontSizeCBox.ItemIndex:=SQLFontSizeCBox.Items.IndexOf(IntToStr(DMGUI.SQLTextFontSize));
 
@@ -456,12 +455,10 @@ begin
     theIni.Free;
   end;
 
-  if(FontCBox.ItemIndex>=0)then
-  begin
-    DMGUI.SQLTextFont:=FontCBox.Items[FontCBox.ItemIndex];
+  DMGUI.SQLTextFont:=DMMain.GetFontCBoxSelection(FontCBox, DMGUI.SQLTextFont);
+  if(SQLFontSizeCBox.ItemIndex>=0)then
     DMGUI.SQLTextFontSize:=StrToInt(SQLFontSizeCBox.Items[SQLFontSizeCBox.ItemIndex]);
-    sendCLXEvent(Application.MainForm.Handle, QCustomEvent_create(QEventType_SetSQLTextFont, self));
-  end;
+  sendCLXEvent(Application.MainForm.Handle, QCustomEvent_create(QEventType_SetSQLTextFont, self));
 
   DMGUI.MinimizeOnCtrlShiftC:=MinimizeOnCtrlShiftCCBox.Checked;
 

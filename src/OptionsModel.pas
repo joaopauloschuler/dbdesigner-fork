@@ -182,8 +182,6 @@ begin
   PageControlTreeView.Items[2].Text:=DMMain.GetTranslatedMessage('Database Options', 253);
   PageControlTreeView.Items[3].Text:=DMMain.GetTranslatedMessage('Plugin Data', 256);
 
-  FontCBox.Items.Assign(Screen.Fonts);
-
   PageControl.ActivePage:=GeneralSheet;
 
   PluginRecordsStringGrid.ColWidths[0]:=120;
@@ -224,8 +222,7 @@ begin
 
   EERModel.RegionColors.Text:=RegionColorsMemo.Text;
 
-  if(FontCBox.ItemIndex>=0)then
-    EERModel.DefModelFont:=FontCBox.Items[FontCBox.ItemIndex];
+  EERModel.DefModelFont:=DMMain.GetFontCBoxSelection(FontCBox, EERModel.DefModelFont);
   EERModel.RefreshFont;
 
   EERModel.UsePositionGrid:=UsePosGridCBox.Checked;
@@ -297,7 +294,7 @@ begin
 
   DefDatatypeCBox.ItemIndex:=EERModel.Datatypes.IndexOf(EERModel.GetDataType(EERModel.DefaultDataType));
 
-  FontCBox.ItemIndex:=FontCBox.Items.IndexOf(EERModel.DefModelFont);
+  DMMain.FillFontCBox(FontCBox, EERModel.DefModelFont);
 
 
   RegionColorsMemo.Text:=EERModel.RegionColors.Text;

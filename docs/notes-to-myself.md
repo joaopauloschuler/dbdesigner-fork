@@ -470,3 +470,25 @@ Demo lists the 14 tables (`fix02-Demo-*.png`), HTMLReport lists the "Forum" regi
 (`fix02-HTMLReport-*.png`), DataImporter opens (`fix02-DataImporter-*.png`; it has no model
 table list), SimpleWebFront opens with the stored Web Title "Order" and its View Editor's
 Table combo lists all 14 tables (`fix02-SWF3-*.png`).
+
+## Fix: empty font combos / literal "FontCBox" (ui-bug-catalog #10)
+
+Cause: NOT an empty `Screen.Fonts`. A stand-alone LCL/GTK2 test program returns 236
+families on this machine (`fc-list | wc -l` = 535), and the dropdowns in the app were in
+fact populated. The combo *text* was blank because the saved font name is never an
+installed family here: loaded models carry `DefModelFont="Tahoma"`, the Linux default is
+the obsolete `Nimbus Sans L` (fontconfig now calls it "Nimbus Sans"), and the SQL font
+default is `Helvetica`. `Items.IndexOf` returned -1, `ItemIndex:=-1` left the edit empty
+(Model Options) or kept the design-time `Text = 'FontCBox'` from `Options.lfm`. Because
+OK only stored a font when `ItemIndex>=0`, the choice was also silently dropped.
+
+Fix: `TDMMain.FillFontCBox` / `GetFontCBoxSelection` (src/MainDM.pas). The fill inserts
+the current font at the top of the list when it is not installed (so it stays visible and
+selectable; the canvas still gets fontconfig's substitute), then sets `ItemIndex` and
+`Text`. Save reads `Text` (typed names allowed) with the old value as fallback. Both
+callers (src/OptionsModel.pas, src/Options.pas) use it; the `Text = 'FontCBox'` line was
+removed from src/Options.lfm. Verified on DISPLAY=:0: Model Options shows "Tahoma" and the
+dropdown lists all families (`fix10-model-after.png`); typing "Z003" + OK re-renders every
+table/relation label in that font (`fix10-canvas-after.png`), i.e. `EERModel.RefreshFont`
+does take effect; DBDesigner Options > Database Options shows "Helvetica" with a populated
+list (`fix10-dbd-options-database.png`).
