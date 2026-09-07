@@ -14,6 +14,7 @@ Summary: 21 entries — 6 crash, 7 unreadable, 8 cosmetic.
 ## Crash / exception
 
 ### 1. "New Database Connection" editor raises `Index Out of range Cell[Col=0 Row=5]` and never opens
+- **Status:** FIXED. Cause: `FormCreate` wrote `ParamStrGrid.Cells[0,5..6]` while the grid still had the LCL default `RowCount=5`; now `RowCount:=7` is set before filling.
 - **Severity:** crash (exception dialog, then a second `List index (-1) out of bounds`, editor never shows)
 - **Repro:** Database > Connect to Database > click "New Database Connection" (bottom-left button). Same path from Database Synchronisation / Reverse Engineering.
 - **Screenshots:** `10-db-conn-editor.png`, `10c-err2-top.png`
@@ -51,6 +52,7 @@ Summary: 21 entries — 6 crash, 7 unreadable, 8 cosmetic.
 - **Complexity:** medium (needs a debugger/backtrace; `gdb` is not available here).
 
 ### 6. Delete shortcut in Edit menu displays as `Ctrl+Meta+Word('7')`
+- **Status:** FIXED. Cause: `ShortCut = 20487` was the CLX/Qt encoding of Ctrl+`Key_Delete` ($4000 or $1007); replaced by the LCL value 16430 (Ctrl+VK_DELETE), which matches the existing Ctrl+Del handling in `FormKeyDown`. The other `ShortCut` values in the .lfm files are plain Ctrl+letter and are fine.
 - **Severity:** crash-adjacent: the Delete key does not map to "Delete selected Object(s)" (listed here because the shortcut is functionally wrong, not just cosmetic)
 - **Repro:** Open Edit menu.
 - **Screenshots:** `03-menus-1.png`

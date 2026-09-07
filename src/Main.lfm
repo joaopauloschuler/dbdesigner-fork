@@ -3232,7 +3232,7 @@ object MainForm: TMainForm
         Caption = 'Delete selected Object(s)'
         GroupIndex = 1
         ImageIndex = 2
-        ShortCut = 20487
+        ShortCut = 16430
         OnClick = DeleteMIClick
       end
       object SelectAllMI: TMenuItem

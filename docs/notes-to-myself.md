@@ -404,3 +404,25 @@ Verified on DISPLAY=:0 (shots `fix09-before-half.png` -> `fix09-after-crop.png`,
 
 Gotcha for xdotool sessions: `pkill -f DBDesignerFork` kills the calling bash too when the
 command line mentions the binary; use `pkill -x DBDesignerFork`. Launch with `setsid`.
+
+## Fix: DB Connection editor "Index Out of range Cell[Col=0 Row=5]" and Delete shortcut (ui-bug-catalog #1, #6)
+
+#1: `TDBConnEditorForm.FormCreate` (src/DBConnEditor.pas) filled `ParamStrGrid.Cells[0,5]`
+and `[0,6]` while the .lfm left `RowCount` at the LCL default of 5. CLX grew the sparse cell
+storage silently; LCL raises. `FormCreate` aborted before `DatabaseTypesCBox` was filled,
+which produced the follow-up "List index (-1) out of bounds" in `SetData`. Fix: set
+`ParamStrGrid.RowCount:=7` before filling. (`SetData` still does `RowCount:=6+Params.Count`
+and `Cols[1].Clear`, which also clears the "Value" header - same as the original, left alone.)
+
+#6: `DeleteMI.ShortCut = 20487` ($5007) in src/Main.lfm was CLX: Qt `Key_Delete` ($1007)
+or-ed with `scCtrl` ($4000). LCL only knows VK codes, so it rendered as Ctrl+Meta+Word('7').
+The original binding was Ctrl+Del (the `FormKeyDown` handler in Main.pas at "Keys in Design
+Mode" also checks `VK_DELETE` with `[ssCtrl]`), so it is now `ShortCut = 16430`
+(ShortCut(VK_DELETE,[ssCtrl])), shown as "Ctrl+Del". Plain Del was deliberately not used:
+an LCL menu shortcut is evaluated before edit controls see the key. Audit of the remaining
+`ShortCut =` values in src/*.lfm and Plugins/*/*.lfm: 16461/16467/16468/16471 are
+Ctrl+M/S/T/W (VK codes < 256, valid in both CLX and LCL) - nothing else to translate.
+
+Gotcha: lazbuild does not notice a changed .lfm alone; `touch src/Main.pas` (or `-B`) to get
+the resource rebuilt. Verified on DISPLAY=:0: `fix01-edit-menu.png`,
+`fix01-db-conn-editor.png`, `fix01-db-conn-editor-advanced.png`.
