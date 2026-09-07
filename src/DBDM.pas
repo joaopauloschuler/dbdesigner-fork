@@ -296,8 +296,10 @@ begin
   ospostfix:='';
   {$ENDIF}
 
-  //delete old file
-  DeleteFile(DMMain.SettingsPath+'DBConn.ini');
+  //delete old file (not in --selftest mode: the rewrite below is discarded
+  //there, so deleting would wipe the user's connection list)
+  if not SettingsReadOnly then
+    DeleteFile(DMMain.SettingsPath+'DBConn.ini');
 
   //Save IniFile
   theIni:=TMemIniFile.Create(DMMain.SettingsPath+'DBConn.ini');

@@ -884,3 +884,13 @@ navigation (`Down`x4 `Right` for File > Open Recent). Shots: `fix13-*`.
   the connection row at (290,62), Connect (682,237), Abort (682,267); Escape does not
   close it. The Reverse Engineering dialog's Close is at (515,573).
 
+
+## Fix: `--selftest` wiped `~/.DBDesigner4/DBConn.ini` (sqlite-bug-catalog #12)
+
+- `TDMDB.StoreDBConns` (`src/DBDM.pas`) unconditionally `DeleteFile`s `DBConn.ini`
+  before rewriting it through `UpdateIniFile`. Since the "self-test keeps settings
+  untouched" change, `UpdateIniFile` discards the rewrite in `--selftest` mode, so the
+  delete was the only thing that happened and every headless self-test run erased the
+  user's connection list. Now the delete is skipped when `SettingsReadOnly` is set.
+  Verified: `xvfb-run -a ./bin/DBDesignerFork --selftest` -> 0 FAIL, `DBConn.ini`
+  md5 unchanged.
