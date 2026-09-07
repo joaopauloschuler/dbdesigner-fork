@@ -21,7 +21,7 @@ keys / indexes / AUTOINCREMENT / row counts per table.
 | B | `sqlite3 order.sqlite < script` | **works** — `tests/sqlite-roundtrip.sh` on `$S/fix03-after2.sql`: zero errors, 12 tables, both explicit indexes, 2 FKs, 5 tables with AUTOINCREMENT, rows loaded once (`$S/fix03-roundtrip.txt`) |
 | C | New SQLite connection + connect + reverse engineer | **works** after #1/#2 were fixed — tree node clicks, connection editor, connect and the Reverse Engineering dialog (12 tables listed) all work; Execute adds 12 tables to the model |
 | D | Compare reverse-engineered model with original | **works** after #10/#7 (re-checked after #3/#4/#6 with `$S/fix03-reveng.xml`: same result, 5 AutoInc PKs recovered) — 12 tables with all columns (datatype, PK, NOT NULL, AutoInc, default), all indexes and 10 of 11 relations (the self-relation `forumpost` -> `forumpost` is not recoverable: no FK in the DB); compared with `$S/compare_models.py` (`$S/fix10-reveng.xml`) |
-| E | Database Synchronisation against the DB | **fails** — same "Transaction not set." (#2) right after connecting; would then hit MySQL-only SQL (#8) |
+| E | Database Synchronisation against the DB | **fails (expected, #8)** — re-checked 2026-09-07 after #2: the dialog now opens, connects and reports "15 Table(s) in Database, 28 Table(s) in Model"; Execute stops after "Get Tables from DB" with the exception `TSQLite3Connection : near "show": syntax error` (MySQL `SHOW` statement), shown in the centred exception dialog; the database is left untouched (`$S/verify/verify-sync-0xc06a34.png`, `$S/verify/verify-sync-0xc06911.png`) |
 | F | Query mode, simple SELECT | **works** after #5 — `SELECT * FROM product` shows the 3 rows in the grid, status bar "Query opened. 3 Record(s) fetched" (`$S/fix05-final-grid.png`); an invalid statement shows the SQLite error (`$S/fix05-sqlerror.png`) |
 
 ## Entries
@@ -109,3 +109,54 @@ keys / indexes / AUTOINCREMENT / row counts per table.
 - File > Open from Database / Save in Database, SQL Drop/Optimize/Repair scripts, DataImporter plugin against SQLite.
 - MySQL, ODBC, Oracle, MSSQL connections (no servers).
 - Export with a non-SQLite target (to confirm #3 is target-independent).
+
+## Verification (2026-09-07, after commits c06d00b..4d859d1)
+
+Clean build `lazbuild -B DBDesignerFork.lpi` + the four plugins: no errors, only the
+pre-existing warnings (deprecated `SelStart` in EditorQuery, `ScanLine` in EmbeddedPdfImages,
+`NEW` on untyped pointer in DBImportData, AnsiString->WideString in Weboutput).
+`tests/TestSQLite.pas` and `tests/TestSQLExprShim.pas` compile (`fpc -Mdelphi -Fusrc/clx_shims -Fusrc`)
+and print SUCCESS with `LD_LIBRARY_PATH` empty. `xvfb-run -a ./bin/DBDesignerFork --selftest`:
+exit 0, 0 FAIL, `DBDesignerFork_Settings.ini` unchanged (WorkMode=1) — but it deleted
+`DBConn.ini`, see #12 (fixed in e83199e; re-run: 0 FAIL, `DBConn.ini` md5 unchanged).
+Real-display round trip from scratch in `$S/verify/` (screenshots `$S/verify/verify-*.png`):
+
+| Entry | Status | Note |
+|---|---|---|
+| #1 tree click crash | verified | SQLite / Network Hosts / Oracle nodes clicked, no message box (`verify-connsel-clicks.png`) |
+| #2 Transaction not set | verified | connect, Reverse Engineering (twice) and Synchronisation dialogs all open and query the schema |
+| #3 inserts twice | verified | exported script byte-identical to `$S/fix03-after2.sql`; loader: zero errors, rows once (`verify/roundtrip.txt`) |
+| #4 index prefix | verified | `CREATE INDEX product_name ON product (name, info);`, both explicit indexes created |
+| #5 Query mode | verified | `SELECT * FROM product` -> 3 rows, "Query opened. 3 Record(s) fetched" (`verify-query-result-bottom.png`); the focused first-row cell is still drawn empty with a smaller font (known LCL DBGrid observation, not part of #5) |
+| #6 AUTOINCREMENT | verified | 5 tables with AUTOINCREMENT in the DB, 5 `AutoInc` columns recovered |
+| #7 relations | verified | 10 of 11 recovered (self-relation `forumpost` not recoverable), both FK-based ones with correct ON DELETE/UPDATE |
+| #8 synchronisation | not done (expected) | failure mode recorded in stage E |
+| #9 cosmetic | verified | title "DBDesigner Fork - Noname2" after File > New; SQL error dialog centre 981/512 = main window centre (`verify-sqlerror.png`); script whitespace tidy |
+| #10 columns/indexes | verified | `$S/compare_models.py Examples/order.xml $S/verify/reveng.xml`: 12 tables, every column and index OK |
+| #11 clipped check boxes | verified | all three check boxes fully visible and clickable (`verify-revdlg.png`) |
+
+Regression found: #12 (self-test wipes `DBConn.ini`), fixed. No regression in the entries above.
+
+## Round 2 findings
+
+### 12. `--selftest` deletes the user's `~/.DBDesigner4/DBConn.ini`
+- Status: **FIXED** (e83199e) — `TDMDB.StoreDBConns` skips its `DeleteFile` when `SettingsReadOnly`.
+- Severity: **data loss** (every headless self-test run erased all saved database connections)
+- Repro: with a `DBConn.ini` in place run `xvfb-run -a ./bin/DBDesignerFork --selftest`; afterwards the file is gone (directory mtime bumped, nothing else touched).
+- Cause: `StoreDBConns` (`src/DBDM.pas`) does `DeleteFile(SettingsPath+'DBConn.ini')` before rewriting through `UpdateIniFile`; since 2b0bb7b `UpdateIniFile` discards the rewrite in self-test mode, so only the delete survived. Regression of 2b0bb7b (the baseline commit), not of the SQLite fixes. Complexity: **small**.
+
+### 13. A connected SQLite database stays locked for other writers
+- Severity: **minor** (limitation)
+- Repro: connect (or run one query in Query mode), then `sqlite3 <db> "CREATE TABLE t(x)"` from a shell: `Error: stepping, database is locked (5)`. Database > Disconnect releases it immediately.
+- Suspected cause: the shim's `TSQLTransaction` (`src/clx_shims/sqlexpr.pas`) is started for the first query and never committed while the connection is open, so SQLDB keeps a read transaction (SHARED lock) on the file; SQLite refuses writers meanwhile. A `Commit`/`CommitRetaining` after schema reads and SELECTs (or `sqlite3` `busy_timeout`) would release it. Complexity: **small**.
+
+### 14. Reverse engineering into an open model adds duplicate tables silently
+- Severity: **minor** (original DBDesigner 4 behaviour, but worth a warning)
+- Repro: with `order.xml` active, Database > Reverse Engineering on the same DB, Execute. The 12 tables are added a second time (`$S/verify/order_dup.xml`: 12 table names twice, 24 relations), placed over the existing objects (`verify-main-dup.png`). A later SQL export would emit each `CREATE TABLE` twice.
+- Fix idea: warn or skip/merge tables whose name already exists (the option exists in the MySQL sync path as "Apply changes to Model"). Complexity: **medium**.
+
+### 15. File > Close via keyboard did nothing on the reverse-engineered model (unconfirmed)
+- Severity: **minor**, not reproduced twice (time box)
+- Repro attempt: model "reveng" active (saved, unmodified); File menu, Down x9, Return. Title stayed "DBDesigner Fork - reveng", the model stayed on screen, no dialog (`verify-afterclose.png`). Down x7 (Save As) and Down x1 (New) reach the right items in the same menu, so the item index should be right. Needs a repeat with a mouse click on "Close" before filing as a bug.
+
+Also exercised without findings: reverse engineering with "Create Standard Inserts from table data" (7 tables with rows got their INSERTs, empty tables none); a hand-written schema with a composite primary key `parent(a,b)` and a two-column FK `child(a,b) -> parent(a,b) ON DELETE CASCADE ON UPDATE SET NULL` plus index `child_ab` — recovered exactly (PK on both columns, `FKFields` `a=a b=b`, `OnDelete=1 OnUpdate=2`, index with both columns, `qty` default `1`); HTMLReport plugin on the reverse-engineered model (report written, 36 tables/sections); Table Editor on a reverse-engineered table (`verify-tableeditor.png`); File > Save As of the reverse-engineered model. Not reached: re-export after editing in the Table Editor, File > Open of the saved model, "Store model in database".
