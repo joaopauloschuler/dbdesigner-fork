@@ -426,3 +426,47 @@ Ctrl+M/S/T/W (VK codes < 256, valid in both CLX and LCL) - nothing else to trans
 Gotcha: lazbuild does not notice a changed .lfm alone; `touch src/Main.pas` (or `-B`) to get
 the resource rebuilt. Verified on DISPLAY=:0: `fix01-edit-menu.png`,
 `fix01-db-conn-editor.png`, `fix01-db-conn-editor-advanced.png`.
+
+## Fix: plugins crash at start-up (ui-bug-catalog #2, #3, #4)
+
+First of all the plugin projects could not be built at all: commit 8b2b15f moved the sources
+to `src/` but `Plugins/*/DBDplugin_*.lpi` (IncludeFiles/OtherUnitFiles) and the `.lpr` files
+(`{$I ../../DBDesigner4.inc}`, `MainDM in '../../MainDM.pas'`, ...) still pointed at the old
+layout. Now `../../src/...`. Build from the plugin directory:
+`cd Plugins/Demo && lazbuild DBDplugin_Demo.lpi` (the include path in the .lpr is relative).
+Note DataImporter has a stale local `MainDM.pas`; the `.lpr` deliberately names the main
+app's `src/MainDM.pas` (the plugin uses `ProgName`/`SettingsPath`/`LoadValueFromSettingsIniFile`).
+
+#2: `TEERModel.LoadFromFile`/`LoadFromFile2` (src/EERModel.pas) and `TDMEER.SetWorkTool`
+(src/EERDM.pas) call `Application.MainForm.SetFocus`, guarded only by `Enabled` (or `Visible`).
+`TCustomForm.SetFocus` in LCL raises `EInvalidOperation` "Can not focus" unless
+`IsControlVisible and Enabled`; the plugins load the model in `FormCreate`, before the form is
+shown, so the exception escaped `FormCreate` and `InitControls` (fills the table list) never
+ran. Guard replaced by `Application.MainForm.CanFocus`, which for a parentless form is exactly
+`IsControlVisible and Enabled`. No try/except.
+
+#3: `Rows = 6` on `SpecialFieldsLBox: TListBox` in Plugins/DataImporter/DBImportData.lfm is a
+CLX-only property (same class as `Font.Weight`/`Masked`); removed. Audit: no other `Rows =`
+(FixedRows is fine) in Plugins/*/*.lfm.
+
+#4: every `Glyph.Data` block in Plugins/SimpleWebFront/*.lfm (28 blocks, 6 files) still had
+the Delphi `size = BMP_size + 4` prefix; the 0c23bb7 conversion had skipped this plugin.
+Fixed with a script that subtracts 4 whenever `prefix == BMP header size + 4`. After that
+the form still failed on `PageControlTreeView.Columns` (CLX-only TTreeView property, removed;
+the Delphi-format `Items.Data` stream is read fine by LCL's `TTreeNodes.ReadData`) and
+`FormCreate` then raised "Invalid type cast": order.xml carries SimpleWebFront plugin data,
+`LoadSWF_DataFromString` does `LoadXMLData(..).GetDocBinding('SWF_Data', TXMLSWF_DataType, ..)
+as IXMLSWF_DataType`, and the `XMLIntf` shim's `GetDocBinding` ignored the class and returned
+a plain `TXMLNodeWrapper`. `RegisterChildNode` also only stored the class *name*, so every
+`ChildNodes['X'] as IXML...` / `List[i] as IXML...` in the generated binding would have failed
+the same way. `src/clx_shims/xmlintf.pas` now keeps the class pointer, instantiates it in
+`GetDocBinding`, `TXMLNodeIndexed.GetNodeByName`, `TXMLNodeCollection.GetList/AddItem`
+(`CreateChildNodeObject`), and binding nodes hold an `IXMLDocument` reference (`FDocRef`) so
+the DOM survives the temporary `LoadXMLData(...)` interface. The main app links this shim too
+(EERModel_XML, MainDM) and was rebuilt and re-checked.
+
+Verified on DISPLAY=:0 with `./DBDplugin_<Name> Examples/order.xml`, shots `fix02-*`:
+Demo lists the 14 tables (`fix02-Demo-*.png`), HTMLReport lists the "Forum" region's tables
+(`fix02-HTMLReport-*.png`), DataImporter opens (`fix02-DataImporter-*.png`; it has no model
+table list), SimpleWebFront opens with the stored Web Title "Order" and its View Editor's
+Table combo lists all 14 tables (`fix02-SWF3-*.png`).

@@ -4404,7 +4404,7 @@ begin
     if(AddDataToExistingModel)then
       ModelHasChanged;
 
-    if(Application.MainForm.Enabled)then
+    if(Application.MainForm.CanFocus)then
       Application.MainForm.SetFocus;
   end;
 end;
@@ -5081,7 +5081,7 @@ begin
     if(AddDataToExistingModel)then
       ModelHasChanged;
 
-    if(Application.MainForm.Enabled)then
+    if(Application.MainForm.CanFocus)then
       Application.MainForm.SetFocus;
   end;
 {$ENDIF}

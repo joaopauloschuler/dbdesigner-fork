@@ -23,6 +23,7 @@ Summary: 21 entries — 6 crash, 7 unreadable, 8 cosmetic.
 - **Complexity:** small (set `RowCount := 7` before filling; also check other `TStringGrid.Cells[]` writers, e.g. `SetData` line 430 already sets RowCount).
 
 ### 2. All plugins throw `[TCustomForm.SetFocus] MainForm:TMainForm Can not focus` at startup; table lists stay empty
+- **Status:** FIXED. Cause: `EERModel.LoadFromFile`/`LoadFromFile2` (and `EERDM.SetWorkTool`) called `Application.MainForm.SetFocus` guarded only by `Enabled`/`Visible`; LCL raises `EInvalidOperation` when the form is not yet visible (plugins load the model in `FormCreate`), aborting the rest of the plugin's `FormCreate` before `InitControls`. Guard is now `CanFocus` (= `IsControlVisible and Enabled`, exactly the raise condition). Also: the plugin projects still pointed at the pre-`src/` layout (commit 8b2b15f) and could not be rebuilt; `.lpi`/`.lpr` paths fixed.
 - **Severity:** crash (exception dialog at plugin start, plugin then shows with no model data)
 - **Repro:** Plugins > Demo (or HTMLReport). Error box appears; after OK the plugin window shows an empty "Tables" list.
 - **Screenshots:** `13-plugin-demo-14680672.png`, `13b-plugin-demo-after-ok-14680622.png`, `13-plugin-htmlreport-16777824.png`, `13b-plugin-htmlreport-after-ok-16777774.png`
@@ -31,6 +32,7 @@ Summary: 21 entries — 6 crash, 7 unreadable, 8 cosmetic.
 - **Complexity:** small (guard with `Visible and CanFocus`, or wrap in try/except).
 
 ### 3. DataImporter plugin fails to load its form: `Error reading SpecialFieldsLBox.Rows: Unknown property "Rows"`
+- **Status:** FIXED. Cause: CLX-only `TListBox.Rows` property in `Plugins/DataImporter/DBImportData.lfm`; line removed.
 - **Severity:** crash
 - **Repro:** Plugins > DataImporter (or run `bin/DBDplugin_DataImporter <model.xml>` directly).
 - **Screenshots:** `14-plugin-DataImporter-14680147.png`
@@ -38,6 +40,7 @@ Summary: 21 entries — 6 crash, 7 unreadable, 8 cosmetic.
 - **Complexity:** small (delete the property line; grep all plugin .lfm files for other CLX-only properties).
 
 ### 4. SimpleWebFront plugin fails to load its form: `Error reading CreateBtn.Glyph.Data: Stream read error`
+- **Status:** FIXED. Cause: all 28 `Glyph.Data` blocks in `Plugins/SimpleWebFront/*.lfm` still had the Delphi `size = BMP_size + 4` prefix (the commit 0c23bb7 conversion had not been applied to this plugin); subtracted 4. Two follow-up crashes on the same start-up path were fixed as well: the CLX-only `TTreeView.Columns` block on `PageControlTreeView` (removed), and an `EInvalidCast` from `SWF_XML_Binding` because the `XMLIntf` shim's `GetDocBinding`/child-node lookup never instantiated the registered Delphi binding classes (`src/clx_shims/xmlintf.pas` now does).
 - **Severity:** crash
 - **Repro:** Plugins > SimpleWebFront (or run `bin/DBDplugin_SimpleWebFront <model.xml>` directly).
 - **Screenshots:** `13-plugin-simplewebfront-14680106.png`

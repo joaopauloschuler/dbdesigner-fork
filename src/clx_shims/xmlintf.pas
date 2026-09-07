@@ -58,11 +58,15 @@ type
   // Base class for XML data binding generated classes
   TXMLNodeIndexed = class;
 
+  TXMLNode = class;
+  TXMLNodeClass = class of TXMLNode;
+
   TXMLNode = class(TInterfacedObject, IXMLNode)
   private
     FNode: TDOMNode;
     FOwnerDoc: TDOMDocument;
-    FChildNodeDefs: TStringList;
+    FDocRef: IXMLDocument;        // keeps the owning document alive (Delphi binding semantics)
+    FChildNodeDefs: TStringList;  // TagName -> registered TXMLNode class (in Objects[])
     FChildNodesIndexed: TXMLNodeIndexed;
     FAttributeNodesIndexed: TXMLNodeIndexed;
   public
@@ -82,6 +86,8 @@ type
     function GetOwnerDocument: IXMLDocument;
     // Delphi XML Data Binding support
     procedure RegisterChildNode(const TagName: DOMString; ChildNodeClass: TClass);
+    // Wrap a DOM child in its registered binding class (or a plain wrapper)
+    function CreateChildNodeObject(Child: TDOMNode): IXMLNode;
     procedure SetAttribute(const AttrName: DOMString; const Value: DOMString); overload;
     procedure SetAttribute(const AttrName: DOMString; Value: Integer); overload;
     property ChildNodes: TXMLNodeIndexed read FChildNodesIndexed;
@@ -294,15 +300,13 @@ begin
   begin
     // Find first child element with this name
     Child := FOwner.FNode.FindNode(Name);
-    if Child <> nil then
-      Result := TXMLNodeWrapper.Create(Child, FOwner.FOwnerDoc)
-    else
+    if Child = nil then
     begin
       // Create child if not found
       Child := FOwner.FOwnerDoc.CreateElement(Name);
       FOwner.FNode.AppendChild(Child);
-      Result := TXMLNodeWrapper.Create(Child, FOwner.FOwnerDoc);
     end;
+    Result := FOwner.CreateChildNodeObject(Child);
   end;
 end;
 
@@ -395,8 +399,34 @@ begin
 end;
 
 procedure TXMLNode.RegisterChildNode(const TagName: DOMString; ChildNodeClass: TClass);
+var
+  i: Integer;
 begin
-  FChildNodeDefs.Values[TagName] := ChildNodeClass.ClassName;
+  i := FChildNodeDefs.IndexOf(TagName);
+  if i < 0 then
+    FChildNodeDefs.AddObject(TagName, TObject(ChildNodeClass))
+  else
+    FChildNodeDefs.Objects[i] := TObject(ChildNodeClass);
+end;
+
+function TXMLNode.CreateChildNodeObject(Child: TDOMNode): IXMLNode;
+var
+  i: Integer;
+  cls: TClass;
+  node: TXMLNode;
+begin
+  cls := nil;
+  i := FChildNodeDefs.IndexOf(Child.NodeName);
+  if i >= 0 then
+    cls := TClass(FChildNodeDefs.Objects[i]);
+  if (cls <> nil) and cls.InheritsFrom(TXMLNode) then
+  begin
+    node := TXMLNodeClass(cls).Create(Child, FOwnerDoc);
+    node.FDocRef := FDocRef;
+    Result := node;
+  end
+  else
+    Result := TXMLNodeWrapper.Create(Child, FOwnerDoc);
 end;
 
 procedure TXMLNode.SetAttribute(const AttrName: DOMString; const Value: DOMString);
@@ -454,7 +484,7 @@ begin
       begin
         if cnt = Index then
         begin
-          Result := TXMLNodeWrapper.Create(child, FOwnerDoc);
+          Result := CreateChildNodeObject(child);
           Exit;
         end;
         Inc(cnt);
@@ -463,7 +493,7 @@ begin
     end;
   end
   else if (Index >= 0) and (Index < FNode.ChildNodes.Count) then
-    Result := TXMLNodeWrapper.Create(FNode.ChildNodes[Index], FOwnerDoc);
+    Result := CreateChildNodeObject(FNode.ChildNodes[Index]);
 end;
 
 function TXMLNodeCollection.AddItem(Index: Integer): IXMLNode;
@@ -503,7 +533,7 @@ begin
     else
       FNode.AppendChild(NewElem);
   end;
-  Result := TXMLNodeWrapper.Create(NewElem, FOwnerDoc);
+  Result := CreateChildNodeObject(NewElem);
 end;
 
 { TXMLDocumentWrapper }
@@ -581,9 +611,21 @@ begin
 end;
 
 function TXMLDocumentWrapper.GetDocBinding(const TagName: DOMString; AClass: TClass; const NS: DOMString): IXMLNode;
+var
+  node: TXMLNode;
 begin
-  // Simplified: return document element
-  Result := GetDocumentElement;
+  // Create the document element if the document is empty (Delphi NewXMLDocument semantics)
+  if FDoc.DocumentElement = nil then
+    FDoc.AppendChild(FDoc.CreateElement(TagName));
+  if (AClass <> nil) and AClass.InheritsFrom(TXMLNode) then
+  begin
+    // Instantiate the generated binding class so "as IXML...Type" casts succeed
+    node := TXMLNodeClass(AClass).Create(FDoc.DocumentElement, FDoc);
+    node.FDocRef := Self;
+    Result := node;
+  end
+  else
+    Result := GetDocumentElement;
 end;
 
 function NewXMLDocument: IXMLDocument;

@@ -759,7 +759,6 @@ object DBImportDataForm: TDBImportDataForm
           'AutoInc.'
           'NULL'
           'SubString')
-        Rows = 6
         TabOrder = 3
       end
       object AutoMappingBtn: TBitBtn
