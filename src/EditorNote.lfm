@@ -48,7 +48,6 @@ object EditorNoteForm: TEditorNoteForm
       Width = 23
       Height = 22
       Anchors = [akTop, akRight]
-      Enabled = False
       Flat = True
       Glyph.Data = {
         360C0000424D360C000000000000360000002800000040000000100000000100
@@ -153,8 +152,6 @@ object EditorNoteForm: TEditorNoteForm
       NumGlyphs = 4
       Transparent = False
       OnClick = AbortBtnClick
-      OnMouseEnter = SubmitBtnMouseEnter
-      OnMouseLeave = SubmitBtnMouseLeave
     end
     object SubmitBtn: TSpeedButton
       Left = 225
@@ -162,7 +159,6 @@ object EditorNoteForm: TEditorNoteForm
       Width = 23
       Height = 22
       Anchors = [akTop, akRight]
-      Enabled = False
       Flat = True
       Glyph.Data = {
         760E0000424D760E00000000000036000000280000004C000000100000000100
@@ -284,8 +280,6 @@ object EditorNoteForm: TEditorNoteForm
       NumGlyphs = 4
       Transparent = False
       OnClick = SubmitBtnClick
-      OnMouseEnter = SubmitBtnMouseEnter
-      OnMouseLeave = SubmitBtnMouseLeave
     end
   end
 end

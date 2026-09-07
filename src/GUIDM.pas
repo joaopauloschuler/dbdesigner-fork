@@ -376,6 +376,10 @@ procedure TDMGUI.AddFileToRecentFilesList(fname: string);
 var theMenuItem: TMenuItem;
   oldPos: integer;
 begin
+  //Normalise the path, otherwise a relative and an absolute
+  //path to the same file are listed twice
+  fname:=ExpandFileName(fname);
+
   //Don't insert a file twice
   if(RecentFiles.IndexOf(fname)=-1)and(FileExists(fname))then
   begin

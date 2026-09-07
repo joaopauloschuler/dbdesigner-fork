@@ -614,3 +614,37 @@ Fix (src/MainDM.pas, src/Main.pas, src/UITestRunner.pas):
 Verified: four parallel `xvfb-run -a ./bin/DBDesignerFork --selftest` runs (real HOME x2,
 empty HOME, copy of the ini) all finish with 93 PASS / 0 FAIL, exit 0; before the fix the
 empty-HOME and loaded runs hung 100 % of the time (A/B series in the session log).
+
+## Fix: disabled OK/Cancel speed buttons, header preview, Windows menu name, recent files, stderr warnings (ui-bug-catalog #13, #19, #20, #21, #22)
+
+- **#22 (new)**: the Submit/Abort `TSpeedButton`s of Options and the Table/Relation/Note/
+  Region/Datatype editors were `Enabled = False` and relied on `OnMouseEnter`/`OnMouseLeave`
+  toggling `Enabled` (Qt sends enter events to disabled widgets, so this showed the dim
+  glyph 2 of the 4-glyph strip until hovered). GTK2 never fires MouseEnter for a disabled
+  control, so the dialogs could not be closed with the mouse. Buttons are now enabled and
+  the handlers are gone (LCL flat buttons draw a hover frame anyway).
+- **#19**: `clx_shims/panelbitmap.pas` only stored `TPanel.Bitmap`. It now creates a
+  `TPanelBitmapPainter` component owned by the panel that hooks `OnPaint` (called at the
+  end of `TCustomPanel.Paint`) and tiles the bitmap; it unregisters itself in its
+  destructor so a re-used panel address cannot pick up a stale painter.
+- **#20**: `Main.pas` handles `QEventType_ModelNameChanged` only when
+  `EERModel.Parent` is a `TEERForm`, but the LCL port reparents the model into a
+  `TScrollBox`. Added `TEERModel.OnModelNameChanged`, wired in `TEERForm.FormCreate` to
+  `ModelNameChanged`, which updates the form caption, `theFormMenuItem` and the main
+  window title (`DBDesigner Fork - <model>`). Main.pas untouched.
+- **#21**: recent-file paths are `ExpandFileName`d before the duplicate check. The
+  Pango warning came from the Latin-1 `Fran\xE7ais` in `[Languages]` of
+  `DBDesignerFork_Translations.ini` (both `bin/Data` and `~/.DBDesigner4` copies);
+  `Options.pas` converts invalid UTF-8 names with `CP1252ToUTF8` (the translations
+  .txt is probably Latin-1 too - only matters once de/fr is selected). The GLib
+  `spacing -1` critical is LCL GTK2 `TBitBtn.SetSpacing` -> `gtk_box_set_spacing(-1)`;
+  the three `TBitBtn`s in `EERPageSetup.lfm` now have `Spacing = 4`.
+- **#13**: not a bug. The Info tab switches fine once the window is activated.
+
+Testing gotchas (XWayland at DISPLAY=:0): a bare `xdotool mousemove; click` on a
+freshly shown window (Tips dialog, modal editors) is often ignored - run
+`xdotool windowactivate <xid>` first, then move in two steps and click. Also the
+Tips "Close Tip Window" glyph is at the left of the label, at about client
+(290,217), not under the text. Menu windows are the unnamed `DBDesignerFork`
+top-level windows in `xwininfo -root -tree`; submenus open reliably with keyboard
+navigation (`Down`x4 `Right` for File > Open Recent). Shots: `fix13-*`.

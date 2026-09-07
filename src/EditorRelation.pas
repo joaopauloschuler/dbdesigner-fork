@@ -88,8 +88,6 @@ type
     procedure FormDeactivate(Sender: TObject);
     procedure FormDestroy(Sender: TObject);
     procedure FormShow(Sender: TObject);
-    procedure SubmitBtnMouseEnter(Sender: TObject);
-    procedure SubmitBtnMouseLeave(Sender: TObject);
     procedure SubmitBtnClick(Sender: TObject);
     procedure AbortBtnClick(Sender: TObject);
   private
@@ -321,16 +319,6 @@ end;
 procedure TEditorRelationForm.FormShow(Sender: TObject);
 begin
   DMMain.RestoreWinPos(self, False);
-end;
-
-procedure TEditorRelationForm.SubmitBtnMouseEnter(Sender: TObject);
-begin
-  TSpeedButton(Sender).Enabled:=True;
-end;
-
-procedure TEditorRelationForm.SubmitBtnMouseLeave(Sender: TObject);
-begin
-  TSpeedButton(Sender).Enabled:=False;
 end;
 
 procedure TEditorRelationForm.SubmitBtnClick(Sender: TObject);

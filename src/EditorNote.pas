@@ -59,8 +59,6 @@ type
     procedure FormDeactivate(Sender: TObject);
     procedure FormShow(Sender: TObject);
     procedure FormDestroy(Sender: TObject);
-    procedure SubmitBtnMouseEnter(Sender: TObject);
-    procedure SubmitBtnMouseLeave(Sender: TObject);
     procedure SubmitBtnClick(Sender: TObject);
     procedure AbortBtnClick(Sender: TObject);
   private
@@ -174,16 +172,6 @@ end;
 procedure TEditorNoteForm.FormDestroy(Sender: TObject);
 begin
   DMMain.SaveWinPos(self, False);
-end;
-
-procedure TEditorNoteForm.SubmitBtnMouseEnter(Sender: TObject);
-begin
-  TSpeedButton(Sender).Enabled:=True;
-end;
-
-procedure TEditorNoteForm.SubmitBtnMouseLeave(Sender: TObject);
-begin
-  TSpeedButton(Sender).Enabled:=False;
 end;
 
 procedure TEditorNoteForm.SubmitBtnClick(Sender: TObject);

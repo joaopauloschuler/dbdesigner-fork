@@ -133,6 +133,11 @@ type
 
   TEERModel = class(TPanel)
   public
+    //Called after SetModelName (the owning TEERForm updates its captions;
+    //Main's QEventType_ModelNameChanged handler expects Parent=TEERForm,
+    //which is no longer true since the model sits in a TScrollBox)
+    OnModelNameChanged: TNotifyEvent;
+
     constructor Create(AOwner: TComponent); override;
     destructor Destroy; override;
 
@@ -7163,6 +7168,9 @@ end;
 procedure TEERModel.SetModelName(name: string);
 begin
   ModelName:=name;
+
+  if(Assigned(OnModelNameChanged))then
+    OnModelNameChanged(self);
 
   //Post QEventType_ModelNameChanged Event
   if(Assigned(Application.MainForm))then

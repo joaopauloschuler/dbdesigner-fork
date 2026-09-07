@@ -851,7 +851,7 @@ object EERPageSetupForm: TEERPageSetupForm
               95BF9895BF9895BF9895BF9895BF9895BF9895BF9895E400FFE400FFE400FFE4
               00FFE400FFE400FFE400FFE400FFE400FFE400FFE400FFE400FF}
             Margin = 8
-            Spacing = -1
+            Spacing = 4
           end
         end
         object PrintPnl: TPanel
@@ -979,7 +979,7 @@ object EERPageSetupForm: TEERPageSetupForm
               95BF9895BF9895BF9895BF9895BF9895BF9895BF9895E400FFE400FFE400FFE4
               00FFE400FFE400FFE400FFE400FFE400FFE400FFE400FFE400FF}
             Margin = 8
-            Spacing = -1
+            Spacing = 4
           end
           object PageSetupBtn: TBitBtn
             Left = 16
@@ -1115,7 +1115,7 @@ object EERPageSetupForm: TEERPageSetupForm
               FF00FCFF00FCFF00FCFF00FCFF00FCFF00FCFF00FCFF00FCFF00FCFF00FCFF00
               FCFF00FCFF00FCFF00FC}
             Margin = 2
-            Spacing = -1
+            Spacing = 4
           end
         end
       end

@@ -7,7 +7,7 @@ All screenshots live in
 
 Severity legend: **crash** = exception dialog / hang; **unreadable** = feature unusable or content not visible; **cosmetic** = ugly/clipped but usable.
 
-Summary: 21 entries — 6 crash, 7 unreadable, 8 cosmetic.
+Summary: 22 entries — 6 crash, 7 unreadable, 9 cosmetic.
 
 ---
 
@@ -123,6 +123,7 @@ Summary: 21 entries — 6 crash, 7 unreadable, 8 cosmetic.
 - **Screenshots:** `27c-navigator-info-tab.png`
 - **Suspected files:** `src/PaletteNav.pas:689` (`InfoPBoxClick` switches `PageControl.ActivePage:=InfoSheet` and z-orders `TabsImg`/`Tabs2Img`), `src/PaletteNav.lfm` (`InfoPBox: TPaintBox` at 76,4 51x13 overlapping the tab `TImage`s). Hypothesis: under LCL the `TImage` receives the click instead of the transparent `TPaintBox`, or `BringToFront` ordering differs, so the handler never fires. Low confidence — could also be my click position, but three attempts inside the InfoPBox rect failed.
 - **Complexity:** small
+- **Status:** NOT A BUG (not reproducible). With the main window activated first (`xdotool windowactivate`), a click on the Info tab switches the page (`fix13-nav-click1.png`); the diagnosis clicks were lost the same way the Tips dialog's close button ignores a bare `mousemove; click` under XWayland until the window is activated. Z-ordering in `InfoPBoxClick` works under LCL. Note for later: the Info page itself has a grey block covering the Width/Height labels/edits (layout, not part of this entry).
 
 ---
 
@@ -174,6 +175,7 @@ Summary: 21 entries — 6 crash, 7 unreadable, 8 cosmetic.
 - **Suspected files:** `src/Options.pas` header-preview paint (draws `Header_<style>.bmp` like `TEERTable.PaintCachedImg`). Shares the header-bitmap drawing problem of entry 7.
 - **Note (after fixing 7):** does NOT share the cause of 7. `TblHeaderBGPnl.Bitmap` is served by the `src/clx_shims/panelbitmap.pas` class helper, which only stores the bitmap in a hash list; nothing paints it onto the panel (CLX's `TPanel.Bitmap` was drawn as the panel background). Needs an `OnPaint`/custom-draw in the shim or in `Options.pas`.
 - **Complexity:** small once 7 is fixed.
+- **Status:** FIXED. `src/clx_shims/panelbitmap.pas` now keeps a `TPanelBitmapPainter` component (owned by the panel) per panel that hooks the panel's `OnPaint` and tiles the bitmap over the client area like CLX did; `Bitmap := nil` clears it. Verified: `fix13-options-visual.png` / `fix13-header-cmp.png` (Apple2 gradient).
 
 ### 20. Windows menu lists the loaded model as "Noname1"; main window title lacks the file name
 - **Severity:** cosmetic
@@ -181,6 +183,7 @@ Summary: 21 entries — 6 crash, 7 unreadable, 8 cosmetic.
 - **Screenshots:** `03-menus-2.png`
 - **Suspected files:** `src/Main.pas:775` (menu item caption set at form creation from `GetModelName`), `src/EER.pas:386-387` (caption update after load/save is commented out: `{Caption:='DB Model | '+...; theFormMenuItem.Caption:=EERModel.GetModelName;}`), MDI replaced by `fsNormal` so the caption update path was dropped.
 - **Complexity:** small
+- **Status:** FIXED. Cause: `Main.pas`'s `QEventType_ModelNameChanged` handler only updates the menu item when `EERModel.Parent` is a `TEERForm`, but the LCL port puts the model inside a `TScrollBox`. `TEERModel` got an `OnModelNameChanged` event fired from `SetModelName`; `TEERForm.ModelNameChanged` sets the form caption, `theFormMenuItem.Caption` and the main window title (`DBDesigner Fork - <model>`), and is also called from `SaveAs`/`FormActivate`. Verified: `fix13-winmenu-after.png` ("order"), window title `DBDesigner Fork - order`.
 
 ### 21. Minor: duplicate "order.xml" entry in File > Open Recent; GLib-CRITICAL `spacing -1` and Pango "Invalid UTF-8 string" warnings on stderr
 - **Severity:** cosmetic
@@ -188,6 +191,14 @@ Summary: 21 entries — 6 crash, 7 unreadable, 8 cosmetic.
 - **Screenshots:** `05-file-submenus.png`
 - **Suspected files:** `src/GUIDM.pas:380` (`RecentFiles.IndexOf(fname)` — compare `ExpandFileName`d paths); Pango warning comes from a non-UTF-8 caption/string set while building the Options dialog (`src/Options.pas`, translation strings from `bin/Data/DBDesignerFork_Translations.ini` — Latin-1 text assigned to a GTK2 label); GLib `spacing=-1` originates from an LCL toolbar/panel property in `src/Main.lfm`.
 - **Complexity:** small
+- **Status:** FIXED. Duplicate: `TDMGUI.AddFileToRecentFilesList` now `ExpandFileName`s the path before the `IndexOf` check (`fix13-recent.png`, single entry; the ini keeps absolute paths). Pango warning: the `[Languages]` section of `DBDesignerFork_Translations.ini` is Latin-1 (`Fran\xE7ais`) and was added raw to the Language combo; `Options.pas` converts invalid UTF-8 names with `CP1252ToUTF8`. GLib `spacing -1`: LCL's GTK2 `TBitBtn.SetSpacing` passes the value straight to `gtk_box_set_spacing`, and the three `TBitBtn`s in `src/EERPageSetup.lfm` had `Spacing = -1`; changed to 4. The `TSpeedButton`s with `Spacing = -1` in the DBConn*/EditorString/EditorQuery forms are LCL-painted and harmless. stderr after opening Options and Page Setup contains only the canberra module message.
+
+### 22. Editor/Options dialogs cannot be closed with the mouse: OK/Cancel speed buttons are disabled
+- **Severity:** unreadable-adjacent (dialog OK/Cancel unusable by mouse; Escape only works when the form has focus)
+- **Repro:** Options > DBDesigner Options (also Table, Relation, Note, Region and Datatype editors): the tick/cross buttons are greyed and clicks do nothing.
+- **Screenshots:** `fix13-options-before.png` (greyed), `fix13-options-btns.png` (after)
+- **Cause:** In the Kylix original the buttons are `Enabled = False` with `NumGlyphs = 4` and `OnMouseEnter`/`OnMouseLeave` handlers that toggle `Enabled`: Qt delivered enter events to disabled widgets, so the buttons showed their dim "disabled" glyph until hovered and the coloured glyph on hover (a hover-highlight trick). LCL/GTK2 never sends MouseEnter to a disabled control, so they stayed disabled forever.
+- **Status:** FIXED. Removed `Enabled = False` and the two handlers from the Submit/Abort buttons in `Options`, `EditorTable`, `EditorDatatype`, `EditorNote`, `EditorRegion`, `EditorRelation` (.lfm and .pas). The buttons are now always enabled with the normal glyph; LCL's flat speed buttons draw their own hover frame, so the hover feedback is kept. `Main.lfm`'s `wtPointerSBtnMouseEnter` and `EditorQuery`'s `TempSQLStore1SBtnMouseEnter` only set hints and were left alone.
 
 ---
 
