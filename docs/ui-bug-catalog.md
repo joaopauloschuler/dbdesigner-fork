@@ -114,6 +114,7 @@ Summary: 21 entries — 6 crash, 7 unreadable, 8 cosmetic.
 - **Symptom:** The edit is filled with many `s` characters followed by the real name (scrolled to the end). Group combo and description are correct, so `Datatype.TypeName` itself is fine.
 - **Suspected files:** `src/EditorDatatype.pas:128` (`DatatypeNameEd.Text := Datatype.TypeName`), `src/EditorDatatype.lfm` (`DatatypeNameEd: TEdit`, no `Text` property), `src/MainDM.pas` `InitForm`/`TranslateForm` (line 1168+) which runs first. No `'s'` literal exists in the sources; hypothesis is a string/PChar length mix-up in the translation pass or a shim (`src/clx_shims`) that pads/masks `TEdit` text. Needs a debug print in `SetDataType`.
 - **Complexity:** small once located (unknown cause).
+- **Status:** NOT A BUG (not reproducible). Opening the editor by double-click shows `INTEGER`/`VARCHAR` correctly (`fix12-dt-editor-before.png`, `fix12-dt-editor-varchar-top.png`). The `s` characters were typed by a stuck auto-repeating key in the diagnosis session: `31-db-sync.png`, taken 8 minutes later, shows the Connect dialog's Password field filled with ~15 characters that was empty in `09-db-connect.png`, and no code path synthesises key events. Holding `s` via `xdotool keydown s` reproduces the look (`fix12-stuckkey-test-top.png`). No code change.
 
 ### 13. Navigator palette "Info" tab cannot be activated
 - **Severity:** unreadable (Info page unreachable)
@@ -140,6 +141,7 @@ Summary: 21 entries — 6 crash, 7 unreadable, 8 cosmetic.
 - **Screenshots:** `09-db-connect.png`, `02d-dbmodel.png`
 - **Suspected files:** `TImageList` `Bitmap = {` streams in `src/DBConnSelect.lfm`, `src/Main.lfm`, `src/PaletteModel.lfm`, `src/EditorTable.lfm` (CLX-format image-list data). Shared cause with entry 11. The Datatypes palette *does* show icons (`33-fresh-main-half.png`), so compare how that list is built.
 - **Complexity:** medium (regenerate image lists).
+- **Status:** FIXED. Cause: same mask-polarity bug as #11; `cd src && python3 imgl_to_lcl.py` regenerated the `Bitmap` streams of `DBConnSelect.lfm`, `EERPlaceModel.lfm`, `EERStoreInDatabase.lfm`, `EditorQuery.lfm`, `PaletteModel.lfm` (`Main.lfm` has no `TImageList`). Verified: `fix12-dbconn-combo.png`, `fix12-after1.png`.
 
 ### 16. DBDesigner Options dialog: right-hand "Various" group is cut off, "Reset Personal Settings" button text clipped, check-box captions truncated
 - **Severity:** cosmetic (some options partly unreadable: "Limit the number of Undo Actions to", "...when Application loses the Foc", "Enclose names by quote charact")
@@ -160,7 +162,7 @@ Summary: 21 entries — 6 crash, 7 unreadable, 8 cosmetic.
 - **Screenshots:** `16-table-editor-pages.png` (Advanced), `26-datatype-editor.png`
 - **Suspected files:** `src/EditorTable.lfm` (RAID group box), `src/EditorDatatype.lfm` (Parameter group height, label widths). Same font-metric cause as 16.
 - **Complexity:** small
-- **Status:** PARTIALLY FIXED (Table Editor part). RAID group box re-laid out in `src/EditorTable.lfm` (wider box, right-justified labels with `AutoSize = False` and explicit `Height`, 90 px combo/edits, "kB" inside the box). Datatype Editor part still open.
+- **Status:** PARTIALLY FIXED (Table Editor part). RAID group box re-laid out in `src/EditorTable.lfm` (wider box, right-justified labels with `AutoSize = False` and explicit `Height`, 90 px combo/edits, "kB" inside the box). Datatype Editor part FIXED: `src/EditorDatatype.lfm` Parameter/Options group boxes 126 -> 140 px high (check boxes 19 px, so "Edit values as strings" fits), and the "Enable Physical Datatype Mapping" check box, which sat on the group-box caption and was completely hidden under LCL, now sits above the box (form 12 px taller). "Synonymgrp." was not actually clipped. Verified: `fix12-after1.png`.
 
 ### 19. Visual Options "Header Preview" is a blank grey box
 - **Severity:** cosmetic

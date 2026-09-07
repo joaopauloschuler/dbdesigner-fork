@@ -527,3 +527,32 @@ Gotcha while testing: `~/.DBDesigner4/DBDesignerFork_Settings.ini` `WorkMode=2` 
 mode, written by whichever instance exits last, including --selftest runs) makes a table
 double-click open "Select Database Connection" instead of the Table Editor. Set
 `WorkMode=1` or press Ctrl+Tab first.
+
+## Fix: catalog #12 (not a bug), #15 (image lists), #18 Datatype Editor part
+
+#12 `ssss...INTEGER`: not reproducible - a fresh double-click on INTEGER/VARCHAR shows the
+name correctly (`fix12-dt-editor-before.png`). The diagnosis session had a stuck
+auto-repeating key: `31-db-sync.png` (8 min after `26-datatype-editor.png`) shows the
+Connect dialog's Password field full of characters that was empty in `09-db-connect.png`,
+and nothing in the sources synthesises key/char events (`QKeyEvent_create` is only used
+to forward LCL key-downs to `DoApplicationEvent`). `xdotool keydown s` reproduces the
+look (`fix12-stuckkey-test-top.png`). Lesson for xdotool sessions: pair every `keydown`
+with `keyup`, and if edits start filling with one character run `xdotool keyup <key>`.
+
+#15: `cd src && python3 imgl_to_lcl.py` (must run inside `src/`, the CONVERSIONS table
+uses bare file names) regenerated the remaining five image lists with the corrected mask
+polarity. Verified DB-connection tree (`fix12-dbconn-combo.png`) and DB Model tree
+(`fix12-after1.png`); EERPlaceModel/EERStoreInDatabase/EditorQuery need a live DB
+connection and were not looked at, but they are the same stream format.
+
+#18 Datatype Editor: `src/EditorDatatype.lfm` only. Group boxes "Parameter"/"Options"
+126 -> 140 px (LCL check boxes need ~19 px), list boxes/check boxes moved accordingly.
+`EnablePhysicalMappingCBox` was placed on top of `GroupBox3`'s caption line (Top 278 vs
+box Top 280); under GTK2 the later-created group box covers it completely, so the
+"Enable Physical Datatype Mapping" option was invisible. It now sits above the box
+(Top 284, box Top 304), ClientHeight 399 -> 411. "Synonymgrp." was fine.
+
+Testing gotcha: after the Tips dialog is closed its X window stays in `xwininfo -tree`
+as IsViewable and `xdotool getactivewindow` may still report it; do not rely on those to
+decide whether it is open. Also the dialog can be placed over the main menu bar
+(+28+20), so close it before clicking menus.
