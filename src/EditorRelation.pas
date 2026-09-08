@@ -265,6 +265,14 @@ begin
   if(w<110)then
     w:=110;
   FKGrid.ColWidths[2]:=w;
+  //The grid keeps the focused cell / horizontal scroll position of the
+  //previous relation (FixedCols=1): with the cursor in the Comment column the
+  //LCL scrolls "Dest. Name" out of view and the FK names are hidden - start
+  //at the first scrollable column again
+  FKGrid.LeftCol:=FKGrid.FixedCols;
+  FKGrid.Col:=FKGrid.FixedCols;
+  if(FKGrid.RowCount>FKGrid.FixedRows)then
+    FKGrid.Row:=FKGrid.FixedRows;
 
   CreateRefDefCBox.Checked:=EERRel.CreateRefDef;
 
