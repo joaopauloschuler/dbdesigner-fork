@@ -1229,3 +1229,61 @@ navigation (`Down`x4 `Right` for File > Open Recent). Shots: `fix13-*`.
   (683,235); Reverse Engineering dialog Execute at (425,573); the "Information" box takes
   Return. Edit menu popup is 300x241 at +82+95 with "Delete selected Object(s)" at y+175,
   followed by a 405x154 "Confirmation" box (Yes at (350,125)).
+
+## Fix: db-ui #1-#4 - connection selector edit route, Port field, editor cosmetics, real MySQL login error
+
+- **#1** (`src/DBConnSelect.pas`): the per-row "..." button *was* wired to
+  `ConnectionsListViewClick`, but the hit-test required `mx < x2` where
+  `x2 = sum(cols 0..4) + col5.Width` (col5 is only 22 px wide in the .lfm). Under
+  LCL the drawn button reaches to the list's right border/scrollbar, past that
+  narrow column, so clicks on the visible button landed at `mx > x2` and did
+  nothing. Fix: dropped the upper bound (`mx > x1` only, col5 is the last column),
+  extracted the editor-open into `EditSelectedDBConn`, and added an
+  "Edit Connection" item to `DBConnPopupMenu` (new published fields
+  `EditConnectionMI`, `N3` in the .pas, entries in the .lfm) as a guaranteed route.
+  Editing persists via the editor's `ConnectBtnClick -> StoreDBConns`.
+- **#2** (`src/DBConnEditor.pas`): `CheckHostEdits` set `PortEd.Enabled:=False`
+  even for MySQL (label enabled, edit greyed) - a typo for `True`. And the port
+  was never saved: `ConnectBtnClick` didn't copy `PortEd.Text` into
+  `DBConn.Params.Values['Port']`, and the `[MySQL]` default section in
+  `DBConn_DefaultSettings.ini` has no `Port` key, so new MySQL connections got no
+  `Port=` line. Fix: enable the field for MySQL; store `Port` in `ConnectBtnClick`
+  when the field is enabled and non-empty; load it into `PortEd` in `RefreshParams`.
+  `StoreDBConns` already writes every `Params.Name` except `Password`, so `Port`
+  now round-trips as `Port=` (same key the app/sqldb read via `Params.Values['Port']`).
+- **#3** (`src/DBConnEditor.lfm` + `.pas`): (a) `PortLbl` overlapped the Hostname
+  combo (combo ends at x=269, label was `Left=266`) - moved to `Left=276 Width=37`.
+  (b) switching the driver reloaded the driver defaults over what the user typed,
+  so a typed Username was replaced by MySQL's default `root`. `DatabaseTypesCBoxCloseUp`
+  now remembers the edit-box values and restores any non-empty one after
+  `ResetDefaultParamsBtnClick`, so defaults fill only empty fields. (c) the "Value"
+  header vanished because `RefreshParams` does `ParamStrGrid.Cols[1].Clear`, which
+  wipes cell `[1,0]` too - restore `Cells[1,0]:='Value'` right after the clear.
+- **#4** (`src/clx_shims/sqlexpr.pas` + `src/DBDM.pas`): a failed MySQL login only
+  showed "Server connect failed." The FPC connector's `MySQLError()` formats the
+  fixed string `SErrServerConnectFailed` (no `%s`), so the real `mysql_error()`
+  text ("Access denied for user ...") is dropped before it reaches
+  `EDatabaseError.Message`. Fix: `TSQLConnection.Open` catches the failure and, for
+  MySQL, opens a throwaway `mysql_init`/`mysql_real_connect` handle (via `mysql80dyn`,
+  already loaded by `MySQLLib`) to read the real error, re-raising it. `GetConnectErrorMessage`
+  lost its stale "does not connect to MySQL 5.* with password" blurb (now a short
+  hint + "Server message:"), and `GetDBConnButtonClick` appends `x.Message` directly,
+  clears the tried connection's `Password` param and sets `defDBConn := SelDBConn.Name`
+  so the retry reopens the selector with the same connection selected and the
+  password box empty (instead of losing the choice).
+- Gotchas: don't undo the `RowCount:=7` / `StoreDBConns`-on-OK / `Password=` stripping
+  work (notes above). `StoreDBConns` never writes `Password`, so a hand-edited
+  `Password=bpsa` line in `DBConn.ini` disappears on the first rewrite (edit/OK,
+  selector close). The extra `mysql_real_connect` probe in #4 is an error-path-only
+  second round trip. The `sqlexpr.pas` MySQL probe is guarded `{$IFDEF LINUX}` and by
+  `Assigned(mysql_init)`.
+- Verified on DISPLAY=:0 (`<scratchpad>/shots/db-ui/fix01-04/`): "..." opens the
+  editor pre-filled; right-click "Edit Connection" too; edited OrderMySQL description
+  persisted with `HostName`/`Database`/`Port=3306` intact; new MySQL connection typed
+  a username then closed the driver combo with no `root` prefix, typed `3307` into the
+  focusable Port field, OK -> `Port=3307`, `User_Name=myuser` in the ini (test conn
+  then deleted); wrong password shows "Access denied for user 'bpsa'@'localhost'..."
+  with the selector still open, OrderMySQL selected, password cleared; correct login
+  (bpsa/bpsa, 127.0.0.1, dbdtest) -> status bar "Connected to Database bpsa@dbdtest";
+  Advanced grid shows the "Value" header. `DBConn.ini` restored byte-for-byte
+  (incl. `Password=bpsa`) and `WorkMode=1` afterwards.

@@ -483,12 +483,12 @@ begin
 
   if DriverName = 'MySQL' then
   begin
-    ErrMsg := ErrMsg + 'Possible causes are:'+#13#10;
-    ErrMsg := ErrMsg + '* User has no grants to connect from this machine.'+#13#10;
-    ErrMsg := ErrMsg + '* DB Designer Fork does not connect to MySQL 5.* with password.'+#13#10;
-    ErrMsg := ErrMsg + '  You may try connecting with a user that does not require password.'+#13#10;
-    ErrMsg := ErrMsg + '  You may try connecting thru ODBC.'+#13#10;
-    ErrMsg := ErrMsg + '  When reverse engineering, MySQL specific functions are recommended.'+#13#10;
+    //Short, accurate hint only. The real reason (e.g. "Access denied for
+    //user ...") comes from the connector and is appended by the caller
+    //(db-ui-bug-catalog #4). The old fixed "does not connect to MySQL 5.*"
+    //text was stale and hid the server message.
+    ErrMsg := ErrMsg + 'Please check the host, port, user name and password.'+#13#10;
+    ErrMsg := ErrMsg + #13#10 + 'Server message:'+#13#10;
   end else
   if DriverName = 'SQLite' then
   begin
@@ -536,8 +536,14 @@ begin
 
           ErrMsg := GetConnectErrorMessage(DriverName);
 
-          MessageDlg(ErrMsg+DMMain.GetTranslatedMessage('%s', 121,
-            x.Message), mtError, [mbOK], 0);
+          //Append the connector's real message (e.g. "Access denied for
+          //user ...") directly so the server text is always visible (db-ui #4).
+          MessageDlg(ErrMsg + x.Message, mtError, [mbOK], 0);
+
+          //Return to the selector with this connection still selected and its
+          //password cleared, instead of losing the choice (db-ui #4).
+          SelDBConn.Params.Values['Password'] := '';
+          defDBConn := SelDBConn.Name;
 
           continue;
         end;

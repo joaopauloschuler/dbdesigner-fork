@@ -327,6 +327,12 @@ begin
   HostIPEd.Text:=RemoveHostCaption(HostIPEd.Text);
   DBConn.Params.Values['HostName']:=HostIPEd.Text;
 
+  //Persist the Port (the field was disabled before and never saved, so new
+  //MySQL connections lost their Port= line - db-ui-bug-catalog #2). Only store
+  //it when the field is enabled (MySQL); other drivers do not use a port.
+  if(PortEd.Enabled)and(Trim(PortEd.Text)<>'')then
+    DBConn.Params.Values['Port']:=Trim(PortEd.Text);
+
   //Check Hosts
   theDBHost:=nil;
   for i:=0 to DBHosts.Count-1 do
@@ -423,6 +429,11 @@ begin
     DatabaseTypesCBox.ItemIndex:=DatabaseTypesCBox.Items.IndexOf(Copy(DBConn.DriverName, 5, 8));
   CheckHostEdits;
 
+  //Port (CheckHostEdits enables the field for MySQL and defaults it to 3306;
+  //show the stored value when the connection has one - db-ui-bug-catalog #2)
+  if(DBConn.Params.Values['Port']<>'')then
+    PortEd.Text:=DBConn.Params.Values['Port'];
+
   //Username & Pwd
   if(DBConn.Params.Values['User_Name']<>'')then
     UserNameEd.Text:=DBConn.Params.Values['User_Name'];
@@ -437,6 +448,10 @@ begin
 
   ParamStrGrid.RowCount:=6+DBConn.Params.Count;
   ParamStrGrid.Cols[1].Clear;
+
+  //Cols[1].Clear also wipes the header cell, so restore the "Value" caption
+  //(db-ui-bug-catalog #3). Not translated (matches the "Param" header).
+  ParamStrGrid.Cells[1, 0]:='Value';
 
   ParamStrGrid.Cells[1, 1]:=DBConn.DriverName;
   ParamStrGrid.Cells[1, 2]:=DBConn.GetDriverFunc;
@@ -486,6 +501,7 @@ begin
 end;
 
 procedure TDBConnEditorForm.DatabaseTypesCBoxCloseUp(Sender: TObject);
+var savedHost, savedDB, savedUser, savedPwd, savedPort: string;
 begin
   if(DatabaseTypesCBox.ItemIndex<>0)then
   begin
@@ -496,9 +512,46 @@ begin
     PortEd.Text:='';
   end;
 
+  //Remember what the user already typed so that switching the driver only
+  //fills the driver's defaults into fields the user left EMPTY. Before, the
+  //MySQL defaults overwrote a typed Username with 'root' (db-ui-bug-catalog #3).
+  savedHost:=HostIPEd.Text;
+  savedDB:=DBEd.Text;
+  savedUser:=UserNameEd.Text;
+  savedPwd:=PasswordEd.Text;
+  savedPort:=PortEd.Text;
+
   CheckHostEdits;
 
   ResetDefaultParamsBtnClick(self);
+
+  //Restore the user's own entries (ResetDefaultParams/RefreshParams replaced
+  //them with the driver defaults); keep the defaults only where empty.
+  if(savedHost<>'')then
+  begin
+    HostIPEd.Text:=savedHost;
+    DBConn.Params.Values['HostName']:=RemoveHostCaption(savedHost);
+  end;
+  if(savedDB<>'')then
+  begin
+    DBEd.Text:=savedDB;
+    DBConn.Params.Values['Database']:=savedDB;
+  end;
+  if(savedUser<>'')then
+  begin
+    UserNameEd.Text:=savedUser;
+    DBConn.Params.Values['User_Name']:=savedUser;
+  end;
+  if(savedPwd<>'')then
+  begin
+    PasswordEd.Text:=savedPwd;
+    DBConn.Params.Values['Password']:=savedPwd;
+  end;
+  if(PortEd.Enabled)and(savedPort<>'')then
+  begin
+    PortEd.Text:=savedPort;
+    DBConn.Params.Values['Port']:=savedPort;
+  end;
 
   DBEd.SelectAll;
   DBEd.SetFocus;
@@ -512,7 +565,7 @@ begin
     HostIPLbl.Enabled:=True;
     HostIPEd.Enabled:=True;
     PortLbl.Enabled:=True;
-    PortEd.Enabled:=False;
+    PortEd.Enabled:=True;
     if(PortEd.Text='')then
       PortEd.Text:='3306';
 

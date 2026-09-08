@@ -67,6 +67,8 @@ type
     Panel2: TPanel;
     DBConnLbl: TLabel;
     DBConnPopupMenu: TPopupMenu;
+    EditConnectionMI: TMenuItem;
+    N3: TMenuItem;
     DeleteConnectionMI: TMenuItem;
     HostsPopupMenu: TPopupMenu;
     RenameHostMI: TMenuItem;
@@ -116,6 +118,8 @@ type
       Node: TTreeNode; State: TCustomDrawState;
       Stage: TCustomDrawStage; var PaintImages, DefaultDraw: Boolean);
     procedure RefreshDBConnList;
+    procedure EditSelectedDBConn;
+    procedure EditConnectionMIClick(Sender: TObject);
     procedure ConnectionsListViewDragOver(Sender, Source: TObject; X,
       Y: Integer; State: TDragState; var Accept: Boolean);
     procedure ConnectionsListViewDragDrop(Sender, Source: TObject; X,
@@ -1186,6 +1190,33 @@ begin
   end;
 end;
 
+procedure TDBConnSelectForm.EditSelectedDBConn;
+var i: integer;
+  theData: Pointer;
+begin
+  if(ConnectionsListView.Selected=nil)or(SelDBConn=nil)then
+    Exit;
+
+  theData:=ConnectionsListView.Selected.Data;
+  DBConnEditorForm:=TDBConnEditorForm.Create(self);
+  try
+    //edit the selected connection; the editor writes DBConn.ini via StoreDBConns
+    DBConnEditorForm.SetData(SelDBConn, DBHosts, '', '', '', '');
+    DBConnEditorForm.ShowModal;
+    RefreshDBConnList;
+    for i:=0 to ConnectionsListView.Items.Count-1 do
+      if(ConnectionsListView.Items[i].Data=theData)then
+        ConnectionsListView.Selected:=ConnectionsListView.Items[i];
+  finally
+    DBConnEditorForm.Free;
+  end;
+end;
+
+procedure TDBConnSelectForm.EditConnectionMIClick(Sender: TObject);
+begin
+  EditSelectedDBConn;
+end;
+
 procedure TDBConnSelectForm.ConnectionsListViewDragOver(Sender,
   Source: TObject; X, Y: Integer; State: TDragState; var Accept: Boolean);
 begin
@@ -1285,6 +1316,7 @@ begin
   theListItem:=ConnectionsListView.GetItemAt(10, my);
   if(theListItem<>nil)then
     ConnectionsListView.Selected:=theListItem;
+  writeln(stderr,'DBG Click mx=',mx,' my=',my,' x1=',x1,' x2=',x2,' sel=',ConnectionsListView.Selected<>nil,' w=',ConnectionsListView.Width,' c5=',ConnectionsListView.Columns[5].Width);
 
   if(mx>x1)and(mx<x2)and(ConnectionsListView.Selected<>nil)then
   begin

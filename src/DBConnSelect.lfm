@@ -738,6 +738,13 @@ object DBConnSelectForm: TDBConnSelectForm
   object DBConnPopupMenu: TPopupMenu
     Left = 402
     Top = 126
+    object EditConnectionMI: TMenuItem
+      Caption = 'Edit Connection'
+      OnClick = EditConnectionMIClick
+    end
+    object N3: TMenuItem
+      Caption = '-'
+    end
     object AddConnection1: TMenuItem
       Caption = 'Add Connection'
       OnClick = AddConnection1Click

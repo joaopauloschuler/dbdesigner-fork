@@ -2,7 +2,12 @@
 unit SqlExpr;
 {$mode delphi}
 interface
-uses Classes, DB, SQLDB, SysUtils, DBXpress, SQLite3Conn, SQLiteLib, MySQL80Conn, MySQLLib;
+uses Classes, DB, SQLDB, SysUtils, DBXpress, SQLite3Conn, SQLiteLib, MySQL80Conn, MySQLLib
+  {$IFDEF LINUX}, ctypes, mysql80dyn{$ENDIF};
+
+{$IFDEF LINUX}
+{$DEFINE HAS_MYSQLDYN}
+{$ENDIF}
 
 const
   // Schema type constants (Delphi dbExpress)
@@ -25,6 +30,7 @@ type
     procedure SetDriverNameEx(const Value: string);
     procedure UpdateConnectorType;
     procedure ApplyParamsToConnection;
+    function MySQLRealConnectError: string;
   public
     constructor Create(AOwner: TComponent); override;
     procedure Open;
@@ -157,7 +163,39 @@ begin
   end;
 end;
 
+// The FPC MySQL connector raises "Server connect failed." on a login failure:
+// its MySQLError() formats the fixed string SErrServerConnectFailed, which has
+// no %s, so the actual server text ("Access denied for user ...") is dropped.
+// To surface it we open a throwaway client handle with the same credentials and
+// read mysql_error() ourselves. Only used on the error path.
+function TSQLConnection.MySQLRealConnectError: string;
+{$IFDEF HAS_MYSQLDYN}
+var
+  H: PMYSQL;
+  APort: cuint;
+{$ENDIF}
+begin
+  Result := '';
+{$IFDEF HAS_MYSQLDYN}
+  if not Assigned(mysql_init) then
+    Exit;
+  H := mysql_init(nil);
+  if H = nil then
+    Exit;
+  try
+    APort := Abs(StrToIntDef(Params.Values['Port'], 0));
+    if mysql_real_connect(H, PChar(HostName), PChar(UserName), PChar(Password),
+      nil, APort, nil, 0) = nil then
+      Result := Trim(StrPas(mysql_error(H)));
+  finally
+    mysql_close(H);
+  end;
+{$ENDIF}
+end;
+
 procedure TSQLConnection.Open;
+var
+  RealMsg: string;
 begin
   // Ensure ConnectorType is set before connecting
   if ConnectorType = '' then
@@ -166,7 +204,22 @@ begin
   // Map Params to SQLDB connection properties
   ApplyParamsToConnection;
 
-  inherited Open;
+  try
+    inherited Open;
+  except
+    on E: EDatabaseError do
+    begin
+      // For MySQL, replace the connector's generic "Server connect failed."
+      // with the real server message (e.g. "Access denied for user ...").
+      if Pos('mysql', LowerCase(FDriverName)) > 0 then
+      begin
+        RealMsg := MySQLRealConnectError;
+        if RealMsg <> '' then
+          raise EDatabaseError.Create(RealMsg);
+      end;
+      raise;
+    end;
+  end;
 end;
 
 procedure TSQLConnection.Close;
