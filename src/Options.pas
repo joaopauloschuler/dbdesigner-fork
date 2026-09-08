@@ -45,7 +45,8 @@ interface
 
 uses
   LCLType, SysUtils, Types, Classes, Graphics, Controls, Forms, Dialogs,
-  StdCtrls, ComCtrls, ExtCtrls, Buttons, IniFiles, Qt, PanelBitmap;
+  StdCtrls, ComCtrls, ExtCtrls, Buttons, IniFiles, Qt, PanelBitmap,
+  LazUTF8, LConvEncoding;
 
 type
   TOptionsForm = class(TForm)
@@ -148,8 +149,6 @@ type
 
     procedure ApplyChanges;
     procedure UsePosGridCBoxClick(Sender: TObject);
-    procedure SubmitBtnMouseEnter(Sender: TObject);
-    procedure SubmitBtnMouseLeave(Sender: TObject);
     procedure PageControlChange(Sender: TObject);
     procedure PageControlTreeViewChange(Sender: TObject; Node: TTreeNode);
     procedure LanguageCBoxCloseUp(Sender: TObject);
@@ -178,6 +177,7 @@ uses MainDM, EERDM, DBDM, GUIDM, EER, EditorQuery, Main;
 procedure TOptionsForm.FormCreate(Sender: TObject);
 var theIni: TMemIniFile;
   i, langIndex: integer;
+  s: string;
 begin
   DMMain.InitForm(self);
 
@@ -242,8 +242,7 @@ begin
   ReservedWordsMemo.SelStart:=0;
   ReservedWordsMemo.SelLength:=0;
 
-  FontCBox.Items.Assign(Screen.Fonts);
-  FontCBox.ItemIndex:=FontCBox.Items.IndexOf(DMGUI.SQLTextFont);
+  DMMain.FillFontCBox(FontCBox, DMGUI.SQLTextFont);
 
   SQLFontSizeCBox.ItemIndex:=SQLFontSizeCBox.Items.IndexOf(IntToStr(DMGUI.SQLTextFontSize));
 
@@ -268,7 +267,11 @@ begin
     begin
       if(LanguageList.ValueFromIndex[i]<>'xx')then
       begin
-        LanguageCBox.Items.Add(LanguageList.Names[i]);
+        //The translations ini is Latin-1 ("Français"); GTK2 needs UTF-8
+        s:=LanguageList.Names[i];
+        if(FindInvalidUTF8Codepoint(PChar(s), Length(s))>=0)then
+          s:=CP1252ToUTF8(s);
+        LanguageCBox.Items.Add(s);
         if(LanguageList.ValueFromIndex[i]=DMMain.GetLanguageCode)then
           langIndex:=i;
       end;
@@ -456,12 +459,10 @@ begin
     theIni.Free;
   end;
 
-  if(FontCBox.ItemIndex>=0)then
-  begin
-    DMGUI.SQLTextFont:=FontCBox.Items[FontCBox.ItemIndex];
+  DMGUI.SQLTextFont:=DMMain.GetFontCBoxSelection(FontCBox, DMGUI.SQLTextFont);
+  if(SQLFontSizeCBox.ItemIndex>=0)then
     DMGUI.SQLTextFontSize:=StrToInt(SQLFontSizeCBox.Items[SQLFontSizeCBox.ItemIndex]);
-    sendCLXEvent(Application.MainForm.Handle, QCustomEvent_create(QEventType_SetSQLTextFont, self));
-  end;
+  sendCLXEvent(Application.MainForm.Handle, QCustomEvent_create(QEventType_SetSQLTextFont, self));
 
   DMGUI.MinimizeOnCtrlShiftC:=MinimizeOnCtrlShiftCCBox.Checked;
 
@@ -525,16 +526,6 @@ begin
   GridHeightLbl.Enabled:=UsePosGridCBox.Checked;
   GridYEd.Enabled:=UsePosGridCBox.Checked;
   GridHeightUnitsLbl.Enabled:=UsePosGridCBox.Checked;
-end;
-
-procedure TOptionsForm.SubmitBtnMouseEnter(Sender: TObject);
-begin
-  TSpeedButton(Sender).Enabled:=True;
-end;
-
-procedure TOptionsForm.SubmitBtnMouseLeave(Sender: TObject);
-begin
-  TSpeedButton(Sender).Enabled:=False;
 end;
 
 procedure TOptionsForm.PageControlChange(Sender: TObject);

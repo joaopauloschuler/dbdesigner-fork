@@ -42,7 +42,7 @@
 - `SetSchemaInfo(stTables)` returns correct table names ✅
 - `SetSchemaInfo(stColumns)` returns column name, position, type, typename, nullability ✅
 - `SetSchemaInfo(stIndexes)` returns index name, column name, uniqueness ✅
-- Requires `libsqlite3.so` symlink in `LD_LIBRARY_PATH`
+- Library name is picked at start-up by `clx_shims/sqlitelib.pas` (`libsqlite3.so.0` first, then `libsqlite3.so`) - no symlink or `LD_LIBRARY_PATH` needed
 
 ### Architecture: Shim Layer (`clx_shims/`)
 31 compatibility units mapping CLX/Delphi APIs to LCL/SQLDB:
@@ -318,3 +318,819 @@ The `{$R *.lfm}` directive embeds form data into the `.ppu`/`.o` file at unit co
 - Wrap in try/except, increment PassCount/FailCount counters, log [PASS]/[FAIL]/[SKIP].
 - Editors NOT yet tested directly: TEditorTableForm, TEditorQueryForm, TEditorString/Datatype/Note/Region/Relation, TEERReverseEngineering/StoreInDatabase/Synchronisation, TPlaceModelForm, TPrinterSettingsForm.
 - See `src/UITestRunner.pas:386` Phase0 / `src/UITestRunner.pas:573` Phase3 for reference templates.
+
+
+## Fix: black table title bars after load (ui-bug-catalog #7)
+
+Cause: a Delphi/CLX-to-LCL scoping trap, not a bitmap problem. `TEERTable.PaintCachedImg`
+and `PaintObj2Canvas` declared locals `width, height` and used them inside
+`with theCanvas do`. Delphi's `TCanvas` has no `Width`/`Height`, so the locals were meant;
+LCL's `TCanvas` does have them, and the `with` scope wins. `TCanvas.Width` is 0 until the
+canvas has a handle, and the freshly resized `StrechedImg` cache bitmap gets its handle
+created *by the first drawing call* - so the header `StretchDraw` ran with
+`Rect(xo+1, 0, xo+0-3, 18)` (empty) and drew nothing; the uninitialised pixmap stayed black
+and the (black) table name was invisible on it. Every later call saw the real width, which
+is why the rest of the table was fine and why any recache (mode switch, zoom) "fixed" it.
+
+Fix: renamed the locals to `tblWidth`/`tblHeight` (src/EERModel.pas). Verified with
+`xdotool`/`import` screenshots on DISPLAY=:0: names visible right after load.
+
+How it was found: the GTK2 widgetset call for the very first op arrived with
+`rect=1,0,-3,14` (gdb breakpoint on `TGtk2WidgetSet.FillRect`); everything above and below
+it (bitmap handles, GC, drawable XIDs, masks) was fine.
+
+Same latent pattern (locals `width, height` + `with theCanvas do`) still exists in
+`src/EERModel.pas` around lines 12351, 13008 and 13432 (note/image/region-type paints);
+likely the cause of catalog #9 (notes drawn 1 px high). Left untouched here on purpose.
+Catalog #19 (Visual Options header preview) has a different cause: the `panelbitmap.pas`
+shim stores `TPanel.Bitmap` but never paints it.
+
+## Fix: oversized text over the Navigator / Page Setup thumbnails (ui-bug-catalog #8)
+
+Cause: a missing `begin/end`, not a font-size or zoom-factor problem. `PaletteNav.pas` and
+`EERPageSetup.pas` call `EERModel.PaintModel(..., doDrawText=False)`, which sets
+`DMEER.DisableTextOutput`. In `TEERTable.PaintCachedImg` (src/EERModel.pas) the column
+name, index name and index-column name are written as
+
+    if(Not(DMEER.DisableTextOutput))then
+      Brush.Style := bsClear;
+      TextOut(...);
+
+so only the `Brush.Style` assignment was guarded and `TextOut` ran unconditionally. With
+text output disabled `Font.Height := ParentEERModel.GetFontHeight` is skipped too, so the
+strings came out at the canvas' default (100 %) size on a ~5 % thumbnail - hence the few
+huge "productgroup (FK)" strings covering the miniature. The table-name/header paths were
+properly bracketed, which is why only column names showed.
+
+Fix: wrapped the three pairs in `begin/end`. Verified on DISPLAY=:0 (shots
+`fix08-before-nav.png` -> `fix08-after-nav-zoom.png`, `fix08-after-pagesetup.png`): the
+Navigator shows the region/tables/relations miniature, Page Setup preview likewise.
+
+Driving the app with xdotool: the client window is at +42+69 (frame 42,32 + 37 px title),
+so menubar y is ~83, not 120. GTK menu popups are override-redirect windows; find them with
+`xwininfo -root -tree` (e.g. 212x399 for File), not `xdotool search`. The Tips dialog's
+"Close Tip Window" button is at client-relative (340,217).
+
+Catalog #13 (Navigator "Info" tab) not attempted: a misclick had switched the main window
+into query mode (palettes hidden) before I got to it; needs a fresh session.
+
+## Fix: notes collapsed to a 1-px line and clipped relation labels (ui-bug-catalog #9, #14)
+
+Cause: `TEERModel.GetTextExtent` (src/EERModel.pas) measured text on `SelectionRect.Canvas`.
+`SelectionRect` is an invisible `TPaintBox`; under LCL its canvas never gets a handle, so
+`TextExtent` returned nothing useful. Three more things hid behind that: (1) the measurement
+canvas kept the constructor font ("Nimbus Sans L") while loading a model set
+`DefModelFont` to "Tahoma" (substituted by fontconfig with the wider Noto Sans) on every
+object - so even measuring on a real canvas gave a narrower width than the paint; (2) LCL's
+`TextExtent` does not understand line breaks (it returns the summed width and one line
+height), and `TextRect` draws a single line, so the CLX-era `Obj_H := ... +4-14` gave a
+negative height; (3) `EvalZoomFac(ReEvalZoomFac(px)+6)` loses 1-2 px at 75 % zoom (the
+default for order.xml) and `TextRect` clips at `Width-2` with the text starting at 1+3 px,
+so the last glyph of "CreditCardRel" was cut.
+
+Fix: `TEERModel` now owns `TextMeasureBmp: TBitmap`; `GetTextExtent` re-applies
+`DefModelFont` on each call and measures line by line (widest line x lines*TextHeight,
+trailing line break ignored). `TEERNote.RefreshObj` uses `+4` instead of `+4-14` and adds a
+few pixels before the model-unit conversion; `TEERNote.PaintObj2Canvas` paints
+`NoteText[i]` per line. `RelCaption`/`RelStartInterval`/`RelEndInterval` are sized in
+pixels (`theSize.cx+EvalZoomFac(6)+2`). Also renamed the `width`/`height` locals in the
+note/region/image painters and introduced `capW`/`capH` in the three relation-label painters
+(they were resolving to `TCanvas.Width/Height` inside `with theCanvas do`, harmless on the
+control's own canvas but wrong when painting to an export canvas).
+
+Verified on DISPLAY=:0 (shots `fix09-before-half.png` -> `fix09-after-crop.png`,
+`fix09-zooms.png`): both notes show their full two-line text, "CreditCardRel",
+"ProductgroupRel", "OnlineorderRel" are complete.
+
+Gotcha for xdotool sessions: `pkill -f DBDesignerFork` kills the calling bash too when the
+command line mentions the binary; use `pkill -x DBDesignerFork`. Launch with `setsid`.
+
+## Fix: DB Connection editor "Index Out of range Cell[Col=0 Row=5]" and Delete shortcut (ui-bug-catalog #1, #6)
+
+#1: `TDBConnEditorForm.FormCreate` (src/DBConnEditor.pas) filled `ParamStrGrid.Cells[0,5]`
+and `[0,6]` while the .lfm left `RowCount` at the LCL default of 5. CLX grew the sparse cell
+storage silently; LCL raises. `FormCreate` aborted before `DatabaseTypesCBox` was filled,
+which produced the follow-up "List index (-1) out of bounds" in `SetData`. Fix: set
+`ParamStrGrid.RowCount:=7` before filling. (`SetData` still does `RowCount:=6+Params.Count`
+and `Cols[1].Clear`, which also clears the "Value" header - same as the original, left alone.)
+
+#6: `DeleteMI.ShortCut = 20487` ($5007) in src/Main.lfm was CLX: Qt `Key_Delete` ($1007)
+or-ed with `scCtrl` ($4000). LCL only knows VK codes, so it rendered as Ctrl+Meta+Word('7').
+The original binding was Ctrl+Del (the `FormKeyDown` handler in Main.pas at "Keys in Design
+Mode" also checks `VK_DELETE` with `[ssCtrl]`), so it is now `ShortCut = 16430`
+(ShortCut(VK_DELETE,[ssCtrl])), shown as "Ctrl+Del". Plain Del was deliberately not used:
+an LCL menu shortcut is evaluated before edit controls see the key. Audit of the remaining
+`ShortCut =` values in src/*.lfm and Plugins/*/*.lfm: 16461/16467/16468/16471 are
+Ctrl+M/S/T/W (VK codes < 256, valid in both CLX and LCL) - nothing else to translate.
+
+Gotcha: lazbuild does not notice a changed .lfm alone; `touch src/Main.pas` (or `-B`) to get
+the resource rebuilt. Verified on DISPLAY=:0: `fix01-edit-menu.png`,
+`fix01-db-conn-editor.png`, `fix01-db-conn-editor-advanced.png`.
+
+## Fix: plugins crash at start-up (ui-bug-catalog #2, #3, #4)
+
+First of all the plugin projects could not be built at all: commit 8b2b15f moved the sources
+to `src/` but `Plugins/*/DBDplugin_*.lpi` (IncludeFiles/OtherUnitFiles) and the `.lpr` files
+(`{$I ../../DBDesigner4.inc}`, `MainDM in '../../MainDM.pas'`, ...) still pointed at the old
+layout. Now `../../src/...`. Build from the plugin directory:
+`cd Plugins/Demo && lazbuild DBDplugin_Demo.lpi` (the include path in the .lpr is relative).
+Note DataImporter has a stale local `MainDM.pas`; the `.lpr` deliberately names the main
+app's `src/MainDM.pas` (the plugin uses `ProgName`/`SettingsPath`/`LoadValueFromSettingsIniFile`).
+
+#2: `TEERModel.LoadFromFile`/`LoadFromFile2` (src/EERModel.pas) and `TDMEER.SetWorkTool`
+(src/EERDM.pas) call `Application.MainForm.SetFocus`, guarded only by `Enabled` (or `Visible`).
+`TCustomForm.SetFocus` in LCL raises `EInvalidOperation` "Can not focus" unless
+`IsControlVisible and Enabled`; the plugins load the model in `FormCreate`, before the form is
+shown, so the exception escaped `FormCreate` and `InitControls` (fills the table list) never
+ran. Guard replaced by `Application.MainForm.CanFocus`, which for a parentless form is exactly
+`IsControlVisible and Enabled`. No try/except.
+
+#3: `Rows = 6` on `SpecialFieldsLBox: TListBox` in Plugins/DataImporter/DBImportData.lfm is a
+CLX-only property (same class as `Font.Weight`/`Masked`); removed. Audit: no other `Rows =`
+(FixedRows is fine) in Plugins/*/*.lfm.
+
+#4: every `Glyph.Data` block in Plugins/SimpleWebFront/*.lfm (28 blocks, 6 files) still had
+the Delphi `size = BMP_size + 4` prefix; the 0c23bb7 conversion had skipped this plugin.
+Fixed with a script that subtracts 4 whenever `prefix == BMP header size + 4`. After that
+the form still failed on `PageControlTreeView.Columns` (CLX-only TTreeView property, removed;
+the Delphi-format `Items.Data` stream is read fine by LCL's `TTreeNodes.ReadData`) and
+`FormCreate` then raised "Invalid type cast": order.xml carries SimpleWebFront plugin data,
+`LoadSWF_DataFromString` does `LoadXMLData(..).GetDocBinding('SWF_Data', TXMLSWF_DataType, ..)
+as IXMLSWF_DataType`, and the `XMLIntf` shim's `GetDocBinding` ignored the class and returned
+a plain `TXMLNodeWrapper`. `RegisterChildNode` also only stored the class *name*, so every
+`ChildNodes['X'] as IXML...` / `List[i] as IXML...` in the generated binding would have failed
+the same way. `src/clx_shims/xmlintf.pas` now keeps the class pointer, instantiates it in
+`GetDocBinding`, `TXMLNodeIndexed.GetNodeByName`, `TXMLNodeCollection.GetList/AddItem`
+(`CreateChildNodeObject`), and binding nodes hold an `IXMLDocument` reference (`FDocRef`) so
+the DOM survives the temporary `LoadXMLData(...)` interface. The main app links this shim too
+(EERModel_XML, MainDM) and was rebuilt and re-checked.
+
+Verified on DISPLAY=:0 with `./DBDplugin_<Name> Examples/order.xml`, shots `fix02-*`:
+Demo lists the 14 tables (`fix02-Demo-*.png`), HTMLReport lists the "Forum" region's tables
+(`fix02-HTMLReport-*.png`), DataImporter opens (`fix02-DataImporter-*.png`; it has no model
+table list), SimpleWebFront opens with the stored Web Title "Order" and its View Editor's
+Table combo lists all 14 tables (`fix02-SWF3-*.png`).
+
+## Fix: empty font combos / literal "FontCBox" (ui-bug-catalog #10)
+
+Cause: NOT an empty `Screen.Fonts`. A stand-alone LCL/GTK2 test program returns 236
+families on this machine (`fc-list | wc -l` = 535), and the dropdowns in the app were in
+fact populated. The combo *text* was blank because the saved font name is never an
+installed family here: loaded models carry `DefModelFont="Tahoma"`, the Linux default is
+the obsolete `Nimbus Sans L` (fontconfig now calls it "Nimbus Sans"), and the SQL font
+default is `Helvetica`. `Items.IndexOf` returned -1, `ItemIndex:=-1` left the edit empty
+(Model Options) or kept the design-time `Text = 'FontCBox'` from `Options.lfm`. Because
+OK only stored a font when `ItemIndex>=0`, the choice was also silently dropped.
+
+Fix: `TDMMain.FillFontCBox` / `GetFontCBoxSelection` (src/MainDM.pas). The fill inserts
+the current font at the top of the list when it is not installed (so it stays visible and
+selectable; the canvas still gets fontconfig's substitute), then sets `ItemIndex` and
+`Text`. Save reads `Text` (typed names allowed) with the old value as fallback. Both
+callers (src/OptionsModel.pas, src/Options.pas) use it; the `Text = 'FontCBox'` line was
+removed from src/Options.lfm. Verified on DISPLAY=:0: Model Options shows "Tahoma" and the
+dropdown lists all families (`fix10-model-after.png`); typing "Z003" + OK re-renders every
+table/relation label in that font (`fix10-canvas-after.png`), i.e. `EERModel.RefreshFont`
+does take effect; DBDesigner Options > Database Options shows "Helvetica" with a populated
+list (`fix10-dbd-options-database.png`).
+
+## Fix: Table Editor column grid (ui-bug-catalog #11) and Advanced page (#18, Table Editor part)
+
+Cause (icons): `src/imgl_to_lcl.py` (commit d7ece4f) converted the CLX `IMGL` image-list
+streams assuming the Windows mask convention "1 = transparent". Six of the seven streams
+are Kylix/Qt `QBitmap` masks where color0 = transparent and color1 = opaque, so every
+coloured pixel in `EditorTable.lfm`'s `DatatypesImgList` got alpha 0 and only the white
+background was opaque -> `DatatypesImgList.Draw` painted nothing visible. (PaletteDatatypes
+is the one list with the VCL convention, which is why the Datatypes palette icons worked.)
+The converter now auto-detects the polarity per stream: the transparent side of a mask
+covers exactly one key colour (white), so the mask value with a single distinct colour
+under it is the transparent one. It also accepts .lfm names on the command line
+(`python3 imgl_to_lcl.py EditorTable.lfm`) to regenerate one list. Only EditorTable.lfm
+was regenerated here; running it without arguments would fix the DBConnSelect,
+EERPlaceModel, EERStoreInDatabase, EditorQuery and PaletteModel lists too (catalog #15).
+
+Cause (headers): `ColumnGridDrawCell` drew "Column Name"/"DataType" at `Rect.Left+1-18`
+so the caption would span the 20 px icon column on the left (CLX did not clip the fixed
+row to the cell). LCL clips OnDrawCell output to the cell, so the first 18 px of the
+caption vanished ("umn Name", "aType"). Drawn at `Rect.Left+1` now; the icon columns keep
+their empty header.
+
+Cause (Advanced page): the RAID group box of `TabSheet1` was laid out for Tahoma 8. Under
+LCL the auto-sized "Use Table RAID" check box ran into "RAID Type:" (labels had a `Width`
+and `Alignment = taRightJustify` but no `AutoSize = False`, so the alignment was ignored),
+the 73 px combo showed "STRI" and "kB" fell outside the 283 px box. Layout only
+(`src/EditorTable.lfm`): box moved to Left 236/Top 0/Width 298, labels right-justified
+with `AutoSize = False` + explicit `Height = 15` (an LCL label without a Height is
+0 px high when AutoSize is off), edits/combo 90 px wide, "kB" at 279.
+Verified on DISPLAY=:0: `fix11-grid3.png`, `fix11-advanced3-c.png`.
+
+Gotcha while testing: `~/.DBDesigner4/DBDesignerFork_Settings.ini` `WorkMode=2` (Query
+mode, written by whichever instance exits last, including --selftest runs) makes a table
+double-click open "Select Database Connection" instead of the Table Editor. Set
+`WorkMode=1` or press Ctrl+Tab first.
+
+## Fix: catalog #12 (not a bug), #15 (image lists), #18 Datatype Editor part
+
+#12 `ssss...INTEGER`: not reproducible - a fresh double-click on INTEGER/VARCHAR shows the
+name correctly (`fix12-dt-editor-before.png`). The diagnosis session had a stuck
+auto-repeating key: `31-db-sync.png` (8 min after `26-datatype-editor.png`) shows the
+Connect dialog's Password field full of characters that was empty in `09-db-connect.png`,
+and nothing in the sources synthesises key/char events (`QKeyEvent_create` is only used
+to forward LCL key-downs to `DoApplicationEvent`). `xdotool keydown s` reproduces the
+look (`fix12-stuckkey-test-top.png`). Lesson for xdotool sessions: pair every `keydown`
+with `keyup`, and if edits start filling with one character run `xdotool keyup <key>`.
+
+#15: `cd src && python3 imgl_to_lcl.py` (must run inside `src/`, the CONVERSIONS table
+uses bare file names) regenerated the remaining five image lists with the corrected mask
+polarity. Verified DB-connection tree (`fix12-dbconn-combo.png`) and DB Model tree
+(`fix12-after1.png`); EERPlaceModel/EERStoreInDatabase/EditorQuery need a live DB
+connection and were not looked at, but they are the same stream format.
+
+#18 Datatype Editor: `src/EditorDatatype.lfm` only. Group boxes "Parameter"/"Options"
+126 -> 140 px (LCL check boxes need ~19 px), list boxes/check boxes moved accordingly.
+`EnablePhysicalMappingCBox` was placed on top of `GroupBox3`'s caption line (Top 278 vs
+box Top 280); under GTK2 the later-created group box covers it completely, so the
+"Enable Physical Datatype Mapping" option was invisible. It now sits above the box
+(Top 284, box Top 304), ClientHeight 399 -> 411. "Synonymgrp." was fine.
+
+Testing gotcha: after the Tips dialog is closed its X window stays in `xwininfo -tree`
+as IsViewable and `xdotool getactivewindow` may still report it; do not rely on those to
+decide whether it is open. Also the dialog can be placed over the main menu bar
+(+28+20), so close it before clicking menus.
+
+## Fix: Options dialogs clipped/overlapping (ui-bug-catalog #16, #17)
+
+Cause: both forms were laid out for the Qt 8 pt font; LCL/GTK2 renders `Sans -11`
+wider, so fixed-width check boxes truncated and the `Various` group boxes (already
+overflowing the page by 20 px at design size) were cut at the page edge. Two more
+LCL-specific problems on the same pages: a check box placed over a group box caption
+(`UsePosGridCBox`, Top -1/1) is completely covered by the native group box under GTK2
+(seen before in EditorDatatype, #18), and a label whose converted .lfm carries
+`AutoSize = True` immediately followed by `AutoSize = False` without a Width ends up
+0 px wide and invisible (the grey hint labels under the Table Prefixes list).
+
+Fix (.lfm only): `src/Options.lfm` form 800x372 with every control that was anchored
+to the right/bottom edge widened explicitly (Anchors only act on later resizes), wider
+group boxes/check boxes, taller Reset button; `src/OptionsModel.lfm` "Table Prefixes:"
+label `AutoSize = False` at Left 270/Width 94, hint labels autosized, grid/canvas group
+boxes moved down so the snap check box is visible. Before/after: `fix16-before-*`,
+`fix16-after-*` in the shots dir.
+
+Testing gotchas: the DBDesigner Options dialog cannot be closed with xdotool: its
+OK/Cancel speed buttons are `Enabled = False` in the .lfm and are only enabled in
+`SubmitBtnMouseEnter`, which GTK2 never fires for a disabled control; Escape works only
+when the form itself has focus (no KeyPreview). Likely a real bug for users too (not
+in the catalog yet). Workaround: one app launch per dialog (`fix16-cycle.sh` in the
+scratchpad: launch, close Tips at (782,617), Options menu at (364,82), item at
+(400,140)/(400,107), click tree rows at +75/+22+14*i, `import -window`, kill by PID).
+Model Options takes 3-5 s to appear (font enumeration); poll `xwininfo -root -tree`.
+
+## Fix: `--selftest` hang under Xvfb before Phase 0 (ui-bug-catalog #5)
+
+Cause: the main form is maximized (`Main.lfm` `WindowState = wsMaximized`, and
+`RestoreWinPos` re-applies `wsMaximized` from `MainFormState=1`). Under `xvfb-run` there is
+no window manager, so the maximize request is never answered; LCL-gtk2 and GTK2 then
+renegotiate the toplevel size forever between the form's `Constraints.MinWidth/MinHeight`
+(600x430) and the requested bounds (1878x890 from the ini saved on a 1920x1080 display, or
+the docked-content requisition 943x681 with a fresh HOME where the old default was 140x140).
+The loop lives in GTK's resize idle, so timers still fire but `Application.Idle` never runs
+and every `Application.ProcessMessages` (which loops until no GTK source is pending) spins at
+~70 % CPU. Whether the loop is entered depends on timing (X round trips on a loaded 2-core box,
+fontconfig cache on a fresh HOME), which is why the notes' 63-PASS run had worked and the
+catalog run did not. Found with an `LD_PRELOAD` shim sampling backtraces at
+`gtk_window_resize` (no gdb/perf available): the window "DBDesigner Fork" alternated
+600x430 / 1878x890 thousands of times per second, always from `SetWindowSizeAndPosition`.
+
+Fix (src/MainDM.pas, src/Main.pas, src/UITestRunner.pas):
+- `TDMMain.HasWindowManager` checks `_NET_SUPPORTING_WM_CHECK` on the root window (gdk2,
+  cached). `FormCreate` sets `WindowState:=wsNormal` and `RestoreWinPos` skips `wsMaximized`
+  when it is False.
+- `RestoreWinPos` clamps the restored width/height to the screen and to the form constraints
+  and defaults to the design size (was 140x140).
+- The self-test no longer starts from a fixed 2 s timer: the timer polls until
+  `ShowPalettesTmrTimer` has set `StartupComplete`, then `Application.AddOnIdleHandler`
+  starts `RunSelfTestNow` (re-entrancy guarded by `SelfTestStarted`).
+- `UITestRunner.Log` flushes stdout so a redirected run shows progress live.
+
+Verified: four parallel `xvfb-run -a ./bin/DBDesignerFork --selftest` runs (real HOME x2,
+empty HOME, copy of the ini) all finish with 93 PASS / 0 FAIL, exit 0; before the fix the
+empty-HOME and loaded runs hung 100 % of the time (A/B series in the session log).
+
+## Fix: disabled OK/Cancel speed buttons, header preview, Windows menu name, recent files, stderr warnings (ui-bug-catalog #13, #19, #20, #21, #22)
+
+- **#22 (new)**: the Submit/Abort `TSpeedButton`s of Options and the Table/Relation/Note/
+  Region/Datatype editors were `Enabled = False` and relied on `OnMouseEnter`/`OnMouseLeave`
+  toggling `Enabled` (Qt sends enter events to disabled widgets, so this showed the dim
+  glyph 2 of the 4-glyph strip until hovered). GTK2 never fires MouseEnter for a disabled
+  control, so the dialogs could not be closed with the mouse. Buttons are now enabled and
+  the handlers are gone (LCL flat buttons draw a hover frame anyway).
+- **#19**: `clx_shims/panelbitmap.pas` only stored `TPanel.Bitmap`. It now creates a
+  `TPanelBitmapPainter` component owned by the panel that hooks `OnPaint` (called at the
+  end of `TCustomPanel.Paint`) and tiles the bitmap; it unregisters itself in its
+  destructor so a re-used panel address cannot pick up a stale painter.
+- **#20**: `Main.pas` handles `QEventType_ModelNameChanged` only when
+  `EERModel.Parent` is a `TEERForm`, but the LCL port reparents the model into a
+  `TScrollBox`. Added `TEERModel.OnModelNameChanged`, wired in `TEERForm.FormCreate` to
+  `ModelNameChanged`, which updates the form caption, `theFormMenuItem` and the main
+  window title (`DBDesigner Fork - <model>`). Main.pas untouched.
+- **#21**: recent-file paths are `ExpandFileName`d before the duplicate check. The
+  Pango warning came from the Latin-1 `Fran\xE7ais` in `[Languages]` of
+  `DBDesignerFork_Translations.ini` (both `bin/Data` and `~/.DBDesigner4` copies);
+  `Options.pas` converts invalid UTF-8 names with `CP1252ToUTF8` (the translations
+  .txt is probably Latin-1 too - only matters once de/fr is selected). The GLib
+  `spacing -1` critical is LCL GTK2 `TBitBtn.SetSpacing` -> `gtk_box_set_spacing(-1)`;
+  the three `TBitBtn`s in `EERPageSetup.lfm` now have `Spacing = 4`.
+- **#13**: not a bug. The Info tab switches fine once the window is activated.
+
+Testing gotchas (XWayland at DISPLAY=:0): a bare `xdotool mousemove; click` on a
+freshly shown window (Tips dialog, modal editors) is often ignored - run
+`xdotool windowactivate <xid>` first, then move in two steps and click. Also the
+Tips "Close Tip Window" glyph is at the left of the label, at about client
+(290,217), not under the text. Menu windows are the unnamed `DBDesignerFork`
+top-level windows in `xwininfo -root -tree`; submenus open reliably with keyboard
+navigation (`Down`x4 `Right` for File > Open Recent). Shots: `fix13-*`.
+
+## Fix: `--selftest` no longer persists settings; SQLite library found without a symlink
+
+- **Self-test settings**: `--selftest` used to save `WorkMode=2`, window positions,
+  recent files and `Language.ini` on exit, so the next interactive start came up in Query
+  mode. `MainDM.pas` now has a unit-level `SettingsReadOnly` flag (set in its
+  `initialization` from the `--selftest` parameter) and `UpdateIniFile(theIni)`, which
+  every settings writer calls instead of `theIni.UpdateFile` (12 sites in MainDM, DBDM,
+  GUIDM, EERDM, EditorQuery, EERExportSQLScript, DBConnEditor, DBConnSelect). Gotcha:
+  merely skipping `UpdateFile` is not enough - FPC's `TMemIniFile` sets `CacheUpdates`
+  and `TIniFile.Destroy` flushes a dirty file anyway. So in read-only mode the helper
+  `Rename`s the ini to `<tmp>/DBDesignerFork_selftest_discard.ini` before flushing.
+  Verified: WorkMode=1 in the ini, `xvfb-run -a ./bin/DBDesignerFork --selftest` ->
+  105 PASS / 0 FAIL, exit 0, ini mtime and md5 unchanged. (Noticed, not fixed: `DBDesignerFork_DatabaseInfo.ini`
+  still gets its mtime bumped at self-test start-up - size and contents stay the same, and
+  it is not one of the `UpdateFile` sites, so probably the ini version check in `GUIDM.CheckIniFiles`.)
+- **SQLite library name**: new `src/clx_shims/sqlitelib.pas` (Linux only) tries
+  `LoadLibrary('libsqlite3.so.0')` then `'libsqlite3.so'` at start-up and sets
+  `sqlite3dyn.SQLiteDefaultLibrary` to the first that loads; `sqlexpr.pas` uses it and
+  also `SQLite3Conn`, so the main binary now registers the `SQLite3` connector that the
+  `DriverName="SQLite"` mapping needs (previously not linked at all). Standalone tests:
+  `fpc -Mdelphi -Fusrc/clx_shims -FU<scratch> -o<scratch>/TestSQLite tests/TestSQLite.pas`
+  (same for `TestSQLExprShim`); both print SUCCESS with an empty `LD_LIBRARY_PATH`, and
+  `LD_DEBUG=libs` shows `find library=libsqlite3.so.0`.
+- `.gitignore`: `*.sqlite`, `*.sqlite3`, `*.db` (no tracked file matched).
+
+## Fix: connection-tree click crash and "Transaction not set." (sqlite-bug-catalog #1, #2)
+
+- **#1**: `DBConnSelect.lfm` wired the CLX `OnItemClick` handler
+  `DBConnTVItemClick(Sender; Button; Node; const Pt)` to the LCL `OnClick`
+  (`TNotifyEvent`), so `Node` was whatever happened to be in the register and
+  `Node.Level` dereferenced nil. New `DBConnTVClick(Sender)` finds the node under the
+  mouse (`GetNodeAt(ScreenToClient(Mouse.CursorPos))`) and calls the old handler;
+  clicks on empty tree space are ignored like CLX did. The internal caller at the
+  "Create new Database" branch still calls `DBConnTVItemClick` directly. Grep
+  `OnItemClick` finds no other victim (`DBConnSelect.xfm` is the untouched CLX form).
+- **#2**: SQLDB copies `Database.Transaction` into a `TSQLQuery` at the moment `Database`
+  is assigned (`TCustomSQLQuery.SetDatabase`). The shim only created the transaction in
+  `TSQLConnection.Open`, so `SchemaSQLQuery`/`OutputQry` streamed from `DBDM.lfm`
+  (`Database = SQLConn`) and the `OutputQry.SQLConnection := DMDB.SQLConn` lines in
+  `EditorQuery`/`EditorTableData` (run at form creation) kept `Transaction = nil`.
+  `sqlexpr.TSQLConnection` now overrides `Create` and owns a `TSQLTransaction` from
+  construction (dbExpress connections carry an implicit transaction); the lazy block
+  in `Open` and its no-op `try/except raise` are gone. `GetDBTables` re-assigns
+  `SchemaSQLQuery.SQLConnection` to a temporary connection and back - also fine, since
+  every shim connection now has a transaction and `SetDatabase` re-links it.
+- `tests/TestSQLExprShim.pas` links the dataset *before* `Conn.Open` and halts with
+  "FAIL: dataset linked before Open has no transaction" on the old shim; passes now
+  (`fpc -Mdelphi -Fusrc/clx_shims -FU<scratch> -o<scratch>/TestSQLExprShim tests/TestSQLExprShim.pas`).
+- Verified on DISPLAY=:0 (shots `$S/fix01-*`): tree clicks, "NewSQLiteConn" node preselects
+  the SQLite driver in the connection editor, connect, Reverse Engineering dialog lists
+  the 12 tables and Execute adds them. What comes back has no columns: catalog #10
+  (`GetColumnCountFromSQLCmd`/`GetColumnFromSQLCmd` are stubs in `DBEERDM.pas`).
+- Driving gotchas: the Database menu opens at client (185,12) of the main window and
+  keyboard `Down`xN + `Return` picks items; the GTK save dialog accepts a typed absolute
+  path + `Return` (`ctrl+a` first). `xdotool windowsize` on the main window works
+  to get a usable canvas (the saved 600x426 size is tiny).
+
+## Fix: SQLite reverse engineering returns columns, indexes and relations (sqlite-bug-catalog #10, #7)
+
+- `TDMDBEER.EERSQLiteReverseEngineer` (`src/DBEERDM.pas`) no longer parses the
+  `CREATE TABLE` text; the two stubs `GetColumnCountFromSQLCmd`/`GetColumnFromSQLCmd`
+  are deleted (nothing else used them). Everything comes from SQLite's own metadata
+  through the `pragma_*` table-valued functions, run as plain SELECTs on
+  `DMDB.SchemaSQLQuery` (the shim's `stColumns`/`stIndexes` do the same):
+  - `pragma_table_info(t)`: name, declared type, `notnull`, `dflt_value`, `pk`.
+    PK = `pk>0`; NOT NULL = `notnull=1` or PK; default value with one pair of
+    enclosing quotes stripped (`'NULL'` ignored); `TEERTable.CheckPrimaryIndex`
+    builds the PRIMARY index (an `INTEGER PRIMARY KEY` has no autoindex row, so
+    `pragma_index_list` cannot be used for it).
+  - AUTOINCREMENT: not visible through the pragmas, so the `sqlite_master.sql`
+    text is still fetched and searched for the keyword (only a single-column PK
+    gets `AutoInc`).
+  - Datatypes: new `GetSQLiteDatatype` splits `Varchar(45)` into name + params,
+    looks the name up (with the substitution list, then the first word for
+    `INT UNSIGNED`), and falls back to SQLite's affinity rules (INT -> INTEGER,
+    CHAR/CLOB/TEXT -> VARCHAR/TEXT, REAL/FLOA/DOUB -> FLOAT, BLOB/empty -> BLOB,
+    BOOL, DATE/TIME -> DATETIME, else DECIMAL) before the model's default type.
+    Datatype options (UNSIGNED, ZEROFILL) are matched in the declared type like
+    the MySQL path does.
+  - `pragma_index_list` + `pragma_index_info`, `origin<>'pk'`: `unique` ->
+    `ik_UNIQUE_INDEX`; `sqlite_autoindex_*` (UNIQUE constraints) renamed to
+    `<table>_unique_<seq>`; expression index columns (NULL name) skipped.
+  - Relations (when "Build Relations" is on): first `pragma_foreign_key_list`
+    (grouped by `id`, `seq`), parent = referenced table, child = the table with
+    the FK, `FKFields` `pk=fk`, `CreateRefDef=True`, ON DELETE/UPDATE mapped to
+    the `RefDef` codes (RESTRICT 0, CASCADE 1, SET NULL 2, NO ACTION 3, SET
+    DEFAULT 4), `rk_1n` when all FK columns are in the child's PK else
+    `rk_1nNonId`; a NULL `to` column means "the parent's PK, in order".
+    Then `EERReverseEngineerMakeRelations` runs with the new optional
+    `SkipExisting` parameter (default False, so MySQL/ODBC are unchanged) so the
+    name/PK heuristic does not duplicate the native ones.
+- Verified on DISPLAY=:0 against `$S/order_ai.sqlite` (the exported script with
+  `INTEGER PRIMARY KEY AUTOINCREMENT` and the `info(100)` index hand-fixed, see
+  `$S/order_ai.sql`; the app's connection is `~/.DBDesigner4/DBConn.ini`
+  `[OrderSQLite]`, which did not exist before - the earlier session never saved
+  one). Saved as `$S/fix10-reveng.xml`, compared with `$S/compare_models.py`
+  against `Examples/order.xml`: all 12 tables, every column (name, datatype +
+  params, PK, NOT NULL, AutoInc, default), all 12 PRIMARY + 2 explicit indexes
+  match; 10 of 11 relations with the right endpoints, kind and FK mapping. Missing:
+  the self-relation `forumpost.idforumpost_parent -> forumpost` (no FK in the DB,
+  the heuristic only matches `id<table>`). The guessed relations get
+  `CreateRefDef=1` (new-model default `ActivateRefDefForNewRelations`) and
+  NO ACTION where the original had RESTRICT - that information is not in the DB.
+- Driving gotchas: the Reverse Engineering dialog closes itself after Execute -
+  `import -window` on its old id hangs forever (use `timeout`). GTK menu popups are
+  reused windows named "DBDesignerFork" (`xwininfo -root -tree`, 212x399 = File,
+  234x135 = Database). `xdotool search --name` also returns dead windows from
+  earlier instances; take ids from the tree instead. The "Build Relations",
+  "Use Datatype Substitution" and "Create Standard Inserts" check boxes in the
+  dialog are clipped to a sliver (cosmetic, not fixed here).
+
+## Fix: SQLite SQL create script - duplicated inserts, index prefix, AUTOINCREMENT, whitespace (sqlite-bug-catalog #3, #4, #6, #9)
+
+- **#3 (duplicated standard inserts)**: not a loader problem. `TEERTable.GetSQLCreateCode`
+  appends `StandardInserts.Text` once (checked with a temporary `writeln(stderr)`: one call
+  per table, 5 lines / 222 bytes for `productgroup`), but right after it does
+  `s:=s + #13#10 + getSqlTableComment(...)` and `getSqlTableComment` (`src/EERModel.pas`)
+  never assigned `result` for non-Oracle targets. FPC passes an AnsiString function result
+  by reference and the caller's temporary still held the tail of `s` (the inserts block
+  just appended), so that tail came back as the "comment" and was appended a second time.
+  Any target with "Output Comments" checked was affected (MySQL too). Fix: `result := ''`.
+  The `¦`-placeholder trick in `TDMMain.ReplaceString` (`ReplaceString2(txt, such, '¦')`
+  then `'¦' -> ers`) looked like an empty-string bug in a terminal without UTF-8 - it is
+  fine; `DecodeXMLText` really does turn `\n` into CRLF (verified with a verbatim copy of
+  both functions, `$S/fix03-dup2.pas`).
+- **#4**: the `column(n)` index prefix (`TEERIndex.ColumnParams`) is now only written for
+  `DatabaseType = 'My SQL'`; every other target got invalid SQL (SQLite: "no such
+  function: info").
+- **#6**: `TEERTable.IsSQLiteAutoIncPK(ColIdx)` is true when the column is `AutoInc`,
+  `PrimaryKey`, the PRIMARY index consists of exactly that column and the physical type
+  name is INTEGER/INT/BIGINT/MEDIUMINT/SMALLINT/TINYINT (SQLite only auto-increments an
+  `INTEGER PRIMARY KEY`, the type name must literally be INTEGER, so the params are
+  dropped). `GetSQLColumnCreateDefCode` then emits `INTEGER NOT NULL PRIMARY KEY
+  AUTOINCREMENT` and `GetSQLCreateCode` skips the PRIMARY index for that table (otherwise
+  sqlite3 rejects the second PRIMARY KEY). Multi-column PKs keep the table constraint.
+- **#9 whitespace (SQLite only)**: column definitions are collapsed to single blanks and
+  right-trimmed; the two-space indent before an index is only written for inline indexes
+  (portable ones are `CREATE INDEX` statements after the table and left stray blanks
+  before `)`); `TidySQLiteScript` right-trims every line, keeps at most one empty line in
+  a row and none at the end; `TEERExportSQLScriptFrom.GetSQLScript` separates SQLite
+  tables with one CRLF instead of two. All of this is guarded by `DatabaseType = 'SQLite'`
+  so the MySQL script is byte-for-byte what it was (checked by exporting "My SQL" from the
+  same dialog: `info(100)`, `AUTO_INCREMENT`, old spacing, inserts once).
+- Foreign keys: the export already writes `FOREIGN KEY(...) REFERENCES ...` inside
+  `CREATE TABLE` (the only form SQLite accepts) for relations with `CreateRefDef=1`. The
+  only invalid variant was the MySQL `FOREIGN KEY name(cols)` form used when the option
+  `DoNotUseRelNameInRefDef` is off; SQLite now gets `CONSTRAINT name FOREIGN KEY(cols)`.
+- Verified on DISPLAY=:0: File > Export > SQL Create Script, target SQLite, Save Script
+  to file -> `$S/fix03-after2.sql`; `tests/sqlite-roundtrip.sh` -> zero load errors, 12
+  tables, `product_name` + `product_ean`, 2 FKs (`carthasproduct`,
+  `onlineorderhasproduct`), AUTOINCREMENT on 5 tables (the other two auto-inc PKs are the
+  linked tables `Employee`/`News`, which are not exported), row counts 3/2/3/4/2/2/2
+  (inserts loaded once). Then `[OrderSQLite]` in `~/.DBDesigner4/DBConn.ini` pointed at
+  `$S/fix03-order.sqlite`, File > New, Database > Reverse Engineering, Execute, Save As
+  `$S/fix03-reveng.xml`; `compare_models.py` against `Examples/order.xml`: 12 tables, all
+  columns and indexes OK, 5 `AutoInc`, 10 of 11 relations (same as commit e26d472).
+- Driving gotchas: the export dialog remembers the last target in the settings ini, so
+  check the combo (`$S/fix03-exportdlg.png`); the dropdown is a popup window of 140x184
+  (FireBird, My SQL, Oracle, PostgreSQL, SQL Server, SQLite, 30 px apart). The GTK save
+  dialog asks to overwrite an existing file - use a fresh name. stderr from the app is
+  block-buffered: a killed instance loses the tail of the log.
+
+## Fix: Query mode Execute shows nothing, File > New title, exception boxes off-screen, clipped Reverse Engineering check boxes (sqlite-bug-catalog #5, #9, #11)
+
+- **#5 is not a click problem.** `ExecSQLBtnClick` runs (checked with a temporary
+  `writeln(stderr)` and an `Application.AddOnUserInputHandler` that printed the control
+  under every `LM_LBUTTONDOWN`); F9 reaches it too. What looked like "nothing happens"
+  were two things: (a) the LCL `MessageDlg` *was* shown ("ERROR while executing Query ...
+  Missing (compatible) underlying dataset, can not open") but my `xwininfo` filter
+  dropped every window whose class line contains `DBDesignerFork`, i.e. the dialog
+  itself, and (b) the first `xdotool click` after typing into the memo is regularly
+  lost on XWayland unless `xdotool windowactivate` precedes it (8/8 clicks register with
+  it, see the ui-bug-catalog #13 gotcha). The remaining silence was real, though: the
+  error came from the client dataset, not from SQLite.
+- Cause: `src/EditorQuery.lfm` (and `src/DBDM.lfm`) lost `ProviderName =
+  'OutputDataSetProvider'` on the `TClientDataSet` when the `.xfm` was converted
+  (`EditorTableData.lfm` kept it), so the shim `TClientDataSet` (`clx_shims/dbclient.pas`)
+  never found `OutputQry` and opened an empty `TBufDataset`, which refuses with
+  `SErrNoDataset`. Even with the name in place the shim could not work: it assigned
+  `FieldDefs` inside `InternalOpen`, but `TCustomBufDataset.InternalOpen` requires the
+  `Fields` to exist already (`Fields.Count=0` -> same error); memory datasets are
+  prepared with `CreateDataset` *before* `Open`. It also swallowed the source
+  dataset's exception (`try FSourceDataSet.Open except FSourceDataSet:=nil`), which is
+  why an invalid statement never showed the SQL error.
+- Fix: `ProviderName` restored in both `.lfm`s; `TCustomClientDataSet.Open` (shim) now
+  opens the provider's dataset (exceptions propagate), then calls
+  `CopyFromDataset(Source, True)` - it builds the `FieldDefs` from the source fields,
+  `CreateDataset`, opens the buffer and appends every row - with `ReadOnly` temporarily
+  off (the copy needs `Append`/`Post`), then `First`. `InternalOpen` is plain
+  `inherited`. `tests/TestSQLExprShim.pas` now wires `TSQLDataSet -> TDataSetProvider ->
+  TClientDataSet` by `ProviderName` exactly like the `.lfm`, checks 3 rows / first row
+  and that `SELECT * FROM nosuch` raises the SQLite message (compile as in the
+  "no symlink" section above).
+- Verified on DISPLAY=:0 with `[OrderSQLite]`: Display > Query Mode, `SELECT * FROM
+  product`, Execute -> connection dialog -> Connect -> grid with 3 rows and status bar
+  "Query opened. 3 Record(s) fetched. Time: 00:00:019" (`$S/fix05-result.png`,
+  `$S/fix05-final-grid.png`); `SELECT * FROM nosuch` -> "ERROR while executing Query ...
+  TSQLite3Connection : no such table: nosuch" (`$S/fix05-sqlerror.png`). Observation, not
+  fixed: the focused cell of the first grid row is drawn empty and the first row uses a
+  smaller font (DBGrid in-place editor of the LCL port).
+- **#9 title after File > New**: `TEERForm.FormCreate` fires `ModelNameChanged` while
+  `MainForm.FActiveEERForm` is still the previous form, so the guard in
+  `TEERForm.ModelNameChanged` skipped the main caption, and `RegisterEERForm` /
+  `SwitchToEERForm` set `FActiveEERForm` without touching it. New
+  `TMainForm.UpdateCaptionForEERForm`, called from both. Verified: title becomes
+  "DBDesigner Fork - Noname2" (`xdotool getwindowname`).
+- **#9 exception boxes at the top-right**: `TApplication.ShowException` uses the widget
+  set's `PromptUser`; GTK2 creates that `gtk_message_dialog_new` with the invisible
+  LCL desktop widget as parent, so mutter has no window to centre on and (when the
+  exception is raised while no app window is focused, e.g. right after a modal closed)
+  falls back to first-fit placement at the top-right. `Application.OnException` is now
+  `TMainForm.AppException`: a plain `TForm.CreateNew` dialog (message measured with
+  `DrawText(DT_CALCRECT or DT_WORDBREAK)`, OK = ignore, Abort = `Halt(1)`, same wording as
+  the LCL) positioned with explicit bounds at the main window centre. Tested with a
+  temporary timer raising `Exception.Create('Test exception')`: dialog centre 981/512 =
+  main window centre (`$S/fix05-excdlg2.png`). A first version with `AutoSize` + a
+  word-wrapped `TLabel` came out 112 px wide (the label wraps at its initial width) and
+  off-centre, hence the explicit layout. Do not raise test exceptions from inside a
+  mouse handler: the aborted GTK button-press left a grab and no later click reached
+  the app.
+- **#11 (new)**: in `EERReverseEngineering.lfm` the check boxes `BuildRelationsCBox`,
+  `UseSubstCBox` and `CreateStdInsertsCBox` are Delphi-style "caption" check boxes
+  placed over the top edge of their `TGroupBox` (Height 13, Top 4-8 px above the box).
+  On GTK2 the group box paints over the sibling, leaving a 5 px sliver. They now sit
+  entirely above the boxes (Height 21, Top 4/190) and `DataTypeSubstGroupBox`,
+  `RelGroupBox`, `StdInsertsGroupBox` start 12-26 px lower with their height reduced
+  (radio buttons moved up 12 px). Before/after: `$S/fix05-revdlg-before.png`,
+  `$S/fix05-revdlg-after.png`. The SQL export dialog (`$S/fix03-exportdlg.png`) and
+  both tabs of the connection editor (`$S/fix05-conned-adv.png`) have no clipped check
+  boxes or buttons.
+- Driving notes: menu popups are the viewable 213x188 / 234x135 `DBDesignerFork` windows
+  (`xwininfo -id <w> | grep IsViewable`); the connection selector opens at +608+271 with
+  the connection row at (290,62), Connect (682,237), Abort (682,267); Escape does not
+  close it. The Reverse Engineering dialog's Close is at (515,573).
+
+
+## Fix: `--selftest` wiped `~/.DBDesigner4/DBConn.ini` (sqlite-bug-catalog #12)
+
+- `TDMDB.StoreDBConns` (`src/DBDM.pas`) unconditionally `DeleteFile`s `DBConn.ini`
+  before rewriting it through `UpdateIniFile`. Since the "self-test keeps settings
+  untouched" change, `UpdateIniFile` discards the rewrite in `--selftest` mode, so the
+  delete was the only thing that happened and every headless self-test run erased the
+  user's connection list. Now the delete is skipped when `SettingsReadOnly` is set.
+  Verified: `xvfb-run -a ./bin/DBDesignerFork --selftest` -> 0 FAIL, `DBConn.ini`
+  md5 unchanged.
+
+## Fix: SQLite file locked while connected, duplicate tables on reverse engineering, File > Close (sqlite-bug-catalog #13, #14, #15)
+
+- **#13**: SQLDB's `TSQLite3Connection.StartDBTransaction` issues `BEGIN` and the shim
+  never committed after reads, so the first SELECT's SHARED lock stayed until
+  Disconnect (`Close` -> `Rollback`). Now `TSQLDataSet.InternalClose`
+  (`src/clx_shims/sqlexpr.pas`) calls `TSQLConnection.ReleaseIdleTransaction`: when no
+  dataset of the connection is `Active` any more it `CommitRetaining`s (sqlite: `COMMIT`
+  + deferred `BEGIN`, which takes no lock). `CommitRetaining` rather than `Commit`
+  because `Commit` runs `CloseDataSets` on every dataset of the transaction. `TDataSet`
+  sets `dsInactive` *before* `InternalClose`, so the closing dataset does not count.
+  Query mode kept `OutputQry` open after Execute (the rows live in the client dataset),
+  so the shim `TClientDataSet.Open` (`src/clx_shims/dbclient.pas`) now closes the
+  provider dataset again if it opened it - that is what Delphi's `TDataSetProvider`
+  does too. Datasets shown live (table data editor) still hold the lock while open;
+  that is the intended "only while a dataset is open" behaviour. Plain `SQLDB.TSQLQuery`
+  instances (the `TSQLQuery` alias) are not covered, only shim `TSQLDataSet`s.
+- `tests/TestSQLExprShim.pas` gained `CheckExternalWrite`: a second shim connection
+  INSERTs while the first is idle (after a closed SELECT, and while the client dataset is
+  open) and the first connection must see the row. Old shim: "FAIL: external write blocked
+  after a closed SELECT: database is locked".
+- **#14**: neither the MySQL nor the SQLite path checked for existing names, so both now
+  skip tables already in the model (`TEERModel.GetEERObjectByName(EERTable, name)`,
+  case-insensitive) and count them in `RevEngSkippedTables`. That is a *unit variable*
+  in `DBEERDM.pas`, not a field: `DMDBEER` is never instantiated (grep: no
+  `TDMDBEER.Create`/`CreateForm`), every `DMDBEER.EER...ReverseEngineer` call runs on
+  `nil` and only survives because the methods touch no fields - my first attempt with a
+  field crashed with an access violation on `RevEngSkippedTables:=0`. The status label
+  gets "Finished. N existing table(s) skipped." and `SubmitBtnClick` shows an information
+  box, because the dialog closes itself (`ModalResult:=mrOK`) right after. Relations of
+  skipped tables are not re-derived (the `DbTables` list only holds the new tables).
+- **#15**: not reproducible, see the catalog. Menu facts learned: all File items are
+  enabled whether or not connected, so Down x9 is always "Close" (x7 Save As, x8 Save in
+  Database); the title bar shows the model's internal name from the XML, not the file
+  name, and keeps it after the last model is closed.
+- Verification on DISPLAY=:0 (`$S/fix13-*`): connect via Database > Connect to Database
+  (Down x1) or through the Reverse Engineering dialog, `sqlite3 $S/sqlite/fix13.sqlite
+  "CREATE TABLE fix13_t(x)"` and INSERTs succeed while connected and after a reverse
+  engineering run; `xvfb-run -a ./bin/DBDesignerFork --selftest` passes, `DBConn.ini`
+  md5 unchanged (the connection was temporarily pointed at a copy of the db and restored).
+- Driving notes: `xdotool search --pid <pid> --name` plus an `IsViewable` filter avoids
+  the dead windows of earlier instances; menu popups that show as `IsViewable` in
+  `xwininfo -root -tree` can still be unmapped (`xwininfo -id` says `IsUnMapped`,
+  `import` fails with "Resource temporarily unavailable"). The Reverse Engineering dialog
+  asks for a connection on open even when the app is already connected. A quick
+  backtrace for an access violation: wrap the call in `try/except`, `writeln(stderr,
+  E.Message); DumpExceptionBackTrace(stderr)` - the .lpi has DWARF3 debug info, so
+  line numbers come out.
+
+## Fix: MySQL 8 connector, schema query field loss, ENGINE= (mysql-bug-catalog #1, #2, #3)
+
+- **#1 no connector**: `src/clx_shims/sqlexpr.pas` now uses `MySQL80Conn` and maps a
+  `DriverName` containing `mysql` to `ConnectorType 'MySQL 8.0'` (was `'MySQL 5.7'`, whose
+  unit was never linked; `mysql57conn` would also need the absent `libmysqlclient.so.20`).
+  New `src/clx_shims/mysqllib.pas` (Linux only, same idea as `sqlitelib.pas`): at start-up
+  it `LoadLibrary`s `libmysqlclient.so.21` first, then `libmysqlclient.so`, and calls
+  `mysql80dyn.InitialiseMysql(<name>)` with the first that loads, so the parameterless
+  `InitialiseMysql` in `TMySQL80Connection.DoInternalConnect` only bumps the ref count
+  (FPC's own order is the unversioned dev symlink first). `LD_DEBUG=libs` on the test shows
+  `find library=libmysqlclient.so.21` only. Oracle/MSSQL/Firebird/ODBC/PostgreSQL are still
+  unlinked - they map to connector names that will fail at `Open`.
+- **#2 "List index (3) out of bounds"**: MySQL types a bare `NULL AS x` column as
+  `MYSQL_TYPE_NULL`; FPC's `mysqlconn.inc` `AddFieldDefs` skips types `MySQLDataType`
+  does not know, so the shim's dbExpress padding columns vanished (stTables 5 -> 2 fields,
+  stColumns 14 -> 10, stIndexes 11 -> 7) and every positional `Fields[n]` in
+  `DBDM.GetDBTables` / `DBEERDM` read the wrong column. The three MySQL branches of
+  `TSQLDataSet.SetSchemaInfo` now say `CAST(NULL AS CHAR) AS x`. Beware the same thing in
+  `SHOW KEYS` (MySQL 8's `Packed` is NULL-typed, 15 -> 14 fields): `Fields[2]`/`Fields[4]`
+  used by the MySQL reverse engineering sit before it, so they are fine; anything after
+  `Packed` must use `FieldByName`.
+- **#3 `TYPE=InnoDB`**: `TEERTable.GetSQLCreateCode` (`src/EERModel.pas`) emits
+  `ENGINE=` now, with HEAP -> `MEMORY`, BDB -> `InnoDB`, ISAM -> no clause (default engine),
+  MERGE unchanged. The synchronisation (`EERMySQLSyncDB`) creates tables through the same
+  function, so it is fixed too. Other table options untouched.
+- New `tests/TestMySQLShim.pas` (`fpc -Mdelphi -Fusrc/clx_shims -FU<scratch> -o<scratch>/TestMySQLShim tests/TestMySQLShim.pas`):
+  connects to 127.0.0.1:3306 bpsa/bpsa/dbdtest (`MYSQL_*` env overrides), creates a table
+  with PK/UNIQUE/prefix index, inserts, selects, asserts the ConnectorType mapping, the
+  5/14/11 field counts and the values by position for the three schema queries plus
+  `SHOW KEYS`, drops the table; prints `SKIP: ...` and exits 0 when the server is unreachable.
+  Constants gotcha: the shim's `stColumns` is 3 and `stIndexes` is 4 (stSysTables = 2).
+- Verified on DISPLAY=:0 (`$S/fix01-*`): export "My SQL" -> `ENGINE=InnoDB`,
+  `tests/mysql-roundtrip.sh` loads it into `dbdtest` with zero errors (12 tables);
+  connect via the selector, Reverse Engineering lists the 12 tables and Execute recovers
+  them (columns OK; AutoInc/UNIQUE/FK rules still lost - catalog #4, #5, #7);
+  Synchronise `order.xml` into an empty `dbdtest2`: 12 tables, all `ENGINE=InnoDB`, no
+  error box; Query mode `SELECT * FROM product` -> 3 rows; `--selftest` 107 PASS / 0 FAIL.
+  Driving gotcha: the GTK save dialog opens in "Recently Used" and ignores a typed
+  absolute path + Return there - double-click a folder in the list first, then type the
+  file name and click Save. `dbdtest` was left loaded with the 12 tables; `dbdtest2` dropped.
+
+## Fix: MySQL reverse engineering - AutoInc, UNIQUE/prefix indexes, native FK relations (mysql-bug-catalog #4, #5, #7)
+
+- All in `TDMDBEER.EERMySQLReverseEngineer` (`src/DBEERDM.pas`; `EERMySQLReverseEngineer2`
+  is dead code, nothing calls it). Every read of `SHOW FIELDS` / `SHOW KEYS` is now
+  `FieldByName` instead of `Fields[n]`: MySQL 8's `SHOW KEYS` has 15 columns (`Table,
+  Non_unique, Key_name, Seq_in_index, Column_name, Collation, Cardinality, Sub_part,
+  Packed, Null, Index_type, Comment, Index_comment, Visible, Expression`) of which the
+  NULL-typed `Packed` is dropped by the connector (14 fields, catalog #2), so positions
+  after it are not what MySQL 4 had. `SHOW FIELDS` is `Field, Type, Null, Key, Default,
+  Extra` on both.
+  - **#4**: `AutoInc := Pos('auto_increment', LowerCase(Extra)) > 0` (was hard-coded False).
+  - **#5**: `Non_unique = '0'` (and not PRIMARY) -> `ik_UNIQUE_INDEX`; `Sub_part` goes into
+    `TEERIndex.ColumnParams.Values[<column obj_id>]`, which is what the XML `LengthParam`
+    and the create script's `info(100)` come from. A NULL `Column_name` (MySQL 8 functional
+    key part) or an unknown column is skipped instead of dereferencing nil.
+  - **#7**: when "Build Relations" is on, one query over
+    `information_schema.KEY_COLUMN_USAGE k JOIN REFERENTIAL_CONSTRAINTS r` (on schema +
+    constraint name + table name, `k.TABLE_SCHEMA = DATABASE()`, `REFERENCED_TABLE_NAME IS
+    NOT NULL`, ordered by table, constraint, `ORDINAL_POSITION`) gives one row per FK column
+    pair with `UPDATE_RULE`/`DELETE_RULE`. Child = the reverse-engineered table that owns the
+    constraint, parent = `REFERENCED_TABLE_NAME` looked up in the whole model (like SQLite);
+    FKs whose parent is not in the model are skipped. Each constraint becomes
+    `NewRelation(rk_1nNonId, parent, child)` with `FKFields` `refcol=fkcol`, `IsForeignKey`
+    on the child columns, `CreateRefDef=True`, `RefDef OnDelete/OnUpdate` via the existing
+    `SQLiteRefActionCode` (MySQL uses the same rule names: RESTRICT 0, CASCADE 1, SET NULL 2,
+    NO ACTION 3, SET DEFAULT 4), `rk_1n` when all FK columns are in the child's PK.
+    Self-references are allowed (the SQLite path skips them; the model handles them fine,
+    `Examples/order.xml` has one). Then `EERReverseEngineerMakeRelations(..., SkipExisting
+    = True)` (commit e26d472) adds the name/PK guesses only between table pairs that have no
+    relation yet. The query is wrapped in try/except so a server without
+    `information_schema` (MySQL < 5.0) just falls back to the heuristic as before.
+- `tests/TestMySQLShim.pas` now also asserts `SHOW KEYS` `Non_unique`/`Sub_part` and
+  `SHOW FIELDS` `Extra` by name, and the information_schema FK query (including a
+  self-referencing FK) on a second scratch table `shimtest_orders`. Still SUCCESS.
+- Verified on DISPLAY=:0 (`$S/fix04-*`): `dbdtest` (the 12 tables loaded from
+  `$S/fix01-order_mysql.sql`) only had 2 FOREIGN KEYs, because the export writes FKs only
+  for relations with `CreateRefDef=1`; the other 9 (including `forumpost.idforumpost_parent
+  -> forumpost`) were added by hand with `ALTER TABLE` (`$S/fix04-addfks.sql`, rules as in
+  the model's RefDef; `dbdtest` is left in that state). File > New, Database > Reverse
+  Engineering, OrderMySQL, Execute, Save As `$S/fix04-reveng.xml`; `compare_models.py`
+  against `Examples/order.xml` (`$S/fix04-compare.txt`): 12 tables, all columns OK incl.
+  the 5 AutoInc PKs, `product_ean` IndexKind 2 (UNIQUE), `product_name` with
+  `LengthParam="100"` on `info`, 11 of 11 relations with the right endpoints, FK mapping
+  and OnDelete/OnUpdate (RESTRICT/CASCADE/NO ACTION as in the DB), the self-relation
+  included. Differences left: InnoDB creates an index per FK column that is not already
+  the leftmost column of an index (`fk_product_productgroup(idproductgroup)` etc.) - they
+  are real indexes in the DB and come back as plain INDEX entries the original model
+  never had (a re-export creates them explicitly, harmless); the self-relation is `rk_1nNonId`
+  (2) instead of the original's `rk_11NonId` (5) - not decidable from FK metadata; `Matching`
+  is always 0 (MySQL parses but ignores MATCH); every recovered relation has
+  `CreateRefDef=1` where the original had 0 - by definition, since these came from FKs.
+- Driving: the GTK Save dialog opened directly in the last used folder (`$S`) this time,
+  so typing the name into "Name" and clicking Save (785,600 in the 840x630 dialog) was
+  enough. The Reverse Engineering dialog is 573x627 at +694+254 with Execute at (425,573).
+
+## Fix: DBConn.ini written at once, sync error summary, sync comments (mysql-bug-catalog #6, #8, #9)
+
+- **#6**: nothing was broken in `StoreDBConns`/`UpdateIniFile` - a clean File > Exit did write
+  the new connection (verified: `Fix06Test` appeared in `DBConn.ini` after Exit). The list was
+  simply never saved before `TDMDB.DataModuleDestroy`, so a kill or crash lost it. Now
+  `TDBConnEditorForm.ConnectBtnClick` (the OK button) and `TDBConnSelectForm.FormDestroy`
+  (covers edit, rename, delete, drag-drop) call `DMDB.StoreDBConns`. Gotchas: passwords are
+  never written (by design, `StoreDBConns` skips the `Password` param), so a hand-edited
+  `Password=bpsa` line vanishes at the first rewrite and the selector's Password box must be
+  typed; `Port` is not written either for a MySQL connection made in the editor (the greyed
+  3306 is the default anyway). `--selftest` still leaves the file untouched (`SettingsReadOnly`
+  redirects the rewrite, md5 unchanged).
+- **#8**: `TDMDB.ExecuteSQLCmdScript(cmds; Errors: TStrings = nil)` - with `Errors` the failed
+  statement + message is appended there and the script goes on, no `MessageDlg` (query mode
+  still passes nil and behaves as before). `EERMySQLSyncDB` (`src/DBEERDM.pas`) keeps a
+  `SyncErrors` list; the CREATE goes through `ExecuteSQLCmdScript(..., SyncErrors)` and only
+  counts / runs the standard inserts / adds the name to `DbTables` when nothing failed,
+  otherwise logs `ERROR: <msg>` and `FAILED to create table X`. RENAME, DROP and the ALTER
+  batches go through a nested `ExecSyncStmt(stmt, IgnoreErrors)`; the whole per-table column
+  comparison is in a try/except that closes `SchemaSQLQuery` and records the error (before,
+  the `show fields from order` of a table whose CREATE had failed raised out of the sync with
+  the "Press OK to ignore and risk data corruption" box - now such tables are skipped with
+  `Skip table X (not in database)`). At the end the log lists every failure in full and one
+  `MessageDlg` shows the count with the first statement line + message of up to 5 of them.
+  Repro used: `Examples/order.xml` with `onlineorder` renamed to the reserved word `order`
+  (`$S/fix08-order_mod.xml`) into an empty `dbdtest3`: 2 failures (`order` and the child
+  `onlineorderhasproduct` with the FK to it), 10 tables created, one box (`$S/fix08-errbox4.png`,
+  log in `$S/fix08-logA.png`/`fix08-logB.png`).
+- **#9**: the sync passed `GetSQLCreateCode(True, True, True, True, False)` - `OutputComments`
+  defaulted to False; the MODIFY/CHANGE/ADD COLUMN statements used `GetSQLColumnCreateDefCode`
+  the same way. Both now pass `OutputComments=True`. That also emits the `-- ----` header
+  block above the CREATE, which `GetFirstSQLCmdFromScript` sent to the server as its own
+  (empty) statement, so lines starting with `--` are now skipped like `//` lines (outside an
+  open string literal). Verified: `order.xml` -> empty `dbdtest2`, no error box, `SHOW CREATE
+  TABLE product` has the four column `COMMENT`s and `onlinecustomer` `COMMENT='This Table
+  stores all Online Customers.'`, 3 rows in `product` from the standard inserts.
+- Noticed, not fixed (not a catalog entry): the sync logs `Modifying column X` for every
+  nullable column of a freshly created table - `EERMySQLSyncDB` compares `NotNull` with
+  `SHOW FIELDS` `Null <> 'Y'`, and MySQL answers `YES`/`NO`, so nullable columns always look
+  changed. The MODIFY re-applies the same definition, harmless but noisy.
+- Driving: File > Exit via keyboard `End` lands on the recent-files submenu; click the last
+  item of the File menu (menu window `212x399` at +42+95, item at y+385) instead. The
+  connection selector rows are at y 62/84/104/124, password box at (560,268).
+- `--selftest` 107 PASS / 0 FAIL, `DBConn.ini` md5 unchanged; `dbdtest2`/`dbdtest3` dropped,
+  `DBConn.ini` restored from `$S/fix06-DBConn.ini.bak` (with the `Password=` line).
+
+
+## Verification of mysql-bug-catalog #1-#9 and fix #10 (sync `Null` YES/NO)
+
+- All nine entries verified on the real display (details in the catalog's "Verification"
+  section); `--selftest` 107/0, standalone tests pass, plugins build.
+- **#10**: `EERMySQLSyncDB` "check not null" now accepts `Y` and `YES`. With the MySQL general
+  log switched to `log_output=TABLE` (`SET GLOBAL general_log=1` works for `bpsa`; `mysql.general_log`
+  is the easiest witness for what a sync really sent, `TRUNCATE` it between runs) the second sync of
+  an unchanged `order.xml` sends only the two `BINARY` ALTERs (catalog #11).
+- Driving gotchas: a `Password=` line in `DBConn.ini` pre-fills the selector's password box, so
+  `xdotool type` appends - `ctrl+a BackSpace` first. The first click after typing into the query memo
+  is still lost sometimes (repeat with `windowactivate`). Plugins menu order is the reverse of the
+  `readdir` order (`ls -U bin | grep DBDplugin_`): Demo, HTMLReport, DataImporter, SimpleWebFront.
+  `pgrep -x DBDplugin_HTMLReport` never matches (name > 15 chars), use `pgrep -f`.
+
+
+## Fix: sync BINARY re-apply, drop confirmation, linked-table count (mysql-bug-catalog #11, #12, #13)
+
+- **#11**: MySQL 8 reports `VARCHAR(20) BINARY` as `varchar(20)` + collation `utf8mb4_bin`; the
+  `SHOW FIELDS` `Type` string never contains `BINARY`, so the "Check Options" loop of
+  `EERMySQLSyncDB` (`src/DBEERDM.pas`) saw the option as unset and emitted a `MODIFY COLUMN`
+  on every run. The column comparison now runs `show full fields from <table>` (Field, Type,
+  Collation, Null, Key, Default, Extra, Privileges, Comment), all its positional `Fields[n]`
+  reads were changed to `FieldByName(...)` (the extra Collation column would have shifted them),
+  and an option named `BINARY` also counts as set in the db when the collation ends in `_bin`.
+  `Collation` is a real column (NULL for non-string types) so it does not vanish like the
+  `NULL AS x` literals of #2. Witness: `mysql.general_log` of the second sync of `order.xml`
+  into a fresh db - 12 `show full fields`, 0 `ALTER`; the memo ends with `12 Tables compared.
+  50 Columns compared.` and no `Modifying column` line (`$S/fix11-genlog2.txt`,
+  `$S/fix11-sync2b-c.png`).
+- **#12**: the drop loop now fills a `DropTables` list first (only when "Don't delete existing
+  Tables" is unchecked) and asks once with `MessageDlg(..., mtConfirmation, [mbYes, mbNo])`
+  listing the tables; Yes drops them as before, No logs `Dropping of N table(s) skipped by
+  user: ...` and the sync continues with the column comparison. The message uses
+  `GetTranslatedMessage(..., -1, ...)` (out-of-range number = untranslated original) so no
+  translation slot is claimed. `Controls` (mrYes) and `StrUtils` (RightStr) were added to the
+  uses clause. Verified on the display (`$S/fix11-confirm.png`, `$S/fix11-noyes.png`).
+- **#13**: `TEERSynchronisationForm.GetDBConnSBtnClick` (`src/EERSynchronisation.pas`) counted
+  `GetEERObjectCount([EERTable])` incl. the 2 linked tables. It now walks `GetEERObjectList`
+  and skips `IsLinkedObject` tables unless `EERModel.CreateSQLforLinkedObjects`, the same rule
+  `EERMySQLSyncDB` applies to its `ModelTables` list. Header now `12 Table(s) in Model.`
+- Driving: Database menu at client (185,12); its popup is a 234x135 window at +189+95 with
+  "Database Synchronisation" at y+68. The selector pre-fills the password from `DBConn.ini`;
+  the Connect button is at window (683,235). In the sync dialog (395x518) "Don't delete existing
+  Tables" is at (47,141) and Execute at (257,459). The Execute click right after a click into
+  the progress memo is lost sometimes - `windowactivate` and click again. `ctrl+End` in the
+  memo scrolls to the end of the log.
+- `--selftest` 0 FAIL, `tests/TestMySQLShim.pas` SUCCESS, `dbdtest2` dropped, general log
+  off and truncated, `DBConn.ini` restored from `$S/fix11-DBConn.ini.bak`.

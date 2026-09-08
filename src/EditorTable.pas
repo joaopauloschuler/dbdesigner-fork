@@ -203,8 +203,6 @@ type
     procedure EditIndexColumnLengthMIClick(Sender: TObject);
     procedure SubmitBtnClick(Sender: TObject);
     procedure AbortBtnClick(Sender: TObject);
-    procedure SubmitBtnMouseEnter(Sender: TObject);
-    procedure SubmitBtnMouseLeave(Sender: TObject);
     procedure PageControlTreeViewChange(Sender: TObject; Node: TTreeNode);
     procedure FormResize(Sender: TObject);
     procedure ClearAllSQLInsertsMIClick(Sender: TObject);
@@ -842,9 +840,9 @@ begin
       begin
         Case ACol of
           1:
-            TextOut(Rect.Left+1-18, Rect.Top+2, ColumnGridColumnCaptions[0]);
+            TextOut(Rect.Left+1, Rect.Top+2, ColumnGridColumnCaptions[0]);
           3:
-            TextOut(Rect.Left+1-18, Rect.Top+2, ColumnGridColumnCaptions[1]);
+            TextOut(Rect.Left+1, Rect.Top+2, ColumnGridColumnCaptions[1]);
           4:
             TextOut(Rect.Left+1, Rect.Top+2, ColumnGridColumnCaptions[2]);
           5:
@@ -1859,16 +1857,6 @@ begin
   DiscardChanges:=True;
 
   Close;
-end;
-
-procedure TEditorTableForm.SubmitBtnMouseEnter(Sender: TObject);
-begin
-  TSpeedButton(Sender).Enabled:=True;
-end;
-
-procedure TEditorTableForm.SubmitBtnMouseLeave(Sender: TObject);
-begin
-  TSpeedButton(Sender).Enabled:=False;
 end;
 
 procedure TEditorTableForm.PageControlTreeViewChange(Sender: TObject;

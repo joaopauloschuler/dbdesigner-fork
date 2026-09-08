@@ -28,3 +28,12 @@ x/
 
 # Test binaries
 bin/Test*
+bin/DBDplugin_Demo
+bin/DBDplugin_HTMLReport
+bin/DBDplugin_DataImporter
+bin/DBDplugin_SimpleWebFront
+
+# Database files (SQLite test databases)
+*.sqlite
+*.sqlite3
+*.db

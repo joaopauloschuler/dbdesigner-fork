@@ -67,6 +67,7 @@ type
     procedure FormCloseQuery(Sender: TObject; var CanClose: Boolean);
 
     function SaveAs: Boolean;
+    procedure ModelNameChanged(Sender: TObject);
   private
     { Private declarations }
     PrevXPos, PrevYPos: integer;
@@ -123,11 +124,12 @@ begin
     
     EERModel.PopupMenu:=PopupMenu1;
 
+    //Keep the form caption and the Windows menu item in sync with the model name
+    EERModel.OnModelNameChanged:=ModelNameChanged;
+
     //Initial ModelName and Filename
     EERModel.SetModelName('Noname'+DMEER.GetNextNonameNumber);
     EERModel.ModelFilename:=EERModel.GetModelName+'.xml';
-
-    //Caption:='DB Model | '+EERModel.GetModelName;
   except
     on x: Exception do
     begin
@@ -145,12 +147,27 @@ begin
   Cursor:=crArrow;
 end;
 
+procedure TEERForm.ModelNameChanged(Sender: TObject);
+begin
+  Caption:='DB Model | '+EERModel.GetModelName;
+
+  //Windows menu entry (created by MainForm.AddToMDIWindowMenu)
+  if(theFormMenuItem<>nil)then
+    theFormMenuItem.Caption:=EERModel.GetModelName;
+
+  //The EER form is embedded in the main form, so show the name in its title
+  if(MainForm<>nil)then
+    if(MainForm.FActiveEERForm=nil)or(MainForm.FActiveEERForm=self)then
+      MainForm.Caption:='DBDesigner Fork - '+EERModel.GetModelName;
+end;
+
 procedure TEERForm.FormActivate(Sender: TObject);
 var theEvent: QCustomEventH;
 begin
   if(Not(FormIsClosing))then
   begin
     DMEER.UpdateStatusBar;
+    ModelNameChanged(EERModel);
 
     //Show Datatypes in Palette
     theEvent := QCustomEvent_create(QEventType_RefreshDataTypesPalette, EERModel);
@@ -383,8 +400,7 @@ begin
 
       EERModel.ModelFilename:=theFileName;
       EERModel.SaveToFile(theFileName);
-      {Caption:='DB Model | '+ExtractFileName(theFileName);
-      theFormMenuItem.Caption:=EERModel.GetModelName;}
+      ModelNameChanged(EERModel);
 
       //Add file to recent file list
       sendCLXEvent(Application.MainForm.Handle, QCustomEvent_create(QEventType_AddToRecentFileList, PChar(theFileName)));

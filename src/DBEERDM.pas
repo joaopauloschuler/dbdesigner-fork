@@ -58,7 +58,7 @@ interface
 
 uses
   SysUtils, Classes, LCLType, SqlExpr, DB, Forms, StdCtrls, Dialogs,
-  EERModel, DBXpress, RegExpr;
+  EERModel, DBXpress, RegExpr, StrUtils, Controls;
 
 type
   CreateTableSyntax = (MySQL, SQLite, Oracle, MSSQL);
@@ -74,7 +74,7 @@ type
     procedure EERMySQLReverseEngineer2(theModel: Pointer; DBConn: Pointer; theTables: TStringList; XCount: integer; BuildRelations: Boolean; BuildRelUsingPrimKey: Boolean; DatatypeSubst: TStringList; StatusLbl: TLabel = nil; CreateStdInserts: Boolean = False; limitStdIns: integer = 0);
     procedure BuildTableFromCreateStatement(theTable: TEERTable; theCreateStatement: string; Syntax: CreateTableSyntax);
 
-    procedure EERReverseEngineerMakeRelations(theModel: Pointer; theTables: TList; BuildRelUsingPrimKey: Boolean);
+    procedure EERReverseEngineerMakeRelations(theModel: Pointer; theTables: TList; BuildRelUsingPrimKey: Boolean; SkipExisting: Boolean = False);
     procedure EERReverseEngineerCreateStdInserts(theModel: Pointer; theTables: TList; limit: integer;
       StatusLbl: TLabel = nil; ImportSchema: Boolean = False);
 
@@ -85,8 +85,8 @@ type
     procedure DataModuleDestroy(Sender: TObject);
 
     function RemoveCommentsFromSQLCmd(cmd: string): string;
-    function GetColumnCountFromSQLCmd(cmd: string): integer;
-    procedure GetColumnFromSQLCmd(cmd: string; i: integer; var col: TEERColumn);
+    function GetSQLiteDatatype(theModel: Pointer; DeclType: string; DatatypeSubst: TStringList; var DatatypeParams: string): Pointer;
+    function SQLiteRefActionCode(action: string): string;
   private
     { Private declarations }
   public
@@ -95,6 +95,10 @@ type
 
 var
   DMDBEER: TDMDBEER;
+  //Number of tables skipped by the last reverse engineering run because a
+  //table of that name was already in the model (sqlite-bug-catalog #14).
+  //A unit variable: DMDBEER is never instantiated, its methods run on nil.
+  RevEngSkippedTables: integer = 0;
 
 implementation
 
@@ -487,6 +491,10 @@ var EERModel: TEERModel;
   theDatatype: TEERDatatype;
   DatatypeName, DatatypeParams, prevIndex: string;
   tblAtPos: Boolean;
+  parentTbl: TEERTable;
+  theRel: TEERRel;
+  fkName, fkColName, pkColName: string;
+  AllFKColsArePK: Boolean;
 begin
   EERModel:=theModel;
 
@@ -503,6 +511,8 @@ begin
     Application.ProcessMessages;
   end;
 
+  RevEngSkippedTables:=0;
+
   //Get Tables
   DbTables:=TList.Create;
   try
@@ -515,12 +525,18 @@ begin
       //get only selected tables
       if(theTables.IndexOf(DMDB.SchemaSQLQuery.Fields[0].AsString)<>-1)then
       begin
-        theTable:=EERModel.NewTable(EERModel.EERModel_Width-250, 0, False);
-        theTable.ObjName:=DMDB.SchemaSQLQuery.Fields[0].AsString;
+        //Skip tables that are already in the model (sqlite-bug-catalog #14)
+        if(EERModel.GetEERObjectByName(EERTable, DMDB.SchemaSQLQuery.Fields[0].AsString)<>nil)then
+          inc(RevEngSkippedTables)
+        else
+        begin
+          theTable:=EERModel.NewTable(EERModel.EERModel_Width-250, 0, False);
+          theTable.ObjName:=DMDB.SchemaSQLQuery.Fields[0].AsString;
 
-        //theTable.RefreshObj;
+          //theTable.RefreshObj;
 
-        DbTables.Add(theTable);
+          DbTables.Add(theTable);
+        end;
       end;
 
       DMDB.SchemaSQLQuery.Next;
@@ -538,6 +554,9 @@ begin
         Application.ProcessMessages;
       end;
 
+      //SHOW FIELDS: Field, Type, Null, Key, Default, Extra (MySQL 4 .. 8).
+      //Read by name: NULL-typed columns can vanish from the field list
+      //(mysql-bug-catalog #2), which would shift positional reads.
       DMDB.SchemaSQLQuery.SQL.Text:='show fields from '+TEERTable(DbTables[i]).GetSQLTableName;
       DMDB.SchemaSQLQuery.Open;
       while(Not(DMDB.SchemaSQLQuery.EOF))do
@@ -546,33 +565,35 @@ begin
         theColumn:=TEERColumn.Create(TEERTable(DbTables[i]));
         TEERTable(DbTables[i]).Columns.Add(theColumn);
 
-        theColumn.ColName:=DMDB.SchemaSQLQuery.Fields[0].AsString;
+        theColumn.ColName:=DMDB.SchemaSQLQuery.FieldByName('Field').AsString;
         theColumn.Obj_id:=DMMain.GetNextGlobalID;
         theColumn.Pos:=TEERTable(DbTables[i]).Columns.Count;
         //theColumn.idDatatype:=-1;
         theColumn.DatatypeParams:='';
         {theColumn.Width:=SchemaSQLQuery.Fields[10].AsInteger;
         theColumn.Prec:=SchemaSQLQuery.Fields[11].AsInteger;}
-        theColumn.PrimaryKey:=(DMDB.SchemaSQLQuery.Fields[3].AsString='PRI');
+        theColumn.PrimaryKey:=(DMDB.SchemaSQLQuery.FieldByName('Key').AsString='PRI');
         theColumn.NotNull:=
-          (DMDB.SchemaSQLQuery.Fields[2].AsString<>'Y') and
-          (DMDB.SchemaSQLQuery.Fields[2].AsString<>'YES');
-        theColumn.AutoInc:=False;
+          (DMDB.SchemaSQLQuery.FieldByName('Null').AsString<>'Y') and
+          (DMDB.SchemaSQLQuery.FieldByName('Null').AsString<>'YES');
+        //Extra = 'auto_increment' (mysql-bug-catalog #4)
+        theColumn.AutoInc:=(Pos('auto_increment',
+          LowerCase(DMDB.SchemaSQLQuery.FieldByName('Extra').AsString))>0);
         theColumn.IsForeignKey:=False;
-        if(DMDB.SchemaSQLQuery.Fields[4].AsString<>'0')then
-          theColumn.DefaultValue:=DMDB.SchemaSQLQuery.Fields[4].AsString;
+        if(DMDB.SchemaSQLQuery.FieldByName('Default').AsString<>'0')then
+          theColumn.DefaultValue:=DMDB.SchemaSQLQuery.FieldByName('Default').AsString;
 
 
         //Get Datatype
-        DatatypeName:=DMDB.SchemaSQLQuery.Fields[1].AsString;
+        DatatypeName:=DMDB.SchemaSQLQuery.FieldByName('Type').AsString;
 
         DatatypeParams:='';
         if(Pos('(', datatypename)>0)then
         begin
           DatatypeName:=Copy(DatatypeName, 1, Pos('(', DatatypeName)-1);
-          DatatypeParams:=Copy(DMDB.SchemaSQLQuery.Fields[1].AsString,
-            Pos('(', DMDB.SchemaSQLQuery.Fields[1].AsString),
-            Pos(')', DMDB.SchemaSQLQuery.Fields[1].AsString)-Pos('(', DMDB.SchemaSQLQuery.Fields[1].AsString)+1);
+          DatatypeParams:=Copy(DMDB.SchemaSQLQuery.FieldByName('Type').AsString,
+            Pos('(', DMDB.SchemaSQLQuery.FieldByName('Type').AsString),
+            Pos(')', DMDB.SchemaSQLQuery.FieldByName('Type').AsString)-Pos('(', DMDB.SchemaSQLQuery.FieldByName('Type').AsString)+1);
         end;
         //int unsigned -> just get int
         if(Pos(' ', datatypename)>0)then
@@ -585,7 +606,7 @@ begin
         if(Assigned(theDatatype))then
           for j:=0 to theDatatype.OptionCount-1 do
             if(Pos(UpperCase(theDatatype.Options[j]),
-              UpperCase(DMDB.SchemaSQLQuery.Fields[1].AsString))>0)then
+              UpperCase(DMDB.SchemaSQLQuery.FieldByName('Type').AsString))>0)then
               theColumn.OptionSelected[j]:=True
             else
               theColumn.OptionSelected[j]:=False;
@@ -600,6 +621,11 @@ begin
 
 
       //Indices
+      //SHOW KEYS: Table, Non_unique, Key_name, Seq_in_index, Column_name,
+      //Collation, Cardinality, Sub_part, Packed, Null, Index_type, Comment
+      //(MySQL 4); MySQL 8 adds Index_comment, Visible, Expression and its
+      //Packed is NULL-typed, so it is missing from the field list (#2):
+      //read by name. One row per index column, ordered by index and Seq.
 
       prevIndex:='';
 
@@ -611,14 +637,17 @@ begin
       while(Not(DMDB.SchemaSQLQuery.EOF))do
       begin
         //Don't add the same Index a second time
-        if(prevIndex<>DMDB.SchemaSQLQuery.Fields[2].AsString)then
+        if(prevIndex<>DMDB.SchemaSQLQuery.FieldByName('Key_name').AsString)then
         begin
           //new(theIndex);
           theIndex:=TEERIndex.Create(TEERTable(DbTables[i]));
           theIndex.Obj_id:=DMMain.GetNextGlobalID;
-          theIndex.IndexName:=DMDB.SchemaSQLQuery.Fields[2].AsString;
-          if(CompareText(DMDB.SchemaSQLQuery.Fields[2].AsString, 'PRIMARY')=0)then
+          theIndex.IndexName:=DMDB.SchemaSQLQuery.FieldByName('Key_name').AsString;
+          if(CompareText(theIndex.IndexName, 'PRIMARY')=0)then
             theIndex.IndexKind:=ik_PRIMARY
+          //Non_unique = 0: UNIQUE index (mysql-bug-catalog #5)
+          else if(DMDB.SchemaSQLQuery.FieldByName('Non_unique').AsString='0')then
+            theIndex.IndexKind:=ik_UNIQUE_INDEX
           else
             theIndex.IndexKind:=ik_INDEX;
           TEERTable(DbTables[i]).Indices.Add(theIndex);
@@ -626,10 +655,22 @@ begin
 
         end;
 
-        theIndex.Columns.Add(IntToStr(
-          TEERColumn(TEERTable(DbTables[i]).GetColumnByName(DMDB.SchemaSQLQuery.Fields[4].AsString)).Obj_id));
+        //Functional key parts (MySQL 8) have no column name
+        theColumn:=nil;
+        if(Not(DMDB.SchemaSQLQuery.FieldByName('Column_name').IsNull))then
+          theColumn:=TEERColumn(TEERTable(DbTables[i]).GetColumnByName(
+            DMDB.SchemaSQLQuery.FieldByName('Column_name').AsString));
+        if(theColumn<>nil)then
+        begin
+          theIndex.Columns.Add(IntToStr(theColumn.Obj_id));
+          //Sub_part: index prefix length, e.g. info(100) (#5)
+          if(Not(DMDB.SchemaSQLQuery.FieldByName('Sub_part').IsNull))and
+            (DMDB.SchemaSQLQuery.FieldByName('Sub_part').AsString<>'')then
+            theIndex.ColumnParams.Values[IntToStr(theColumn.Obj_id)]:=
+              DMDB.SchemaSQLQuery.FieldByName('Sub_part').AsString;
+        end;
 
-        prevIndex:=DMDB.SchemaSQLQuery.Fields[2].AsString;
+        prevIndex:=DMDB.SchemaSQLQuery.FieldByName('Key_name').AsString;
         DMDB.SchemaSQLQuery.Next;
       end;
       DMDB.SchemaSQLQuery.Close;
@@ -695,7 +736,108 @@ begin
       Application.ProcessMessages;
     end;
     if(BuildRelations)then
-      EERReverseEngineerMakeRelations(EERModel, DbTables, BuildRelUsingPrimKey);
+    begin
+      //1. Native relations from the FOREIGN KEY constraints
+      //   (mysql-bug-catalog #7): information_schema.KEY_COLUMN_USAGE gives
+      //   the column pairs, REFERENTIAL_CONSTRAINTS the ON UPDATE/DELETE
+      //   rules. One row per column pair, grouped by table + constraint.
+      //   MySQL < 5.0 has no information_schema: the query fails and only
+      //   the name/PK heuristic below runs (as before).
+      try
+        DMDB.SchemaSQLQuery.SQL.Text:=
+          'SELECT k.TABLE_NAME AS tblname, k.CONSTRAINT_NAME AS fkname, '+
+          'k.ORDINAL_POSITION AS fkseq, k.COLUMN_NAME AS fkcol, '+
+          'k.REFERENCED_TABLE_NAME AS reftable, k.REFERENCED_COLUMN_NAME AS refcol, '+
+          'r.UPDATE_RULE AS on_update, r.DELETE_RULE AS on_delete '+
+          'FROM information_schema.KEY_COLUMN_USAGE k '+
+          'JOIN information_schema.REFERENTIAL_CONSTRAINTS r '+
+          'ON r.CONSTRAINT_SCHEMA=k.CONSTRAINT_SCHEMA '+
+          'AND r.CONSTRAINT_NAME=k.CONSTRAINT_NAME AND r.TABLE_NAME=k.TABLE_NAME '+
+          'WHERE k.TABLE_SCHEMA=DATABASE() AND k.REFERENCED_TABLE_NAME IS NOT NULL '+
+          'ORDER BY k.TABLE_NAME, k.CONSTRAINT_NAME, k.ORDINAL_POSITION';
+        DMDB.SchemaSQLQuery.Open;
+      except
+        DMDB.SchemaSQLQuery.Close;
+      end;
+      if(DMDB.SchemaSQLQuery.Active)then
+      begin
+        while(Not(DMDB.SchemaSQLQuery.EOF))do
+        begin
+          fkName:=DMDB.SchemaSQLQuery.FieldByName('tblname').AsString+'.'+
+            DMDB.SchemaSQLQuery.FieldByName('fkname').AsString;
+
+          //Child = the table holding the FK (one of the new tables),
+          //parent = the referenced table (anywhere in the model)
+          theTable:=nil;
+          for i:=0 to DbTables.Count-1 do
+            if(CompareText(TEERTable(DbTables[i]).ObjName,
+              DMDB.SchemaSQLQuery.FieldByName('tblname').AsString)=0)then
+            begin
+              theTable:=TEERTable(DbTables[i]);
+              break;
+            end;
+          parentTbl:=TEERTable(EERModel.GetEERObjectByName(EERTable,
+            DMDB.SchemaSQLQuery.FieldByName('reftable').AsString));
+          if(theTable=nil)or(parentTbl=nil)then
+          begin
+            while(Not(DMDB.SchemaSQLQuery.EOF))and
+              (DMDB.SchemaSQLQuery.FieldByName('tblname').AsString+'.'+
+              DMDB.SchemaSQLQuery.FieldByName('fkname').AsString=fkName)do
+              DMDB.SchemaSQLQuery.Next;
+            continue;
+          end;
+
+          //Self references (forumpost.idforumpost_parent -> forumpost) are
+          //ordinary relations for the model
+          theRel:=TEERRel(EERModel.NewRelation(rk_1nNonId, parentTbl, theTable, False));
+          theRel.FKFields.Clear;
+          theRel.FKFieldsComments.Clear;
+          theRel.CreateRefDef:=True;
+          //MySQL uses the same rule names as SQLite
+          theRel.RefDef.Values['OnDelete']:=
+            SQLiteRefActionCode(DMDB.SchemaSQLQuery.FieldByName('on_delete').AsString);
+          theRel.RefDef.Values['OnUpdate']:=
+            SQLiteRefActionCode(DMDB.SchemaSQLQuery.FieldByName('on_update').AsString);
+
+          //Build PK - FK Mapping
+          AllFKColsArePK:=True;
+          while(Not(DMDB.SchemaSQLQuery.EOF))and
+            (DMDB.SchemaSQLQuery.FieldByName('tblname').AsString+'.'+
+            DMDB.SchemaSQLQuery.FieldByName('fkname').AsString=fkName)do
+          begin
+            fkColName:=DMDB.SchemaSQLQuery.FieldByName('fkcol').AsString;
+            pkColName:=DMDB.SchemaSQLQuery.FieldByName('refcol').AsString;
+
+            theRel.FKFields.Add(pkColName+'='+fkColName);
+            theRel.FKFieldsComments.Add('');
+
+            theColumn:=TEERColumn(theTable.GetColumnByName(fkColName));
+            if(theColumn<>nil)then
+            begin
+              theColumn.IsForeignKey:=True;
+              if(Not(theColumn.PrimaryKey))then
+                AllFKColsArePK:=False;
+            end
+            else
+              AllFKColsArePK:=False;
+
+            DMDB.SchemaSQLQuery.Next;
+          end;
+
+          //FK columns that are all part of the child's PK: identifying relation
+          if(AllFKColsArePK)then
+            theRel.RelKind:=rk_1n;
+
+          theRel.SrcTbl.RefreshRelations;
+          theRel.DestTbl.RefreshRelations;
+        end;
+        DMDB.SchemaSQLQuery.Close;
+      end;
+
+      //2. Guess the remaining ones by name / primary key like the other
+      //   drivers do, without duplicating the native ones
+      EERReverseEngineerMakeRelations(EERModel, DbTables, BuildRelUsingPrimKey, True);
+    end;
 
     if(StatusLbl<>nil)then
     begin
@@ -707,6 +849,8 @@ begin
       EERReverseEngineerCreateStdInserts(EERModel, DbTables, limitStdIns);
 
     StatusLbl.Caption:=DMMain.GetTranslatedMessage('Finished.', 151);
+    if(RevEngSkippedTables>0)then
+      StatusLbl.Caption:=StatusLbl.Caption+' '+IntToStr(RevEngSkippedTables)+' existing table(s) skipped.';
   finally
     DbTables.Free;
   end;
@@ -1210,11 +1354,16 @@ end;
 procedure TDMDBEER.EERSQLiteReverseEngineer(theModel: Pointer; DBConn: Pointer; theTables: TStringList; XCount: integer; BuildRelations: Boolean; BuildRelUsingPrimKey: Boolean; DatatypeSubst: TStringList; StatusLbl: TLabel = nil; CreateStdInserts: Boolean = False; limitStdIns: integer = 0);
 var EERModel: TEERModel;
   i, j, xpos, ypos, xanz, defwidth, defheight: integer;
-  tblAtPos: Boolean;
+  tblAtPos, AllFKColsArePK, HasAutoInc: Boolean;
   DbTables: TList;
-  theTable, tmpTbl: TEERTable;
-  theCol, theSQLCol: TEERColumn;
-  sqlcmd: string;
+  theTable, tmpTbl, parentTbl: TEERTable;
+  theColumn: TEERColumn;
+  theIndex: TEERIndex;
+  theDatatype: TEERDatatype;
+  theRel: TEERRel;
+  sqlcmd, quotedName, DeclType, DatatypeParams, DefVal,
+    prevIndex, fkId, pkColName, fkColName: string;
+  pkCount, pkColCount: integer;
 begin
   EERModel:=theModel;
 
@@ -1233,6 +1382,8 @@ begin
 
   DMDB.SchemaSQLQuery.ParamCheck:=False;
 
+  RevEngSkippedTables:=0;
+
   //Get Tables
   DbTables:=TList.Create;
   try
@@ -1240,7 +1391,7 @@ begin
 
     DMDB.SchemaSQLQuery.SetSchemaInfo(stNoSchema, '', '');
     DMDB.SchemaSQLQuery.SQL.Text:='SELECT name FROM sqlite_master '+
-      'WHERE type=''table'' '+
+      'WHERE type=''table'' AND name NOT LIKE ''sqlite_%'' '+
       'ORDER BY name';
     DMDB.SchemaSQLQuery.Open;
 
@@ -1249,53 +1400,150 @@ begin
       //get only selected tables
       if(theTables.IndexOf(DMDB.SchemaSQLQuery.FieldByName('name').AsString)<>-1)then
       begin
-        theTable:=EERModel.NewTable(EERModel.EERModel_Width-250, 0, False);
-        theTable.ObjName:=DMDB.SchemaSQLQuery.FieldByName('name').AsString;
-        //theTable.TablePrefix:=0;
+        //Skip tables that are already in the model (sqlite-bug-catalog #14)
+        if(EERModel.GetEERObjectByName(EERTable, DMDB.SchemaSQLQuery.FieldByName('name').AsString)<>nil)then
+          inc(RevEngSkippedTables)
+        else
+        begin
+          theTable:=EERModel.NewTable(EERModel.EERModel_Width-250, 0, False);
+          theTable.ObjName:=DMDB.SchemaSQLQuery.FieldByName('name').AsString;
+          //theTable.TablePrefix:=0;
 
-        DbTables.Add(theTable);
+          DbTables.Add(theTable);
+        end;
       end;
 
       DMDB.SchemaSQLQuery.Next;
     end;
     DMDB.SchemaSQLQuery.Close;
 
-    //Get the columns
+    //Get the columns and indices (SQLite's own metadata via the
+    //pragma_* table-valued functions; the CREATE TABLE text is only
+    //used to detect the AUTOINCREMENT keyword)
     for i:=0 to DbTables.Count-1 do
     begin
+      theTable:=TEERTable(DbTables[i]);
+
       if(StatusLbl<>nil)then
       begin
         StatusLbl.Caption:=DMMain.GetTranslatedMessage('Fetching Table Columns/Indices (%s)', 148,
-          TEERTable(DbTables[i]).ObjName);
+          theTable.ObjName);
         StatusLbl.Refresh;
         Application.ProcessMessages;
       end;
 
-      //Get SQL Create cmd
-      sqlcmd:='SELECT sql FROM sqlite_master '+
-        'WHERE type=''table'' AND name='''+TEERTable(DbTables[i]).ObjName+'''';
-      DMDB.SchemaSQLQuery.SQL.Text:=sqlcmd;
+      quotedName:=StringReplace(theTable.ObjName, '''', '''''', [rfReplaceAll]);
+
+      //Get SQL Create cmd (AUTOINCREMENT is not visible through the pragmas)
+      sqlcmd:='';
+      DMDB.SchemaSQLQuery.SQL.Text:='SELECT sql FROM sqlite_master '+
+        'WHERE type=''table'' AND name='''+quotedName+'''';
       DMDB.SchemaSQLQuery.Open;
       if(Not(DMDB.SchemaSQLQuery.EOF))then
         sqlcmd:=DMDB.SchemaSQLQuery.Fields[0].AsString;
       DMDB.SchemaSQLQuery.Close;
+      HasAutoInc:=(Pos('AUTOINCREMENT', UpperCase(RemoveCommentsFromSQLCmd(sqlcmd)))>0);
 
-      sqlcmd:=RemoveCommentsFromSQLCmd(sqlcmd);
+      //Columns
+      pkColCount:=0;
+      DMDB.SchemaSQLQuery.SQL.Text:='SELECT cid, name, type, "notnull" AS colnotnull, '+
+        'dflt_value, pk FROM pragma_table_info('''+quotedName+''') ORDER BY cid';
+      DMDB.SchemaSQLQuery.Open;
+      while(Not(DMDB.SchemaSQLQuery.EOF))do
+      begin
+        theColumn:=TEERColumn.Create(theTable);
+        theTable.Columns.Add(theColumn);
 
-      theSQLCol:=TEERColumn.Create(nil);
-      try
-        for j:=0 to GetColumnCountFromSQLCmd(sqlcmd)-1 do
-        begin
-          GetColumnFromSQLCmd(sqlcmd, j, theSQLCol);
-          if(theSQLCol.ColName<>'')then
-          begin
-            theCol:=TEERColumn.Create(TEERTable(DbTables[i]));
-            theCol.Assign(theSQLCol);
-          end;
-        end;
-      finally
-        theSQLCol.Free;
+        theColumn.ColName:=DMDB.SchemaSQLQuery.FieldByName('name').AsString;
+        theColumn.Obj_id:=DMMain.GetNextGlobalID;
+        theColumn.Pos:=theTable.Columns.Count;
+        theColumn.PrimaryKey:=(DMDB.SchemaSQLQuery.FieldByName('pk').AsInteger>0);
+        if(theColumn.PrimaryKey)then
+          inc(pkColCount);
+        theColumn.NotNull:=(DMDB.SchemaSQLQuery.FieldByName('colnotnull').AsInteger=1)or
+          (theColumn.PrimaryKey);
+        theColumn.AutoInc:=False;
+        theColumn.IsForeignKey:=False;
+
+        //Default value: SQLite returns it as written in the DDL,
+        //strip one pair of enclosing quotes like MySQL's SHOW FIELDS does
+        DefVal:='';
+        if(Not(DMDB.SchemaSQLQuery.FieldByName('dflt_value').IsNull))then
+          DefVal:=DMDB.SchemaSQLQuery.FieldByName('dflt_value').AsString;
+        if(Length(DefVal)>=2)and(DefVal[1]='''')and(DefVal[Length(DefVal)]='''')then
+          DefVal:=Copy(DefVal, 2, Length(DefVal)-2);
+        if(CompareText(DefVal, 'NULL')<>0)then
+          theColumn.DefaultValue:=DefVal;
+
+        //Datatype
+        DeclType:=DMDB.SchemaSQLQuery.FieldByName('type').AsString;
+        theDatatype:=TEERDatatype(GetSQLiteDatatype(EERModel, DeclType, DatatypeSubst, DatatypeParams));
+        theColumn.idDatatype:=theDatatype.id;
+        theColumn.DatatypeParams:=DatatypeParams;
+
+        //Get Options (UNSIGNED, ZEROFILL, ...)
+        for j:=0 to theDatatype.OptionCount-1 do
+          theColumn.OptionSelected[j]:=
+            (Pos(UpperCase(theDatatype.Options[j]), UpperCase(DeclType))>0);
+
+        DMDB.SchemaSQLQuery.Next;
       end;
+      DMDB.SchemaSQLQuery.Close;
+
+      //AUTOINCREMENT: only valid for a single INTEGER PRIMARY KEY column
+      if(HasAutoInc)and(pkColCount=1)then
+        for j:=0 to theTable.Columns.Count-1 do
+          if(TEERColumn(theTable.Columns[j]).PrimaryKey)then
+            TEERColumn(theTable.Columns[j]).AutoInc:=True;
+
+      //Build the PRIMARY index from the PK columns (an INTEGER PRIMARY KEY
+      //has no entry in pragma_index_list)
+      theTable.CheckPrimaryIndex;
+
+      //Indices (skip the PK autoindex, handled above)
+      prevIndex:='';
+      theIndex:=nil;
+      DMDB.SchemaSQLQuery.SQL.Text:='SELECT il.seq AS idxseq, il.name AS idxname, '+
+        'il."unique" AS idxunique, il.origin AS idxorigin, ii.seqno AS colseq, '+
+        'ii.name AS colname '+
+        'FROM pragma_index_list('''+quotedName+''') il '+
+        'JOIN pragma_index_info(il.name) ii '+
+        'WHERE il.origin<>''pk'' ORDER BY il.seq, ii.seqno';
+      DMDB.SchemaSQLQuery.Open;
+      while(Not(DMDB.SchemaSQLQuery.EOF))do
+      begin
+        if(prevIndex<>DMDB.SchemaSQLQuery.FieldByName('idxname').AsString)then
+        begin
+          theIndex:=TEERIndex.Create(theTable);
+          theIndex.Obj_id:=DMMain.GetNextGlobalID;
+          theIndex.IndexName:=DMDB.SchemaSQLQuery.FieldByName('idxname').AsString;
+          //autoindexes of UNIQUE constraints have reserved names
+          if(Pos('sqlite_autoindex_', theIndex.IndexName)=1)then
+            theIndex.IndexName:=theTable.ObjName+'_unique_'+
+              DMDB.SchemaSQLQuery.FieldByName('idxseq').AsString;
+          if(DMDB.SchemaSQLQuery.FieldByName('idxunique').AsInteger=1)then
+            theIndex.IndexKind:=ik_UNIQUE_INDEX
+          else
+            theIndex.IndexKind:=ik_INDEX;
+          theTable.Indices.Add(theIndex);
+          theIndex.Pos:=theTable.Indices.Count-1;
+        end;
+
+        //expression indexes have no column name
+        if(Not(DMDB.SchemaSQLQuery.FieldByName('colname').IsNull))then
+        begin
+          theColumn:=TEERColumn(theTable.GetColumnByName(
+            DMDB.SchemaSQLQuery.FieldByName('colname').AsString));
+          if(theColumn<>nil)then
+            theIndex.Columns.Add(IntToStr(theColumn.Obj_id));
+        end;
+
+        prevIndex:=DMDB.SchemaSQLQuery.FieldByName('idxname').AsString;
+        DMDB.SchemaSQLQuery.Next;
+      end;
+      DMDB.SchemaSQLQuery.Close;
+
+      theTable.RefreshObj;
     end;
 
 
@@ -1353,6 +1601,105 @@ begin
 
     if(StatusLbl<>nil)then
     begin
+      StatusLbl.Caption:=DMMain.GetTranslatedMessage('Building Relations...', 149);
+      StatusLbl.Refresh;
+      Application.ProcessMessages;
+    end;
+    if(BuildRelations)then
+    begin
+      //1. Native relations from the FOREIGN KEY constraints
+      //   (PRAGMA foreign_key_list: one row per column pair, grouped by id)
+      for i:=0 to DbTables.Count-1 do
+      begin
+        theTable:=TEERTable(DbTables[i]);
+        quotedName:=StringReplace(theTable.ObjName, '''', '''''', [rfReplaceAll]);
+
+        DMDB.SchemaSQLQuery.SQL.Text:='SELECT id AS fkid, seq AS fkseq, '+
+          '"table" AS reftable, "from" AS fromcol, "to" AS tocol, '+
+          'on_update, on_delete FROM pragma_foreign_key_list('''+quotedName+''') '+
+          'ORDER BY id, seq';
+        DMDB.SchemaSQLQuery.Open;
+        while(Not(DMDB.SchemaSQLQuery.EOF))do
+        begin
+          fkId:=DMDB.SchemaSQLQuery.FieldByName('fkid').AsString;
+          parentTbl:=TEERTable(EERModel.GetEERObjectByName(EERTable,
+            DMDB.SchemaSQLQuery.FieldByName('reftable').AsString));
+
+          //Referenced table not in the model (or self reference): skip this FK
+          if(parentTbl=nil)or(parentTbl=theTable)then
+          begin
+            while(Not(DMDB.SchemaSQLQuery.EOF))and
+              (DMDB.SchemaSQLQuery.FieldByName('fkid').AsString=fkId)do
+              DMDB.SchemaSQLQuery.Next;
+            continue;
+          end;
+
+          theRel:=TEERRel(EERModel.NewRelation(rk_1nNonId, parentTbl, theTable, False));
+          theRel.FKFields.Clear;
+          theRel.FKFieldsComments.Clear;
+          theRel.CreateRefDef:=True;
+          theRel.RefDef.Values['OnDelete']:=
+            SQLiteRefActionCode(DMDB.SchemaSQLQuery.FieldByName('on_delete').AsString);
+          theRel.RefDef.Values['OnUpdate']:=
+            SQLiteRefActionCode(DMDB.SchemaSQLQuery.FieldByName('on_update').AsString);
+
+          //Build PK - FK Mapping
+          AllFKColsArePK:=True;
+          pkCount:=0;
+          while(Not(DMDB.SchemaSQLQuery.EOF))and
+            (DMDB.SchemaSQLQuery.FieldByName('fkid').AsString=fkId)do
+          begin
+            fkColName:=DMDB.SchemaSQLQuery.FieldByName('fromcol').AsString;
+            pkColName:='';
+            if(Not(DMDB.SchemaSQLQuery.FieldByName('tocol').IsNull))then
+              pkColName:=DMDB.SchemaSQLQuery.FieldByName('tocol').AsString;
+            //"to" is NULL when the FK references the parent's PK implicitly:
+            //take the parent's PK columns in order
+            if(pkColName='')then
+              for j:=0 to parentTbl.Columns.Count-1 do
+                if(TEERColumn(parentTbl.Columns[j]).PrimaryKey)then
+                begin
+                  if(pkCount=DMDB.SchemaSQLQuery.FieldByName('fkseq').AsInteger)then
+                  begin
+                    pkColName:=TEERColumn(parentTbl.Columns[j]).ColName;
+                    break;
+                  end;
+                  inc(pkCount);
+                end;
+
+            theRel.FKFields.Add(pkColName+'='+fkColName);
+            theRel.FKFieldsComments.Add('');
+
+            theColumn:=TEERColumn(theTable.GetColumnByName(fkColName));
+            if(theColumn<>nil)then
+            begin
+              theColumn.IsForeignKey:=True;
+              if(Not(theColumn.PrimaryKey))then
+                AllFKColsArePK:=False;
+            end
+            else
+              AllFKColsArePK:=False;
+
+            DMDB.SchemaSQLQuery.Next;
+          end;
+
+          //FK columns that are all part of the child's PK: identifying relation
+          if(AllFKColsArePK)then
+            theRel.RelKind:=rk_1n;
+
+          theRel.SrcTbl.RefreshRelations;
+          theRel.DestTbl.RefreshRelations;
+        end;
+        DMDB.SchemaSQLQuery.Close;
+      end;
+
+      //2. Guess the remaining ones by name / primary key like the other
+      //   drivers do, without duplicating the native ones
+      EERReverseEngineerMakeRelations(EERModel, DbTables, BuildRelUsingPrimKey, True);
+    end;
+
+    if(StatusLbl<>nil)then
+    begin
       StatusLbl.Caption:=DMMain.GetTranslatedMessage('Creating Standard Inserts...', 150);
       StatusLbl.Refresh;
       Application.ProcessMessages;
@@ -1361,9 +1708,93 @@ begin
       EERReverseEngineerCreateStdInserts(EERModel, DbTables, limitStdIns);
 
     StatusLbl.Caption:=DMMain.GetTranslatedMessage('Finished.', 151);
+    if(RevEngSkippedTables>0)then
+      StatusLbl.Caption:=StatusLbl.Caption+' '+IntToStr(RevEngSkippedTables)+' existing table(s) skipped.';
   finally
     DbTables.Free;
   end;
+end;
+
+function TDMDBEER.GetSQLiteDatatype(theModel: Pointer; DeclType: string; DatatypeSubst: TStringList; var DatatypeParams: string): Pointer;
+var EERModel: TEERModel;
+  DatatypeName, s: string;
+  theDatatype: TEERDatatype;
+begin
+  EERModel:=theModel;
+
+  //Split "Varchar(45) UNSIGNED" into name "Varchar", params "(45)"
+  DatatypeName:=Trim(DeclType);
+  DatatypeParams:='';
+  if(Pos('(', DatatypeName)>0)then
+  begin
+    if(Pos(')', DatatypeName)>Pos('(', DatatypeName))then
+      DatatypeParams:=Copy(DatatypeName, Pos('(', DatatypeName),
+        Pos(')', DatatypeName)-Pos('(', DatatypeName)+1);
+    DatatypeName:=Trim(Copy(DatatypeName, 1, Pos('(', DatatypeName)-1));
+  end;
+
+  //Exact name (with substitution list), e.g. DOUBLE PRECISION
+  s:=DatatypeName;
+  if(Assigned(DatatypeSubst))then
+    if(DatatypeSubst.Values[DatatypeName]<>'')then
+      s:=DatatypeSubst.Values[DatatypeName];
+  theDatatype:=EERModel.GetDataTypeByName(s);
+
+  //First word only, e.g. "INT UNSIGNED" -> INT
+  if(theDatatype=nil)and(Pos(' ', DatatypeName)>0)then
+  begin
+    s:=Copy(DatatypeName, 1, Pos(' ', DatatypeName)-1);
+    if(Assigned(DatatypeSubst))then
+      if(DatatypeSubst.Values[s]<>'')then
+        s:=DatatypeSubst.Values[s];
+    theDatatype:=EERModel.GetDataTypeByName(s);
+  end;
+
+  //Unknown declared type: follow SQLite's type affinity rules
+  if(theDatatype=nil)then
+  begin
+    s:=UpperCase(DatatypeName);
+    if(s='')or(Pos('BLOB', s)>0)then
+      theDatatype:=EERModel.GetDataTypeByName('BLOB')
+    else if(Pos('INT', s)>0)then
+      theDatatype:=EERModel.GetDataTypeByName('INTEGER')
+    else if(Pos('CHAR', s)>0)or(Pos('CLOB', s)>0)or(Pos('TEXT', s)>0)or(Pos('STRING', s)>0)then
+    begin
+      if(DatatypeParams<>'')then
+        theDatatype:=EERModel.GetDataTypeByName('VARCHAR')
+      else
+        theDatatype:=EERModel.GetDataTypeByName('TEXT');
+    end
+    else if(Pos('REAL', s)>0)or(Pos('FLOA', s)>0)or(Pos('DOUB', s)>0)then
+      theDatatype:=EERModel.GetDataTypeByName('FLOAT')
+    else if(Pos('BOOL', s)>0)then
+      theDatatype:=EERModel.GetDataTypeByName('BOOL')
+    else if(Pos('DATE', s)>0)or(Pos('TIME', s)>0)then
+      theDatatype:=EERModel.GetDataTypeByName('DATETIME')
+    else
+      theDatatype:=EERModel.GetDataTypeByName('DECIMAL');
+  end;
+
+  if(theDatatype=nil)then
+    theDatatype:=TEERDatatype(EERModel.GetDataType(EERModel.DefaultDataType));
+
+  GetSQLiteDatatype:=theDatatype;
+end;
+
+function TDMDBEER.SQLiteRefActionCode(action: string): string;
+begin
+  //Codes as used by TEERRel.RefDef (see TEERTable.GetSQLCreateCode)
+  action:=UpperCase(Trim(action));
+  if(action='RESTRICT')then
+    SQLiteRefActionCode:='0'
+  else if(action='CASCADE')then
+    SQLiteRefActionCode:='1'
+  else if(action='SET NULL')then
+    SQLiteRefActionCode:='2'
+  else if(action='SET DEFAULT')then
+    SQLiteRefActionCode:='4'
+  else
+    SQLiteRefActionCode:='3'; //NO ACTION
 end;
 
 procedure TDMDBEER.EERMSSQLReverseEngineer(theModel: Pointer; DBConn: Pointer; theTables: TStringList; XCount: integer; BuildRelations: Boolean; BuildRelUsingPrimKey: Boolean; DatatypeSubst: TStringList; StatusLbl: TLabel = nil; CreateStdInserts: Boolean = False; limitStdIns: integer = 0; CollapseTables: Boolean = False);
@@ -1743,11 +2174,33 @@ begin
 end;
 
 
-procedure TDMDBEER.EERReverseEngineerMakeRelations(theModel: Pointer; theTables: TList; BuildRelUsingPrimKey: Boolean);
+procedure TDMDBEER.EERReverseEngineerMakeRelations(theModel: Pointer; theTables: TList; BuildRelUsingPrimKey: Boolean; SkipExisting: Boolean = False);
 var i, j, k, l: integer;
   EERModel: TEERModel;
   srcPKIndex: TEERIndex;
   FieldFound, AllFieldsFound, AllFieldsPKs: Boolean;
+
+  //SkipExisting: don't add a second relation between two tables that
+  //already got one (e.g. from the database's own FOREIGN KEY constraints)
+  function RelationExists(SrcTbl, DestTbl: TEERTable): Boolean;
+  var m: integer;
+  begin
+    RelationExists:=False;
+    if(Not(SkipExisting))then
+      exit;
+    for m:=0 to SrcTbl.RelStart.Count-1 do
+      if(TEERRel(SrcTbl.RelStart[m]).DestTbl=DestTbl)then
+      begin
+        RelationExists:=True;
+        exit;
+      end;
+    for m:=0 to SrcTbl.RelEnd.Count-1 do
+      if(TEERRel(SrcTbl.RelEnd[m]).SrcTbl=DestTbl)then
+      begin
+        RelationExists:=True;
+        exit;
+      end;
+  end;
 begin
   EERModel:=theModel;
 
@@ -1785,7 +2238,8 @@ begin
         for k:=0 to TEERTable(theTables[j]).Columns.Count-1 do
         begin
           if(CompareText('id'+TEERTable(theTables[i]).ObjName,
-            TEERColumn(TEERTable(theTables[j]).Columns[k]).ColName)=0)then
+            TEERColumn(TEERTable(theTables[j]).Columns[k]).ColName)=0)and
+            (Not(RelationExists(TEERTable(theTables[i]), TEERTable(theTables[j]))))then
           begin
             //New Relation
             EERModel.NewRelation(rk_1nNonId, theTables[i], theTables[j], False);
@@ -1821,7 +2275,8 @@ begin
         end;
 
         //New Relation
-        if(AllFieldsFound)then
+        if(AllFieldsFound)and
+          (Not(RelationExists(TEERTable(theTables[i]), TEERTable(theTables[j]))))then
         begin
           if(AllFieldsPKs)then
             //New 1n Relation
@@ -1889,7 +2344,8 @@ var EERModel: TEERModel;
   theDatatype, theModelDatatype: TEERDatatype;
   s, DatatypeName, DatatypeParams, prevIndex: string;
   NewPrimaryKey, ColumnChanged, ChangeColumnName,
-  checkIndex, PKFieldIsChecked: Boolean;
+  checkIndex, PKFieldIsChecked, OptionInDB, DoDropTables: Boolean;
+  DropTables: TStringList;
   //IndexComment: string;
   ColumnCompCounter, ColumnModCounter, ColumnDelCounter,
   ColumnAddCounter,
@@ -1898,6 +2354,27 @@ var EERModel: TEERModel;
   IndexDropCounter, IndexCreateCounter, IndexUpdateCounter: integer;
   oldDecSep: Char;
   FieldOnGeneratorOrSequence:string;
+  SyncErrors: TStringList;
+  ErrCount: integer;
+
+  //Execute one statement; a failure is collected in SyncErrors (and logged)
+  //instead of raising / showing a message box, so the sync goes on and the
+  //user gets a single summary at the end
+  procedure ExecSyncStmt(const stmt: string; IgnoreErrors: Boolean);
+  begin
+    DMDB.SchemaSQLQuery.SQL.Text:=stmt;
+    try
+      DMDB.SchemaSQLQuery.ExecSQL(True);
+    except
+      on x: Exception do
+        if(Not(IgnoreErrors))then
+        begin
+          SyncErrors.Add(stmt+#13#10+x.Message);
+          Log.Add('  ERROR: '+x.Message);
+        end;
+    end;
+  end;
+
 begin
   EERModel:=theModel;
 
@@ -1924,6 +2401,7 @@ begin
   IndexColumnParams:=TStringList.Create;
   IndexRecreate:=TList.Create;
   DBIndices:=TList.Create;
+  SyncErrors:=TStringList.Create;
   try
     //Get Tables from Model
     EERModel.GetEERObjectList([EERTable], ModelTables);
@@ -1981,20 +2459,40 @@ begin
           if(DbTables.IndexOf(theTable.PrevTableName)=-1)then
           begin
             Log.Add('Create non existing table '+theTable.ObjName);
-            inc(TableCreateCounter);
 
-  //          DMDB.SchemaSQLQuery.SQL.Text:=
-  //          DMDB.SchemaSQLQuery.ExecSQL;
+            //Errors are collected in SyncErrors, not shown one by one.
+            //OutputComments=True so the table/column COMMENT clauses are
+            //created like in the exported script (the -- header lines are
+            //skipped by GetFirstSQLCmdFromScript)
+            ErrCount:=SyncErrors.Count;
             DMDB.ExecuteSQLCmdScript(theTable.GetSQLCreateCode(True, //Define PKs
               True, //CreateIndices
               True, //DefineFK
               True, //TblOptions
-              False)); //StdInserts are executed seperatly
+              False, //StdInserts are executed seperatly
+              True), //OutputComments
+              SyncErrors);
 
+            if(SyncErrors.Count>ErrCount)then
+            begin
+              for j:=ErrCount to SyncErrors.Count-1 do
+                Log.Add('  ERROR: '+Copy(SyncErrors[j], Pos(#13#10, SyncErrors[j])+2, Length(SyncErrors[j])));
+              Log.Add('  FAILED to create table '+theTable.ObjName);
+            end
+            else
+            begin
+              inc(TableCreateCounter);
+              DbTables.Add(theTable.ObjName);
 
-            //Execute Standard Inserts also if user whishes
-            if(StdInsertsOnCreate)and(Trim(theTable.StandardInserts.Text)<>'')then
-              DMDB.ExecuteSQLCmdScript(theTable.StandardInserts.Text);
+              //Execute Standard Inserts also if user whishes
+              if(StdInsertsOnCreate)and(Trim(theTable.StandardInserts.Text)<>'')then
+              begin
+                ErrCount:=SyncErrors.Count;
+                DMDB.ExecuteSQLCmdScript(theTable.StandardInserts.Text, SyncErrors);
+                for j:=ErrCount to SyncErrors.Count-1 do
+                  Log.Add('  ERROR: '+Copy(SyncErrors[j], Pos(#13#10, SyncErrors[j])+2, Length(SyncErrors[j])));
+              end;
+            end;
 
             //Clear previous colname for DB-Sync when table has just been created
             for j:=0 to theTable.Columns.Count-1 do
@@ -2008,9 +2506,8 @@ begin
             inc(TableRenameCounter);
 
             //Rename in DB
-            DMDB.SchemaSQLQuery.SQL.Text:='RENAME TABLE '+theTable.PrevTableName+
-              ' TO '+theTable.ObjName;
-            DMDB.SchemaSQLQuery.ExecSQL;
+            ExecSyncStmt('RENAME TABLE '+theTable.PrevTableName+
+              ' TO '+theTable.ObjName, False);
 
             //Set renamed TableName in DBList
             DbTables[DbTables.IndexOf(theTable.PrevTableName)]:=theTable.ObjName;
@@ -2025,23 +2522,45 @@ begin
       //Drop tables not longer in model in reverse order
       DMMain.ReverseList(ModelTables);
 
-      for i:=0 to DbTables.Count-1 do
-      begin
-        position:=-1;
-        for j:=0 to ModelTables.Count-1 do
-          if(CompareText(DbTables[i], TEERTable(ModelTables[j]).ObjName)=0)then
-            position:=j;
+      //Collect the tables to drop first and ask once before the first DROP
+      //(mysql-bug-catalog #12); "No" skips the drops, the sync goes on
+      DropTables:=TStringList.Create;
+      try
+        if(Not(KeepExTbls))then
+          for i:=0 to DbTables.Count-1 do
+          begin
+            position:=-1;
+            for j:=0 to ModelTables.Count-1 do
+              if(CompareText(DbTables[i], TEERTable(ModelTables[j]).ObjName)=0)then
+                position:=j;
 
-        //if the table is not in DB-Table List, create it
-        if(position=-1)and(Not(KeepExTbls))then
-        begin
-          Log.Add(DMMain.GetTranslatedMessage('Drop table %s', 155,
-            DbTables[i]));
-          inc(TableDropCounter);
+            if(position=-1)then
+              DropTables.Add(DbTables[i]);
+          end;
 
-          DMDB.SchemaSQLQuery.SQL.Text:='drop table '+DbTables[i];
-          DMDB.SchemaSQLQuery.ExecSQL;
-        end;
+        DoDropTables:=(DropTables.Count>0);
+        if(DoDropTables)then
+          DoDropTables:=(MessageDlg(
+            DMMain.GetTranslatedMessage('The following %s table(s) are not in the model '+
+              'and will be DROPPED from the database (all their data is lost):'+#13#10#13#10+
+              '%s'+#13#10#13#10+'Drop these tables?', -1,
+              IntToStr(DropTables.Count), DropTables.CommaText),
+            mtConfirmation, [mbYes, mbNo], 0)=mrYes);
+
+        if(DoDropTables)then
+          for i:=0 to DropTables.Count-1 do
+          begin
+            Log.Add(DMMain.GetTranslatedMessage('Drop table %s', 155,
+              DropTables[i]));
+            inc(TableDropCounter);
+
+            ExecSyncStmt('drop table '+DropTables[i], False);
+          end
+        else if(DropTables.Count>0)then
+          Log.Add('Dropping of '+IntToStr(DropTables.Count)+
+            ' table(s) skipped by user: '+DropTables.CommaText);
+      finally
+        DropTables.Free;
       end;
 
       //Re-reverse order
@@ -2053,30 +2572,46 @@ begin
       for i:=0 to ModelTables.Count-1 do
       begin
         theTable:=TEERTable(ModelTables[i]);
+
+        //A table whose creation failed above is not in the DB, nothing to compare
+        if(DbTables.IndexOf(theTable.ObjName)=-1)then
+        begin
+          Log.Add('Skip table '+theTable.ObjName+' (not in database)');
+          continue;
+        end;
+
         Log.Add(DMMain.GetTranslatedMessage('Compare columns from table %s', 156,
           theTable.ObjName));
+
+        //Any error in the comparison of this table is collected and the
+        //sync goes on with the next table
+        try
 
         SQLStr.Clear;
         NewPrimaryKey:=False;
         DbColumns.Clear;
         IndexColumns.Clear;
 
-        DMDB.SchemaSQLQuery.SQL.Text:='show fields from '+theTable.ObjName;
+        //SHOW FULL FIELDS: Field, Type, Collation, Null, Key, Default, Extra,
+        //Privileges, Comment. Read by name: MySQL 8 reports a VARCHAR ... BINARY
+        //column as varchar(n) with a *_bin collation instead of "BINARY" in the
+        //Type string (mysql-bug-catalog #11)
+        DMDB.SchemaSQLQuery.SQL.Text:='show full fields from '+theTable.ObjName;
         DMDB.SchemaSQLQuery.Open;
         while(Not(DMDB.SchemaSQLQuery.EOF))do
         begin
           inc(ColumnCompCounter);
-          DbColumns.Add(DMDB.SchemaSQLQuery.Fields[0].AsString);
+          DbColumns.Add(DMDB.SchemaSQLQuery.FieldByName('Field').AsString);
 
           //find column
           theColumn:=nil;
           ColNr:=-1;
           ChangeColumnName:=False;
           for j:=0 to theTable.Columns.Count-1 do
-            if(CompareText(DMDB.SchemaSQLQuery.Fields[0].AsString, TEERColumn(theTable.Columns[j]).ColName)=0)or
-              (CompareText(DMDB.SchemaSQLQuery.Fields[0].AsString, TEERColumn(theTable.Columns[j]).PrevColName)=0)then
+            if(CompareText(DMDB.SchemaSQLQuery.FieldByName('Field').AsString, TEERColumn(theTable.Columns[j]).ColName)=0)or
+              (CompareText(DMDB.SchemaSQLQuery.FieldByName('Field').AsString, TEERColumn(theTable.Columns[j]).PrevColName)=0)then
             begin
-              if(CompareText(DMDB.SchemaSQLQuery.Fields[0].AsString, TEERColumn(theTable.Columns[j]).PrevColName)=0)then
+              if(CompareText(DMDB.SchemaSQLQuery.FieldByName('Field').AsString, TEERColumn(theTable.Columns[j]).PrevColName)=0)then
                 ChangeColumnName:=True;
 
               ColNr:=j;
@@ -2088,10 +2623,10 @@ begin
           if(theColumn=nil)then
           begin
             Log.Add(DMMain.GetTranslatedMessage('Dropping column %s from table %s', 157,
-              DMDB.SchemaSQLQuery.Fields[0].AsString, theTable.ObjName));
+              DMDB.SchemaSQLQuery.FieldByName('Field').AsString, theTable.ObjName));
             inc(ColumnDelCounter);
 
-            SQLStr.Add('ALTER TABLE '+theTable.ObjName+' DROP COLUMN '+DMDB.SchemaSQLQuery.Fields[0].AsString);
+            SQLStr.Add('ALTER TABLE '+theTable.ObjName+' DROP COLUMN '+DMDB.SchemaSQLQuery.FieldByName('Field').AsString);
           end
           else
           begin
@@ -2100,35 +2635,37 @@ begin
 
 
             //Add to IndexColumns List
-            if(DMDB.SchemaSQLQuery.Fields[3].AsString='PRI')then
-              IndexColumns.Add(DMDB.SchemaSQLQuery.Fields[0].AsString);
+            if(DMDB.SchemaSQLQuery.FieldByName('Key').AsString='PRI')then
+              IndexColumns.Add(DMDB.SchemaSQLQuery.FieldByName('Field').AsString);
 
             //check primary key change
             if(theColumn.PrimaryKey=True)and
-              (Not(DMDB.SchemaSQLQuery.Fields[3].AsString='PRI'))then
+              (Not(DMDB.SchemaSQLQuery.FieldByName('Key').AsString='PRI'))then
               NewPrimaryKey:=True;
 
-            if(theColumn.PrimaryKey=False)and(DMDB.SchemaSQLQuery.Fields[3].AsString='PRI')then
+            if(theColumn.PrimaryKey=False)and(DMDB.SchemaSQLQuery.FieldByName('Key').AsString='PRI')then
               NewPrimaryKey:=True;
 
 
 
-            //check not null
-            if(theColumn.NotNull<>(DMDB.SchemaSQLQuery.Fields[2].AsString<>'Y'))then
+            //check not null (MySQL 8 answers YES/NO, older servers Y/N; mysql-bug-catalog #10)
+            if(theColumn.NotNull<>
+              ((DMDB.SchemaSQLQuery.FieldByName('Null').AsString<>'Y')and
+               (DMDB.SchemaSQLQuery.FieldByName('Null').AsString<>'YES')))then
               ColumnChanged:=True;
 
             //theColumn.AutoInc:=False;
 
             //-------------------------------
             //Get Datatype name from DB
-            DatatypeName:=DMDB.SchemaSQLQuery.Fields[1].AsString;
+            DatatypeName:=DMDB.SchemaSQLQuery.FieldByName('Type').AsString;
             DatatypeParams:='';
             if(Pos('(', datatypename)>0)then
             begin
               DatatypeName:=Copy(DatatypeName, 1, Pos('(', DatatypeName)-1);
-              DatatypeParams:=Copy(DMDB.SchemaSQLQuery.Fields[1].AsString,
-                Pos('(', DMDB.SchemaSQLQuery.Fields[1].AsString),
-                Pos(')', DMDB.SchemaSQLQuery.Fields[1].AsString)-Pos('(', DMDB.SchemaSQLQuery.Fields[1].AsString)+1);
+              DatatypeParams:=Copy(DMDB.SchemaSQLQuery.FieldByName('Type').AsString,
+                Pos('(', DMDB.SchemaSQLQuery.FieldByName('Type').AsString),
+                Pos(')', DMDB.SchemaSQLQuery.FieldByName('Type').AsString)-Pos('(', DMDB.SchemaSQLQuery.FieldByName('Type').AsString)+1);
             end;
             //int unsigned -> just get int
             if(Pos(' ', datatypename)>0)then
@@ -2142,20 +2679,20 @@ begin
             if(theColumn.DefaultValue='')then
             begin
               //and the defval in db is not 0 and not ''
-              if((DMDB.SchemaSQLQuery.Fields[4].AsString<>'0')and(DMDB.SchemaSQLQuery.Fields[4].AsString<>'')and
-                (DMDB.SchemaSQLQuery.Fields[4].AsString<>'0000-00-00 00:00:00')and
-                (DMDB.SchemaSQLQuery.Fields[4].AsString<>'0000-00-00'))then
+              if((DMDB.SchemaSQLQuery.FieldByName('Default').AsString<>'0')and(DMDB.SchemaSQLQuery.FieldByName('Default').AsString<>'')and
+                (DMDB.SchemaSQLQuery.FieldByName('Default').AsString<>'0000-00-00 00:00:00')and
+                (DMDB.SchemaSQLQuery.FieldByName('Default').AsString<>'0000-00-00'))then
                 ColumnChanged:=True;
             end
             else
             //if there IS a default value
             begin
               //and it is not equal to the db defval
-              if(theColumn.DefaultValue<>DMDB.SchemaSQLQuery.Fields[4].AsString)then
+              if(theColumn.DefaultValue<>DMDB.SchemaSQLQuery.FieldByName('Default').AsString)then
               begin
                 if(Comparetext(DatatypeName, 'tinyint')=0)and
-                  (((DMDB.SchemaSQLQuery.Fields[4].AsString='0')and(Comparetext(theColumn.DefaultValue, 'False')=0))or
-                  ((DMDB.SchemaSQLQuery.Fields[4].AsString='1')and(Comparetext(theColumn.DefaultValue, 'True')=0)))then
+                  (((DMDB.SchemaSQLQuery.FieldByName('Default').AsString='0')and(Comparetext(theColumn.DefaultValue, 'False')=0))or
+                  ((DMDB.SchemaSQLQuery.FieldByName('Default').AsString='1')and(Comparetext(theColumn.DefaultValue, 'True')=0)))then
                   //Ignore BOOLEAN / tinyint: 0=False, 1=True
                 else
                 begin
@@ -2165,7 +2702,7 @@ begin
                     DefaultFormatSettings.DecimalSeparator:='.';
                     try
                       if(StrToFloat(theColumn.DefaultValue)<>
-                        StrToFloat(DMDB.SchemaSQLQuery.Fields[4].AsString))then
+                        StrToFloat(DMDB.SchemaSQLQuery.FieldByName('Default').AsString))then
                         ColumnChanged:=True;
 
                     except
@@ -2235,7 +2772,7 @@ begin
                 begin
                   //Check unsigned
                   if((Pos(UpperCase(theDatatype.Options[0]),
-                    UpperCase(DMDB.SchemaSQLQuery.Fields[1].AsString))>0)<>theColumn.OptionSelected[0])then
+                    UpperCase(DMDB.SchemaSQLQuery.FieldByName('Type').AsString))>0)<>theColumn.OptionSelected[0])then
                     ColumnChanged:=True;
 
                   //ShowMessage('Tolerate int without params: '+DatatypeName+DatatypeParams+'='+theModelDatatype.GetPhysicalTypeName)
@@ -2260,9 +2797,17 @@ begin
               //Check Options
               if(Assigned(theDatatype))then
                 for j:=0 to theDatatype.OptionCount-1 do
-                  if((Pos(UpperCase(theDatatype.Options[j]),
-                    UpperCase(DMDB.SchemaSQLQuery.Fields[1].AsString))>0)<>theColumn.OptionSelected[j])then
+                begin
+                  OptionInDB:=(Pos(UpperCase(theDatatype.Options[j]),
+                    UpperCase(DMDB.SchemaSQLQuery.FieldByName('Type').AsString))>0);
+                  //MySQL 8: BINARY on a string column shows up only as a
+                  //*_bin collation (mysql-bug-catalog #11)
+                  if(CompareText(theDatatype.Options[j], 'BINARY')=0)and
+                    (RightStr(LowerCase(DMDB.SchemaSQLQuery.FieldByName('Collation').AsString), 4)='_bin')then
+                    OptionInDB:=True;
+                  if(OptionInDB<>theColumn.OptionSelected[j])then
                     ColumnChanged:=True;
+                end;
             end
             else
               ColumnChanged:=True;
@@ -2270,14 +2815,14 @@ begin
             if(ColumnChanged)or(ChangeColumnName)then
             begin
               Log.Add(DMMain.GetTranslatedMessage('Modifying column %s from table %s', 158,
-                DMDB.SchemaSQLQuery.Fields[0].AsString, theTable.ObjName));
+                DMDB.SchemaSQLQuery.FieldByName('Field').AsString, theTable.ObjName));
               inc(ColumnModCounter);
 
               //New name
               if(ChangeColumnName)then
               begin
                 SQLStr.Add('ALTER TABLE '+theTable.ObjName+' CHANGE COLUMN '+
-                  theColumn.PrevColName+' '+theTable.GetSQLColumnCreateDefCode(ColNr,FieldOnGeneratorOrSequence));
+                  theColumn.PrevColName+' '+theTable.GetSQLColumnCreateDefCode(ColNr,FieldOnGeneratorOrSequence, False, False, 'My SQL', True));
 
                 DbColumns.Delete(DbColumns.IndexOf(theColumn.PrevColName));
                 DbColumns.Add(theColumn.ColName);
@@ -2285,7 +2830,7 @@ begin
               //Just change type
               else
                 SQLStr.Add('ALTER TABLE '+theTable.ObjName+' MODIFY COLUMN '+
-                  theTable.GetSQLColumnCreateDefCode(ColNr,FieldOnGeneratorOrSequence));
+                  theTable.GetSQLColumnCreateDefCode(ColNr,FieldOnGeneratorOrSequence, False, False, 'My SQL', True));
             end;
           end;
 
@@ -2315,10 +2860,10 @@ begin
 
             if(j=0)then
               SQLStr.Add('ALTER TABLE '+theTable.ObjName+' ADD COLUMN '+
-                theTable.GetSQLColumnCreateDefCode(j,FieldOnGeneratorOrSequence)+' FIRST')
+                theTable.GetSQLColumnCreateDefCode(j,FieldOnGeneratorOrSequence, False, False, 'My SQL', True)+' FIRST')
             else
               SQLStr.Add('ALTER TABLE '+theTable.ObjName+' ADD COLUMN '+
-                theTable.GetSQLColumnCreateDefCode(j,FieldOnGeneratorOrSequence)+' AFTER '+TEERColumn(theTable.Columns[j-1]).ColName);
+                theTable.GetSQLColumnCreateDefCode(j,FieldOnGeneratorOrSequence, False, False, 'My SQL', True)+' AFTER '+TEERColumn(theTable.Columns[j-1]).ColName);
           end;
         end;
 
@@ -2391,34 +2936,16 @@ begin
         //Execute the SQL2 Commandos (used for indices)
         //Ignore Errors
         for j:=0 to SQL2Str.Count-1 do
-        begin
-          DMDB.SchemaSQLQuery.SQL.Text:=SQL2Str[j];
-          try
-            DMDB.SchemaSQLQuery.ExecSQL(True);
-          except
-          end;
-        end;
-
+          ExecSyncStmt(SQL2Str[j], True);
 
         //Execute the SQL Commandos
         for j:=0 to SQLStr.Count-1 do
-        begin
-          DMDB.SchemaSQLQuery.SQL.Text:=SQLStr[j];
-          DMDB.SchemaSQLQuery.ExecSQL(True);
-        end;
+          ExecSyncStmt(SQLStr[j], False);
 
         //Execute the SQL2 Commandos, again (used for indices)
         //Ignore Errors
         for j:=0 to SQL2Str.Count-1 do
-        begin
-          DMDB.SchemaSQLQuery.SQL.Text:=SQL2Str[j];
-          try
-            DMDB.SchemaSQLQuery.ExecSQL(True);
-          except
-            {on x: Exception do
-              ShowMessage(x.Message);}
-          end;
-        end;
+          ExecSyncStmt(SQL2Str[j], True);
 
 
         //Indices
@@ -2619,10 +3146,7 @@ begin
 
         //Execute the SQL Commandos
         for j:=0 to SQLStr.Count-1 do
-        begin
-          DMDB.SchemaSQLQuery.SQL.Text:=SQLStr[j];
-          DMDB.SchemaSQLQuery.ExecSQL(True);
-        end;
+          ExecSyncStmt(SQLStr[j], False);
 
 
         // -----------------------------------------------
@@ -2630,6 +3154,16 @@ begin
         //Clear previous colname for DB-Sync
         for j:=0 to theTable.Columns.Count-1 do
           TEERColumn(theTable.Columns[j]).PrevColName:='';
+
+        except
+          on x: Exception do
+          begin
+            if(DMDB.SchemaSQLQuery.Active)then
+              DMDB.SchemaSQLQuery.Close;
+            SyncErrors.Add('Table '+theTable.ObjName+#13#10+x.Message);
+            Log.Add('  ERROR: '+x.Message);
+          end;
+        end;
       end;
 
       //---------------------
@@ -2729,10 +3263,44 @@ begin
       else
         Log.Add(DMMain.GetTranslatedMessage('1 Index updated.', 186));
 
+    //One summary of all failed statements instead of a message box each
+    if(SyncErrors.Count>0)then
+    begin
+      Log.Add('');
+      Log.Add(IntToStr(SyncErrors.Count)+' statement(s) FAILED:');
+      for i:=0 to SyncErrors.Count-1 do
+      begin
+        Log.Add(SyncErrors[i]);
+        Log.Add('');
+      end;
+    end;
+
     Log.Add('');
 
     EERModel.ModelHasChanged;
+
+    if(SyncErrors.Count>0)then
+    begin
+      //Short form: first line of the statement + the error message
+      s:='';
+      for i:=0 to SyncErrors.Count-1 do
+      begin
+        if(i>=5)then
+        begin
+          s:=s+'...'+#13#10;
+          break;
+        end;
+        j:=1;
+        while(j<=Length(SyncErrors[i]))and(Not(SyncErrors[i][j] in [#10, #13]))do
+          inc(j);
+        s:=s+Copy(SyncErrors[i], 1, j-1)+' ...'+#13#10+
+          Copy(SyncErrors[i], Pos(#13#10, SyncErrors[i])+2, Length(SyncErrors[i]))+#13#10#13#10;
+      end;
+      MessageDlg(IntToStr(SyncErrors.Count)+' statement(s) failed during the synchronisation '+
+        '(see the progress log for the full statements):'+#13#10#13#10+s, mtError, [mbOk], 0);
+    end;
   finally
+    SyncErrors.Free;
     DbTables.Free;
     ModelTables.Free;
     DbColumns.Free;
@@ -2960,16 +3528,6 @@ begin
       s:=Copy(s, 1, Pos('//', s));
 
   result := s;
-end;
-
-function TDMDBEER.GetColumnCountFromSQLCmd(cmd: string): integer;
-begin
-  GetColumnCountFromSQLCmd:=0;
-end;
-
-procedure TDMDBEER.GetColumnFromSQLCmd(cmd: string; i: integer; var col: TEERColumn);
-begin
-  col.ColName:='';
 end;
 
 

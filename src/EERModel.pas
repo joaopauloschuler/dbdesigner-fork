@@ -133,6 +133,11 @@ type
 
   TEERModel = class(TPanel)
   public
+    //Called after SetModelName (the owning TEERForm updates its captions;
+    //Main's QEventType_ModelNameChanged handler expects Parent=TEERForm,
+    //which is no longer true since the model sits in a TScrollBox)
+    OnModelNameChanged: TNotifyEvent;
+
     constructor Create(AOwner: TComponent); override;
     destructor Destroy; override;
 
@@ -350,6 +355,11 @@ type
 
     //Selection PaintBox
     SelectionRect: TPaintBox;
+
+    //Off-screen bitmap used only for text measurement. Its canvas always
+    //has a handle, unlike the invisible SelectionRect paintbox (LCL returns
+    //0 from TextExtent on a handle-less canvas).
+    TextMeasureBmp: TBitmap;
 
     MouseOverObj: TObject;
     MouseOverSubObj: Pointer;
@@ -645,6 +655,13 @@ type
 
     // get SQL table comment
     function getSqlTableComment(TableName, Comment, DatabaseType:string): string;
+
+    // SQLite: column is the single integer auto-increment PK column
+    // (emitted inline as INTEGER PRIMARY KEY AUTOINCREMENT)
+    function IsSQLiteAutoIncPK(ColIdx: integer): Boolean;
+
+    // SQLite: trim trailing blanks, at most one empty line in a row
+    function TidySQLiteScript(const Script: string): string;
 
     // get SQL column comment
     function getSqlColumnComment(TableName, ColumnName, Comment, DatabaseType:string): string;
@@ -1278,6 +1295,12 @@ begin
   SelectionRect.Font.Name:=DefModelFont;
   SelectionRect.Canvas.Font.Name:=DefModelFont;
 
+  // Create text measurement bitmap
+  TextMeasureBmp:=TBitmap.Create;
+  TextMeasureBmp.Width:=1;
+  TextMeasureBmp.Height:=1;
+  TextMeasureBmp.Canvas.Font.Name:=DefModelFont;
+
   // Create GridPaintBox PaintBox
   GridPaintBox:=TPaintBox.Create(self);
   GridPaintBox.Parent:=self;
@@ -1414,6 +1437,7 @@ begin
   Field_FKBmp.Free;
 
   SelectionRect.Free;
+  TextMeasureBmp.Free;
   GridPaintBox.Free;
 
   //Delete all Actions in List
@@ -1801,6 +1825,7 @@ begin
   //Set Font for SelectionRect
   SelectionRect.Canvas.Font.Name:=DefModelFont;
   SelectionRect.ParentFont:=False;
+  TextMeasureBmp.Canvas.Font.Name:=DefModelFont;
 
   //Set Font for all EER-Objects
   for i:=ComponentCount-1 downto 0 do
@@ -1901,8 +1926,9 @@ end;
 
 function TEERModel.GetTextExtent(s: string): TSize;
 var theSize: TSize;
-  theFontHeight: integer;
+  theFontHeight, lineHeight, i: integer;
   reCalc: double;
+  lines: TStringList;
 begin
   //Get Font Size
   theFontHeight:=Round(EvalZoomFac(12));
@@ -1915,8 +1941,36 @@ begin
     theFontHeight:=8;
   end;
 
-  SelectionRect.Canvas.Font.Height:=theFontHeight;
-  theSize:=SelectionRect.Canvas.TextExtent(s);
+  //Measure on the bitmap canvas: SelectionRect is an invisible TPaintBox
+  //whose canvas has no handle under LCL, so TextExtent would return 0.
+  //The font name is re-applied on every call because DefModelFont changes
+  //when a model is loaded (and the objects are created with that font).
+  TextMeasureBmp.Canvas.Font.Name:=DefModelFont;
+  TextMeasureBmp.Canvas.Font.Height:=theFontHeight;
+
+  //LCL's TextExtent does not understand line breaks (it returns the width
+  //of all lines added together and the height of one line), so measure
+  //line by line: width = widest line, height = line count * line height.
+  //A trailing line break (TStrings.Text always ends with one) is ignored.
+  theSize.cx:=0;
+  theSize.cy:=0;
+  lines:=TStringList.Create;
+  try
+    lines.Text:=s;
+    while(lines.Count>0)and(lines[lines.Count-1]='')do
+      lines.Delete(lines.Count-1);
+    if(lines.Count=0)then
+      lines.Add('');
+    lineHeight:=TextMeasureBmp.Canvas.TextHeight('Wg');
+    for i:=0 to lines.Count-1 do
+    begin
+      if(TextMeasureBmp.Canvas.TextWidth(lines[i])>theSize.cx)then
+        theSize.cx:=TextMeasureBmp.Canvas.TextWidth(lines[i]);
+    end;
+    theSize.cy:=lines.Count*lineHeight;
+  finally
+    lines.Free;
+  end;
 
   if(reCalc<>1)then
   begin
@@ -4362,7 +4416,7 @@ begin
     if(AddDataToExistingModel)then
       ModelHasChanged;
 
-    if(Application.MainForm.Enabled)then
+    if(Application.MainForm.CanFocus)then
       Application.MainForm.SetFocus;
   end;
 end;
@@ -5039,7 +5093,7 @@ begin
     if(AddDataToExistingModel)then
       ModelHasChanged;
 
-    if(Application.MainForm.Enabled)then
+    if(Application.MainForm.CanFocus)then
       Application.MainForm.SetFocus;
   end;
 {$ENDIF}
@@ -7122,6 +7176,9 @@ procedure TEERModel.SetModelName(name: string);
 begin
   ModelName:=name;
 
+  if(Assigned(OnModelNameChanged))then
+    OnModelNameChanged(self);
+
   //Post QEventType_ModelNameChanged Event
   if(Assigned(Application.MainForm))then
     sendCLXEvent(Application.MainForm.Handle, QCustomEvent_create(QEventType_ModelNameChanged, self));
@@ -8139,17 +8196,20 @@ procedure TEERTable.PaintCachedImg(theCanvas: TCanvas; xo: integer = 0; yo: inte
 var PK: Boolean;
   i, j, ypos: integer;
   txt: string;
-  width, height: integer;
+  // NB: not named width/height - inside "with theCanvas do" those would
+  // resolve to TCanvas.Width/Height (which LCL has, CLX did not); they are 0
+  // until the bitmap canvas has a handle, so the first paint drew nothing.
+  tblWidth, tblHeight: integer;
   theCol: TEERColumn;
   SepLineDrawed: Boolean;
 begin
   SepLineDrawed:=False;
 
-  width:=EvalZoomFac(Obj_W);
-  height:=EvalZoomFac(Obj_H);
+  tblWidth:=EvalZoomFac(Obj_W);
+  tblHeight:=EvalZoomFac(Obj_H);
 
-  {StrechedImg.Width:=width;
-  StrechedImg.Height:=height;
+  {StrechedImg.Width:=tblWidth;
+  StrechedImg.Height:=tblHeight;
 
   StrechedImg.Canvas.Font:=Font;}
 
@@ -8157,7 +8217,7 @@ begin
   begin
 {$IFDEF LINUX}
     //Brush.Color:=clWhite;
-    //FillRect(Rect(xo+1, yo+1, xo+width-1, yo+height-1));
+    //FillRect(Rect(xo+1, yo+1, xo+tblWidth-1, yo+tblHeight-1));
 {$ENDIF}
 
     if(Not(DMEER.DisableTextOutput))then
@@ -8165,28 +8225,28 @@ begin
       if(Not(IsLinkedObject))then
       begin
         //Draw Header
-        StretchDraw(Rect(xo+1, yo+0, xo+width-3, yo+EvalZoomFac(18)),
+        StretchDraw(Rect(xo+1, yo+0, xo+tblWidth-3, yo+EvalZoomFac(18)),
           ParentEERModel.TblHeaderBmp);
 
         //Draw Header Right Part
         StretchDraw(
-          Rect(xo+width-3-EvalZoomFac(ParentEERModel.TblHeaderRightBmp.Width),
+          Rect(xo+tblWidth-3-EvalZoomFac(ParentEERModel.TblHeaderRightBmp.Width),
             yo+0,
-            xo+width-3,
+            xo+tblWidth-3,
             yo+EvalZoomFac(18)),
             ParentEERModel.TblHeaderRightBmp);
       end
       else
       begin
         //Draw Linked Header
-        StretchDraw(Rect(xo+1, yo+0, xo+width-3, yo+EvalZoomFac(18)),
+        StretchDraw(Rect(xo+1, yo+0, xo+tblWidth-3, yo+EvalZoomFac(18)),
           ParentEERModel.TblHeaderLinkedBmp);
 
         //Draw Linked Header Right Part
         StretchDraw(
-          Rect(xo+width-3-EvalZoomFac(ParentEERModel.TblHeaderRightBmp.Width),
+          Rect(xo+tblWidth-3-EvalZoomFac(ParentEERModel.TblHeaderRightBmp.Width),
             yo+0,
-            xo+width-3,
+            xo+tblWidth-3,
             yo+EvalZoomFac(18)),
             ParentEERModel.TblHeaderRightLinkedBmp);
       end;
@@ -8197,14 +8257,14 @@ begin
 
       if(Collapsed)then
         Polygon([
-          Point(xo+width-3-EvalZoomFac(8), yo+EvalZoomFac(5)),
-          Point(xo+width-3-EvalZoomFac(4), yo+EvalZoomFac(9)),
-          Point(xo+width-3-EvalZoomFac(8), yo+EvalZoomFac(13))])
+          Point(xo+tblWidth-3-EvalZoomFac(8), yo+EvalZoomFac(5)),
+          Point(xo+tblWidth-3-EvalZoomFac(4), yo+EvalZoomFac(9)),
+          Point(xo+tblWidth-3-EvalZoomFac(8), yo+EvalZoomFac(13))])
       else
         Polygon([
-          Point(xo+width-3-EvalZoomFac(10), yo+EvalZoomFac(8)),
-          Point(xo+width-3-EvalZoomFac(7), yo+EvalZoomFac(12)),
-          Point(xo+width-3-EvalZoomFac(3), yo+EvalZoomFac(8))]);
+          Point(xo+tblWidth-3-EvalZoomFac(10), yo+EvalZoomFac(8)),
+          Point(xo+tblWidth-3-EvalZoomFac(7), yo+EvalZoomFac(12)),
+          Point(xo+tblWidth-3-EvalZoomFac(3), yo+EvalZoomFac(8))]);
 
       Pen.Style:=psSolid;
     end;
@@ -8214,7 +8274,7 @@ begin
     Brush.Color:=clWhite;
 
     //FillBG
-    FillRect(Rect(xo+1, yo+EvalZoomFac(18)+1, xo+width-3, yo+height-3));
+    FillRect(Rect(xo+1, yo+EvalZoomFac(18)+1, xo+tblWidth-3, yo+tblHeight-3));
 
     //Draw Table Name
     if(Not(DMEER.DisableTextOutput))then
@@ -8276,7 +8336,7 @@ begin
             else
               Pen.Color:=clBtnShadow;
             MoveTo(xo+1, yo+EvalZoomFac(20+17*ypos-1));
-            LineTo(xo+width-4, yo+EvalZoomFac(20+17*ypos-1));
+            LineTo(xo+tblWidth-4, yo+EvalZoomFac(20+17*ypos-1));
 
             Pen.Color:=clBtnShadow;
           end;
@@ -8295,8 +8355,10 @@ begin
 
         //Write Field Name
         if(Not(DMEER.DisableTextOutput))then
+        begin
           Brush.Style := bsClear;
           TextOut(xo+EvalZoomFac(4+16), yo+EvalZoomFac(20+17*ypos), txt);
+        end;
 
         //Store PK info for comparison with next column
         PK:=TEERColumn(Columns[i]).PrimaryKey;
@@ -8318,7 +8380,7 @@ begin
             else
               Pen.Color:=clBtnShadow;
             MoveTo(xo+1, yo+EvalZoomFac(20+17*ypos-1));
-            LineTo(xo+width-4, yo+EvalZoomFac(20+17*ypos-1));
+            LineTo(xo+tblWidth-4, yo+EvalZoomFac(20+17*ypos-1));
 
             Pen.Color:=clBtnShadow;
 
@@ -8342,8 +8404,10 @@ begin
           Font.Style:=[fsItalic];
           Font.Color:=$00222222;
           if(Not(DMEER.DisableTextOutput))then
+          begin
             Brush.Style := bsClear;
             TextOut(xo+EvalZoomFac(4+16), yo+EvalZoomFac(20+17*ypos), TEERIndex(Indices[i]).IndexName);
+          end;
           Font.Style:=[];
           inc(ypos);
 
@@ -8371,8 +8435,10 @@ begin
                   ParentEERModel.FieldBmp);
 
               if(Not(DMEER.DisableTextOutput))then
+              begin
                 Brush.Style := bsClear;
                 TextOut(xo+EvalZoomFac(4+16+16), yo+EvalZoomFac(20+17*ypos), theCol.ColName);
+              end;
             end;
 
             inc(ypos);
@@ -8393,15 +8459,15 @@ begin
       Pen.Color:=$00C66931;
 
     MoveTo(xo+0, yo+0);
-    LineTo(xo+0, yo+height-3);
-    LineTo(xo+width-3, yo+height-3);
-    LineTo(xo+width-3, yo+0);
+    LineTo(xo+0, yo+tblHeight-3);
+    LineTo(xo+tblWidth-3, yo+tblHeight-3);
+    LineTo(xo+tblWidth-3, yo+0);
     LineTo(xo+0, yo+0);
     Pen.Style:=psSolid;
 
     //HeaderLine
     MoveTo(xo+0, yo+EvalZoomFac(18));
-    LineTo(xo+width-3, yo+EvalZoomFac(18));
+    LineTo(xo+tblWidth-3, yo+EvalZoomFac(18));
 
     //Draw Shadow
     if(Not(DMEER.DisableTextOutput))then
@@ -8411,30 +8477,30 @@ begin
         Pen.Color:=$00363636
       else
         Pen.Color:=$00707070;
-      MoveTo(xo+width-2, yo);
-      LineTo(xo+width-2, yo+height-2);
-      LineTo(xo, yo+height-2);
+      MoveTo(xo+tblWidth-2, yo);
+      LineTo(xo+tblWidth-2, yo+tblHeight-2);
+      LineTo(xo, yo+tblHeight-2);
 
       if(IsLinkedObject)then
         Pen.Color:=$00B3B3B3
       else
         Pen.Color:=$00D0D0D0;
-      MoveTo(xo+width-1, yo);
-      LineTo(xo+width-1, yo+height-1);
-      LineTo(xo, yo+height-1);
+      MoveTo(xo+tblWidth-1, yo);
+      LineTo(xo+tblWidth-1, yo+tblHeight-1);
+      LineTo(xo, yo+tblHeight-1);
     end;
   end;
 end;
 
 procedure TEERTable.PaintObj2Canvas(theCanvas: TCanvas; xo, yo: integer);
-var width, height: integer;
+var tblWidth, tblHeight: integer;
 begin
   if(ParentEERModel.DisableModelRefresh)then
     Exit;
 
   //ParentEERModel.ClearMouseOverObj;
-  width:=EvalZoomFac(Obj_W);
-  height:=EvalZoomFac(Obj_H);
+  tblWidth:=EvalZoomFac(Obj_W);
+  tblHeight:=EvalZoomFac(Obj_H);
 
   //If the Table is NOT drawn to a special Canvas, use cached image
   if(Not(ParentEERModel.PaintingToSpecialCanvas))then
@@ -8444,8 +8510,8 @@ begin
     begin
       RefreshStrechedImg:=False;
 
-      StrechedImg.Width:=width;
-      StrechedImg.Height:=height;
+      StrechedImg.Width:=tblWidth;
+      StrechedImg.Height:=tblHeight;
 
       StrechedImg.Canvas.Font:=Font;
 
@@ -8470,17 +8536,17 @@ begin
     begin
       Pen.Color:=clWhite;
       MoveTo(xo+0, yo+0);
-      LineTo(xo+0, yo+height-3);
-      LineTo(xo+width-3, yo+height-3);
-      LineTo(xo+width-3, yo+0);
+      LineTo(xo+0, yo+tblHeight-3);
+      LineTo(xo+tblWidth-3, yo+tblHeight-3);
+      LineTo(xo+tblWidth-3, yo+0);
       LineTo(xo+0, yo+0);
 
       Pen.Color:=clBlack;
       Pen.Style:=psDot;
       MoveTo(xo+0, yo+0);
-      LineTo(xo+0, yo+height-3);
-      LineTo(xo+width-3, yo+height-3);
-      LineTo(xo+width-3, yo+0);
+      LineTo(xo+0, yo+tblHeight-3);
+      LineTo(xo+tblWidth-3, yo+tblHeight-3);
+      LineTo(xo+tblWidth-3, yo+0);
       LineTo(xo+0, yo+0);
 
       Pen.Style:=psSolid;
@@ -8902,6 +8968,7 @@ var s, s1: string;
   theRegion: TEERRegion;
   theRel: TEERRel;
   theTableType: integer;
+  EngineName: string;
   isTemporary: Boolean;
   relCounter, relSum: integer;
   DBQuote: string;
@@ -9017,6 +9084,15 @@ begin
     if(Not(CreateIndices))and(TEERIndex(Indices[i]).IndexName<>'PRIMARY')then
       continue;
 
+    //SQLite: the PRIMARY KEY of an AUTOINCREMENT column is already inline
+    if(DatabaseType = 'SQLite')and(TEERIndex(Indices[i]).IndexKind=ik_PRIMARY)and
+      (TEERIndex(Indices[i]).Columns.Count=1)then
+    begin
+      j:=Columns.IndexOf(GetColumnByID(StrToIntDef(TEERIndex(Indices[i]).Columns[0], -1)));
+      if(IsSQLiteAutoIncPK(j))then
+        continue;
+    end;
+
     indexPortable := PortableIndices and (TEERIndex(Indices[i]).IndexKind <> ik_PRIMARY);
     sIndex := '';
 
@@ -9030,7 +9106,8 @@ begin
       indexOnTable := '';
     end;
 
-    s:=s+'  ';
+    if(DatabaseType <> 'SQLite')then
+      s:=s+'  ';
     case TEERIndex(Indices[i]).IndexKind of
       ik_PRIMARY:
         sIndex:=sIndex+'PRIMARY KEY(';
@@ -9046,7 +9123,9 @@ begin
     begin
       sIndex:=sIndex+DBQuote+TEERColumn(GetColumnByID(StrToInt(TEERIndex(Indices[i]).Columns[j]))).ColName+DBQuote;
 
-      if(TEERIndex(Indices[i]).ColumnParams.Values[TEERIndex(Indices[i]).Columns[j]]<>'')then
+      //Index prefix length column(n) is MySQL syntax
+      if(DatabaseType = 'My SQL')and
+        (TEERIndex(Indices[i]).ColumnParams.Values[TEERIndex(Indices[i]).Columns[j]]<>'')then
         sIndex:=sIndex+'('+TEERIndex(Indices[i]).ColumnParams.Values[TEERIndex(Indices[i]).Columns[j]]+')';
 
       if(j<TEERIndex(Indices[i]).Columns.Count-1)then
@@ -9068,6 +9147,8 @@ begin
     begin
       s:=s+',';
       s:=s+#13#10;
+      if(DatabaseType = 'SQLite')then
+        s:=s+'  ';
       s:=s + sIndex;
     end;
   end;
@@ -9097,6 +9178,9 @@ begin
         //s:=s+'  INDEX '+theRel.ObjName+'('+s1+'),'+#13#10; //Add this for INNODB
         if(DMEER.DoNotUseRelNameInRefDef)then
           s:=s+'  FOREIGN KEY('+s1+')'+#13#10
+        else if(DatabaseType = 'SQLite')then
+          //FOREIGN KEY name(...) is MySQL syntax; SQLite names it via CONSTRAINT
+          s:=s+'  CONSTRAINT '+DBQuote+theRel.ObjName+DBQuote+' FOREIGN KEY('+s1+')'+#13#10
         else
           s:=s+'  FOREIGN KEY '+DBQuote+theRel.ObjName+DBQuote+'('+s1+')'+#13#10;
 
@@ -9144,18 +9228,23 @@ begin
 
   s:=s+')';
 
-  //TableType (MYISAM is standard)
+  //TableType (MYISAM is standard). MySQL 5.5 dropped the old TYPE= keyword,
+  //ENGINE= is accepted since 4.0.18. HEAP is the old name of MEMORY; BDB and
+  //ISAM no longer exist (BDB -> InnoDB as the transactional engine, ISAM ->
+  //the default MyISAM, i.e. no clause).
   if(theTableType>0) and (DatabaseType = 'My SQL')then
   begin
-    s:=s+#13#10+'TYPE=';
-
     case theTableType of
-      1: s:=s+'InnoDB';
-      2: s:=s+'HEAP';
-      3: s:=s+'BDB';
-      4: s:=s+'ISAM';
-      5: s:=s+'MERGE';
+      1: EngineName:='InnoDB';
+      2: EngineName:='MEMORY';
+      3: EngineName:='InnoDB';
+      5: EngineName:='MERGE';
+    else
+      EngineName:='';
     end;
+
+    if(EngineName<>'')then
+      s:=s+#13#10+'ENGINE='+EngineName;
   end;
 
   LocalComment := trim(Comments);
@@ -9263,6 +9352,9 @@ begin
 
   PkColumns.Free;
 
+  if(DatabaseType = 'SQLite')then
+    s:=TidySQLiteScript(s);
+
   GetSQLCreateCode:=s;
 end;
 
@@ -9298,12 +9390,18 @@ begin
   begin
     //Datatype
     theDatatype:=ParentEERModel.GetDataType(TEERColumn(Columns[i]).idDatatype);
-    //Datatype name (INTEGER)
-    s:=s+theDatatype.GetPhysicalTypeName;
+    if(DatabaseType = 'SQLite')and(IsSQLiteAutoIncPK(i))then
+      //SQLite: AUTOINCREMENT needs exactly INTEGER PRIMARY KEY, no params
+      s:=s+'INTEGER'
+    else
+    begin
+      //Datatype name (INTEGER)
+      s:=s+theDatatype.GetPhysicalTypeName;
 
-    //Datatype parameters (10, 2)
-    if(TEERColumn(Columns[i]).DatatypeParams<>'')then
-      s:=s+TEERColumn(Columns[i]).DatatypeParams;
+      //Datatype parameters (10, 2)
+      if(TEERColumn(Columns[i]).DatatypeParams<>'')then
+        s:=s+TEERColumn(Columns[i]).DatatypeParams;
+    end;
     s:=s+' ';
   end;
 
@@ -9358,6 +9456,14 @@ begin
       s:=s+' IDENTITY ';
       TableFieldGen := '';
     end else
+    if DatabaseType = 'SQLite' then
+    begin
+      //Only a single-column INTEGER PRIMARY KEY can auto-increment; the
+      //PRIMARY KEY table constraint is then skipped in GetSQLCreateCode
+      if(IsSQLiteAutoIncPK(i))then
+        s:=s+' PRIMARY KEY AUTOINCREMENT';
+      TableFieldGen := '';
+    end else
     begin
       TableFieldGen := TEERColumn(Columns[i]).ColName;
     end;
@@ -9374,6 +9480,14 @@ begin
     begin
       s := s+' COMMENT '''+ColComment+''' ';
     end;
+  end;
+
+  //SQLite: single blanks, no trailing blanks
+  if DatabaseType = 'SQLite' then
+  begin
+    while(Pos('  ', s)>0)do
+      s:=StringReplace(s, '  ', ' ', [rfReplaceAll]);
+    s:=TrimRight(s);
   end;
 
   GetSQLColumnCreateDefCode:=s;
@@ -11224,6 +11338,7 @@ begin
 end;
 
 procedure TEERRel.PaintObj2Canvas_RelCaption(theCanvas: TCanvas; xo, yo: integer);
+var capW, capH: integer;
 begin
   if(ParentEERModel.DisableModelRefresh)then
     Exit;
@@ -11237,6 +11352,11 @@ begin
   if(Not(DMEER.DisplayRelationNames))then
     Exit;
 
+  // Take the caption size from the paintbox itself: inside "with theCanvas do"
+  // width/height would resolve to TCanvas.Width/Height under LCL.
+  capW:=RelCaption.Width;
+  capH:=RelCaption.Height;
+
   with RelCaption do
   begin
     with theCanvas do
@@ -11246,13 +11366,13 @@ begin
       else
         Pen.Color:=clSilver;
       Brush.Color:=clWhite;
-      Rectangle(Rect(xo+0, yo+0, xo+width, yo+height));
+      Rectangle(Rect(xo+0, yo+0, xo+capW, yo+capH));
       Pen.Color:=clSilver;
 
       if(Not(DMEER.DisableTextOutput))then
       begin
         Font.Height:=ParentEERModel.GetFontHeight;
-        TextRect(Rect(xo+1, yo+1, xo+width-2, yo+height-2),
+        TextRect(Rect(xo+1, yo+1, xo+capW-2, yo+capH-2),
           xo+1+EvalZoomFac(3), yo+1, ObjName);
       end;
 
@@ -11261,17 +11381,17 @@ begin
       begin
         Pen.Color:=clWhite;
         MoveTo(xo+0, yo+0);
-        LineTo(xo+0, yo+height-1);
-        LineTo(xo+width-1, yo+height-1);
-        LineTo(xo+width-1, yo+0);
+        LineTo(xo+0, yo+capH-1);
+        LineTo(xo+capW-1, yo+capH-1);
+        LineTo(xo+capW-1, yo+0);
         LineTo(xo+0, yo+0);
 
         Pen.Color:=clBlack;
         Pen.Style:=psDot;
         MoveTo(xo+0, yo+0);
-        LineTo(xo+0, yo+height-1);
-        LineTo(xo+width-1, yo+height-1);
-        LineTo(xo+width-1, yo+0);
+        LineTo(xo+0, yo+capH-1);
+        LineTo(xo+capW-1, yo+capH-1);
+        LineTo(xo+capW-1, yo+0);
         LineTo(xo+0, yo+0);
 
         Pen.Style:=psSolid;
@@ -11317,6 +11437,7 @@ begin
 end;
 
 procedure TEERRel.PaintObj2Canvas_RelStartInterval(theCanvas: TCanvas; xo, yo: integer);
+var capW, capH: integer;
 begin
   if(ParentEERModel.DisableModelRefresh)then
     Exit;
@@ -11327,6 +11448,11 @@ begin
   if((Not(DMEER.Notation=noStandard2))or(RelKind=rk_11Sub))and
     (Not(Splitted))then
     Exit;
+
+  // See PaintObj2Canvas_RelCaption: width/height would resolve to
+  // TCanvas.Width/Height inside "with theCanvas do" under LCL.
+  capW:=RelStartInterval.Width;
+  capH:=RelStartInterval.Height;
 
   with RelStartInterval do
   begin
@@ -11337,12 +11463,12 @@ begin
       else
         Pen.Color:=clSilver;
       Brush.Color:=clWhite;
-      Rectangle(Rect(xo+0, yo+0, xo+width, yo+height));
+      Rectangle(Rect(xo+0, yo+0, xo+capW, yo+capH));
 
       if(Not(DMEER.DisableTextOutput))then
       begin
         Font.Height:=ParentEERModel.GetFontHeight;
-        TextRect(Rect(xo+1, yo+1, xo+width-2, yo+height-2),
+        TextRect(Rect(xo+1, yo+1, xo+capW-2, yo+capH-2),
           xo+1+EvalZoomFac(3), yo+1, GetIntervalTxt(True));
       end;
 
@@ -11351,17 +11477,17 @@ begin
       begin
         Pen.Color:=clWhite;
         MoveTo(xo+0, yo+0);
-        LineTo(xo+0, yo+height-1);
-        LineTo(xo+width-1, yo+height-1);
-        LineTo(xo+width-1, yo+0);
+        LineTo(xo+0, yo+capH-1);
+        LineTo(xo+capW-1, yo+capH-1);
+        LineTo(xo+capW-1, yo+0);
         LineTo(xo+0, yo+0);
 
         Pen.Color:=clBlack;
         Pen.Style:=psDot;
         MoveTo(xo+0, yo+0);
-        LineTo(xo+0, yo+height-1);
-        LineTo(xo+width-1, yo+height-1);
-        LineTo(xo+width-1, yo+0);
+        LineTo(xo+0, yo+capH-1);
+        LineTo(xo+capW-1, yo+capH-1);
+        LineTo(xo+capW-1, yo+0);
         LineTo(xo+0, yo+0);
 
         Pen.Style:=psSolid;
@@ -11371,6 +11497,7 @@ begin
 end;
 
 procedure TEERRel.PaintObj2Canvas_RelEndInterval(theCanvas: TCanvas; xo, yo: integer);
+var capW, capH: integer;
 begin
   if(ParentEERModel.DisableModelRefresh)then
     Exit;
@@ -11382,6 +11509,11 @@ begin
     (Not(Splitted))then
     Exit;
 
+  // See PaintObj2Canvas_RelCaption: width/height would resolve to
+  // TCanvas.Width/Height inside "with theCanvas do" under LCL.
+  capW:=RelEndInterval.Width;
+  capH:=RelEndInterval.Height;
+
   with RelEndInterval do
   begin
     with theCanvas do
@@ -11391,12 +11523,12 @@ begin
       else
         Pen.Color:=clSilver;
       Brush.Color:=clWhite;
-      Rectangle(Rect(xo+0, yo+0, xo+width, yo+height));
+      Rectangle(Rect(xo+0, yo+0, xo+capW, yo+capH));
 
       if(Not(DMEER.DisableTextOutput))then
       begin
         Font.Height:=ParentEERModel.GetFontHeight;
-        TextRect(Rect(xo+1, yo+1, xo+width-2, yo+height-2),
+        TextRect(Rect(xo+1, yo+1, xo+capW-2, yo+capH-2),
           xo+1+EvalZoomFac(3), yo+1, GetIntervalTxt(False));
       end;
 
@@ -11405,17 +11537,17 @@ begin
       begin
         Pen.Color:=clWhite;
         MoveTo(xo+0, yo+0);
-        LineTo(xo+0, yo+height-1);
-        LineTo(xo+width-1, yo+height-1);
-        LineTo(xo+width-1, yo+0);
+        LineTo(xo+0, yo+capH-1);
+        LineTo(xo+capW-1, yo+capH-1);
+        LineTo(xo+capW-1, yo+0);
         LineTo(xo+0, yo+0);
 
         Pen.Color:=clBlack;
         Pen.Style:=psDot;
         MoveTo(xo+0, yo+0);
-        LineTo(xo+0, yo+height-1);
-        LineTo(xo+width-1, yo+height-1);
-        LineTo(xo+width-1, yo+0);
+        LineTo(xo+0, yo+capH-1);
+        LineTo(xo+capW-1, yo+capH-1);
+        LineTo(xo+capW-1, yo+0);
         LineTo(xo+0, yo+0);
 
         Pen.Style:=psSolid;
@@ -11847,8 +11979,11 @@ begin
   //Calc Lable Size
   theSize:=ParentEERModel.GetTextExtent(ObjName);
 
-  RelCaption.Width:=EvalZoomFac(ReEvalZoomFac(theSize.cx)+6);
-  RelCaption.Height:=EvalZoomFac(ReEvalZoomFac(theSize.cy)+4);
+  //theSize is already in pixels; the old EvalZoomFac(ReEvalZoomFac(..))
+  //round trip lost pixels at zoom factors other than 100% and the caption
+  //text was clipped by TextRect (right edge at Width-2, text at 1+3px).
+  RelCaption.Width:=theSize.cx+EvalZoomFac(6)+2;
+  RelCaption.Height:=theSize.cy+EvalZoomFac(4);
 
   //Set Middle PaintBox Positions
   if(relDirection=re_right)or(relDirection=re_left)then
@@ -11922,12 +12057,12 @@ begin
   //Interval Notation and Splitted
 
   theSize:=ParentEERModel.GetTextExtent(GetIntervalTxt(True));
-  RelStartInterval.Width:=EvalZoomFac(ReEvalZoomFac(theSize.cx)+8);
-  RelStartInterval.Height:=EvalZoomFac(ReEvalZoomFac(theSize.cy)+4);
+  RelStartInterval.Width:=theSize.cx+EvalZoomFac(8)+2;
+  RelStartInterval.Height:=theSize.cy+EvalZoomFac(4);
 
   theSize:=ParentEERModel.GetTextExtent(GetIntervalTxt(False));
-  RelEndInterval.Width:=EvalZoomFac(ReEvalZoomFac(theSize.cx)+8);
-  RelEndInterval.Height:=EvalZoomFac(ReEvalZoomFac(theSize.cy)+4);
+  RelEndInterval.Width:=theSize.cx+EvalZoomFac(8)+2;
+  RelEndInterval.Height:=theSize.cy+EvalZoomFac(4);
 
   if(relDirection=re_right)then
   begin
@@ -12348,13 +12483,15 @@ begin
 end;
 
 procedure TEERNote.PaintObj2Canvas(theCanvas: TCanvas; xo, yo: integer);
-var width, height: integer;
+// NB: not named width/height - inside "with theCanvas do" those would
+// resolve to TCanvas.Width/Height under LCL (CLX had no such properties).
+var objW, objH, lineHeight, i: integer;
 begin
   if(ParentEERModel.DisableModelRefresh)then
     Exit;
     
-  width:=EvalZoomFac(Obj_W);
-  height:=EvalZoomFac(Obj_H);
+  objW:=EvalZoomFac(Obj_W);
+  objH:=EvalZoomFac(Obj_H);
 
   with theCanvas do
   begin
@@ -12364,13 +12501,17 @@ begin
     else
       Pen.Color:=clSilver;
     Brush.Color:=clWhite;
-    Rectangle(Rect(xo+0, yo+0, xo+width, yo+height));
+    Rectangle(Rect(xo+0, yo+0, xo+objW, yo+objH));
 
     if(Not(DMEER.DisableTextOutput))then
     begin
       Font.Height:=ParentEERModel.GetFontHeight;
-      TextRect(Rect(xo+1, yo+1, xo+width-2, yo+height-2),
-        xo+1+EvalZoomFac(3), yo+1, NoteText.Text);
+      //LCL's TextRect draws a single line only, so paint the note line by
+      //line (each line clipped to the note box).
+      lineHeight:=TextHeight('Wg');
+      for i:=0 to NoteText.Count-1 do
+        TextRect(Rect(xo+1, yo+1, xo+objW-2, yo+objH-2),
+          xo+1+EvalZoomFac(3), yo+1+i*lineHeight, NoteText[i]);
     end;
 
     // Paint selection
@@ -12378,17 +12519,17 @@ begin
     begin
       Pen.Color:=clWhite;
       MoveTo(xo+0, yo+0);
-      LineTo(xo+0, yo+height-1);
-      LineTo(xo+width-1, yo+height-1);
-      LineTo(xo+width-1, yo+0);
+      LineTo(xo+0, yo+objH-1);
+      LineTo(xo+objW-1, yo+objH-1);
+      LineTo(xo+objW-1, yo+0);
       LineTo(xo+0, yo+0);
 
       Pen.Color:=clBlack;
       Pen.Style:=psDot;
       MoveTo(xo+0, yo+0);
-      LineTo(xo+0, yo+height-1);
-      LineTo(xo+width-1, yo+height-1);
-      LineTo(xo+width-1, yo+0);
+      LineTo(xo+0, yo+objH-1);
+      LineTo(xo+objW-1, yo+objH-1);
+      LineTo(xo+objW-1, yo+0);
       LineTo(xo+0, yo+0);
 
       Pen.Style:=psSolid;
@@ -12405,8 +12546,13 @@ procedure TEERNote.RefreshObj;
 var theSize: TSize;
 begin
   theSize:=ParentEERModel.GetTextExtent(NoteText.Text);
-  Obj_W:=ReEvalZoomFac(theSize.cx)+6;
-  Obj_H:=ReEvalZoomFac(theSize.cy)+4-14;
+  //A few extra pixels are added before converting to model units, because
+  //the pixel->model->pixel round trip rounds and the text is clipped by
+  //TextRect at Width-2 (see PaintObj2Canvas).
+  Obj_W:=ReEvalZoomFac(theSize.cx+4)+6;
+  //GetTextExtent now ignores the trailing line break of NoteText.Text, so
+  //the old "-14" (one extra CLX text line) is no longer subtracted.
+  Obj_H:=ReEvalZoomFac(theSize.cy+2)+4;
 
   //Only reposition Obj when the model is not drawn to another canvas
   if(Not(ParentEERModel.PaintingToSpecialCanvas))then
@@ -13005,14 +13151,16 @@ begin
 end;
 
 procedure TEERRegion.PaintObj2Canvas(theCanvas: TCanvas; xo, yo: integer);
-var width, height: integer;
+// NB: not named width/height - inside "with theCanvas do" those would
+// resolve to TCanvas.Width/Height under LCL (CLX had no such properties).
+var objW, objH: integer;
   s: string;
 begin
   if(ParentEERModel.DisableModelRefresh)then
     Exit;
 
-  width:=EvalZoomFac(Obj_W);
-  height:=EvalZoomFac(Obj_H);
+  objW:=EvalZoomFac(Obj_W);
+  objH:=EvalZoomFac(Obj_H);
 
   with theCanvas do
   begin
@@ -13030,7 +13178,7 @@ begin
       Brush.Color:=$00DDE1FF;
     end;
 
-    Rectangle(Rect(xo+0, yo+0, xo+width, yo+height));
+    Rectangle(Rect(xo+0, yo+0, xo+objW, yo+objH));
 
     //Draw Region Name
     if(Not(DMEER.DisableTextOutput))then
@@ -13046,17 +13194,17 @@ begin
     begin
       Pen.Color:=clWhite;
       MoveTo(xo+0, yo+0);
-      LineTo(xo+0, yo+height-1);
-      LineTo(xo+width-1, yo+height-1);
-      LineTo(xo+width-1, yo+0);
+      LineTo(xo+0, yo+objH-1);
+      LineTo(xo+objW-1, yo+objH-1);
+      LineTo(xo+objW-1, yo+0);
       LineTo(xo+0, yo+0);
 
       Pen.Color:=clBlack;
       Pen.Style:=psDot;
       MoveTo(xo+0, yo+0);
-      LineTo(xo+0, yo+height-1);
-      LineTo(xo+width-1, yo+height-1);
-      LineTo(xo+width-1, yo+0);
+      LineTo(xo+0, yo+objH-1);
+      LineTo(xo+objW-1, yo+objH-1);
+      LineTo(xo+objW-1, yo+0);
       LineTo(xo+0, yo+0);
 
       Pen.Style:=psSolid;
@@ -13429,13 +13577,15 @@ begin
 end;
 
 procedure TEERImage.PaintObj2Canvas(theCanvas: TCanvas; xo, yo: integer);
-var width, height: integer;
+// NB: not named width/height - inside "with theCanvas do" those would
+// resolve to TCanvas.Width/Height under LCL (CLX had no such properties).
+var objW, objH: integer;
 begin
   if(ParentEERModel.DisableModelRefresh)then
     Exit;
 
-  width:=EvalZoomFac(Obj_W);
-  height:=EvalZoomFac(Obj_H);
+  objW:=EvalZoomFac(Obj_W);
+  objH:=EvalZoomFac(Obj_H);
 
   with theCanvas do
   begin
@@ -13443,7 +13593,7 @@ begin
     begin
       Pen.Style:=psClear;
       Brush.Color:=clWhite;
-      Rectangle(Rect(xo+0, yo+0, xo+width-1, yo+height-1));
+      Rectangle(Rect(xo+0, yo+0, xo+objW-1, yo+objH-1));
 
       if(StrechImg)then
         Draw(xo+0, yo+0, StrechedImg)
@@ -13455,12 +13605,12 @@ begin
       Pen.Style:=psSolid;
       Pen.Color:=clGray;
       Brush.Color:=clWhite;
-      Rectangle(Rect(xo+0, yo+0, xo+width-1, yo+height-1));
+      Rectangle(Rect(xo+0, yo+0, xo+objW-1, yo+objH-1));
 
       MoveTo(xo+0, yo+0);
-      LineTo(xo+width-1, yo+height-1);
-      MoveTo(xo+width-1, yo+0);
-      LineTo(xo+0, yo+height-1);
+      LineTo(xo+objW-1, yo+objH-1);
+      MoveTo(xo+objW-1, yo+0);
+      LineTo(xo+0, yo+objH-1);
     end;
 
     // Paint selection
@@ -13468,17 +13618,17 @@ begin
     begin
       Pen.Color:=clWhite;
       MoveTo(xo+0, yo+0);
-      LineTo(xo+0, yo+height-1);
-      LineTo(xo+width-1, yo+height-1);
-      LineTo(xo+width-1, yo+0);
+      LineTo(xo+0, yo+objH-1);
+      LineTo(xo+objW-1, yo+objH-1);
+      LineTo(xo+objW-1, yo+0);
       LineTo(xo+0, yo+0);
 
       Pen.Color:=clBlack;
       Pen.Style:=psDot;
       MoveTo(xo+0, yo+0);
-      LineTo(xo+0, yo+height-1);
-      LineTo(xo+width-1, yo+height-1);
-      LineTo(xo+width-1, yo+0);
+      LineTo(xo+0, yo+objH-1);
+      LineTo(xo+objW-1, yo+objH-1);
+      LineTo(xo+objW-1, yo+0);
       LineTo(xo+0, yo+0);
 
       Pen.Style:=psSolid;
@@ -14096,6 +14246,78 @@ begin
   inherited Create;
 end;
 
+function TEERTable.IsSQLiteAutoIncPK(ColIdx: integer): Boolean;
+var i: integer;
+  theIndex: TEERIndex;
+  theColumn: TEERColumn;
+  theDatatype: TEERDatatype;
+  TypeName: string;
+begin
+  Result:=False;
+  if(ColIdx<0)or(ColIdx>=Columns.Count)then
+    Exit;
+
+  theColumn:=TEERColumn(Columns[ColIdx]);
+  if(Not(theColumn.AutoInc))or(Not(theColumn.PrimaryKey))then
+    Exit;
+
+  //The PRIMARY index has to consist of this column alone
+  theIndex:=nil;
+  for i:=0 to Indices.Count-1 do
+    if(TEERIndex(Indices[i]).IndexKind=ik_PRIMARY)then
+    begin
+      theIndex:=TEERIndex(Indices[i]);
+      break;
+    end;
+
+  if(theIndex=nil)or(theIndex.Columns.Count<>1)or
+    (StrToIntDef(theIndex.Columns[0], -1)<>theColumn.Obj_id)then
+    Exit;
+
+  //SQLite only auto-increments an INTEGER PRIMARY KEY
+  theDatatype:=ParentEERModel.GetDataType(theColumn.idDatatype);
+  if(theDatatype=nil)then
+    Exit;
+
+  TypeName:=UpperCase(Trim(theDatatype.GetPhysicalTypeName));
+  Result:=(TypeName='INTEGER')or(TypeName='INT')or(TypeName='BIGINT')or
+    (TypeName='MEDIUMINT')or(TypeName='SMALLINT')or(TypeName='TINYINT');
+end;
+
+function TEERTable.TidySQLiteScript(const Script: string): string;
+var theLines: TStringList;
+  i, emptyRun: integer;
+  Line: string;
+begin
+  Result:='';
+  theLines:=TStringList.Create;
+  try
+    theLines.Text:=Script;
+
+    emptyRun:=0;
+    for i:=0 to theLines.Count-1 do
+    begin
+      Line:=TrimRight(theLines[i]);
+
+      if(Line='')then
+        inc(emptyRun)
+      else
+        emptyRun:=0;
+
+      if(emptyRun>1)then
+        continue;
+
+      Result:=Result+Line+#13#10;
+    end;
+
+    //no trailing empty lines, the caller separates the statements
+    while(Copy(Result, Length(Result)-3, 4)=#13#10#13#10)do
+      Delete(Result, Length(Result)-1, 2);
+  finally
+    theLines.Free;
+  end;
+end;
+
 function TEERTable.getSqlTableComment(TableName, Comment,
   DatabaseType: string): string;
 var
@@ -14103,6 +14325,9 @@ var
   ColComment : string; //Column Comment
   i : integer;
 begin
+  //Result was never initialised: FPC hands the caller's temporary string in,
+  //so the tail of the script (the standard inserts) got appended twice
+  result := '';
   RemoveCRFromString(Comment);
 
   if (DatabaseType = 'Oracle') and (length(trim(Comment))>0) then

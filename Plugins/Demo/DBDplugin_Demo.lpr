@@ -1,9 +1,9 @@
 program DBDplugin_Demo;
 
 {$IFDEF MSWINDOWS}
-{$I ..\..\DBDesigner4.inc}
+{$I ..\..\src\DBDesigner4.inc}
 {$ELSE}
-{$I ../../DBDesigner4.inc}
+{$I ../../src/DBDesigner4.inc}
 {$ENDIF}
 
 uses
@@ -11,14 +11,14 @@ uses
   Interfaces,
   Forms,
   Main in 'Main.pas' {MainForm},
-  EERModel in '../../EERModel.pas',
-  EERDM in '../../EERDM.pas' {DMEER: TDataModule},
-  MainDM in '../../MainDM.pas' {DMMain: TDataModule},
-  EditorString in '../../EditorString.pas' {EditorStringForm},
+  EERModel in '../../src/EERModel.pas',
+  EERDM in '../../src/EERDM.pas' {DMEER: TDataModule},
+  MainDM in '../../src/MainDM.pas' {DMMain: TDataModule},
+  EditorString in '../../src/EditorString.pas' {EditorStringForm},
 {$IFDEF USE_IXMLDBMODELType}
-  EERModel_XML in '../../EERModel_XML.pas',
+  EERModel_XML in '../../src/EERModel_XML.pas',
 {$ENDIF}
-  LibXmlParser in '../../LibXmlParser.pas';
+  LibXmlParser in '../../src/LibXmlParser.pas';
 
 {$R *.res}
 

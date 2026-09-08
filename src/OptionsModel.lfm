@@ -129,7 +129,7 @@ object OptionsModelForm: TOptionsModelForm
       ImageIndex = 3
       object GroupBox1: TGroupBox
         Left = 490
-        Top = 4
+        Top = 22
         Width = 190
         Height = 90
         Caption = ' '
@@ -176,8 +176,8 @@ object OptionsModelForm: TOptionsModelForm
         end
       end
       object UsePosGridCBox: TCheckBox
-        Left = 500
-        Top = 1
+        Left = 494
+        Top = 0
         Width = 160
         Height = 19
         Caption = 'Enable Snap to Grid'
@@ -304,7 +304,7 @@ object OptionsModelForm: TOptionsModelForm
       end
       object GroupBox4: TGroupBox
         Left = 490
-        Top = 100
+        Top = 118
         Width = 190
         Height = 90
         Caption = 'Canvas Size'
@@ -434,9 +434,11 @@ object OptionsModelForm: TOptionsModelForm
         Shape = bsTopLine
       end
       object Label4: TLabel
-        Left = 248
+        Left = 270
         Top = 14
-        Width = 116
+        Width = 94
+        Height = 17
+        AutoSize = False
         Alignment = taRightJustify
         Caption = 'Table Prefixes:'
       end
@@ -453,7 +455,6 @@ object OptionsModelForm: TOptionsModelForm
         Left = 370
         Top = 130
         AutoSize = True
-        AutoSize = False
         Caption = '(use Table Prefixes to work with several'
         Font.Color = clGray
         Font.Height = 11
@@ -467,7 +468,6 @@ object OptionsModelForm: TOptionsModelForm
         Left = 370
         Top = 178
         AutoSize = True
-        AutoSize = False
         Caption = '(when working with Oracle use the Table'
         Font.Color = clGray
         Font.Height = 11
@@ -515,7 +515,6 @@ object OptionsModelForm: TOptionsModelForm
         Left = 370
         Top = 144
         AutoSize = True
-        AutoSize = False
         Caption = 'MySQL-DBs at once, e.g. store.product and'
         Font.Color = clGray
         Font.Height = 11
@@ -529,7 +528,6 @@ object OptionsModelForm: TOptionsModelForm
         Left = 370
         Top = 158
         AutoSize = True
-        AutoSize = False
         Caption = 'stock.inventory)'
         Font.Color = clGray
         Font.Height = 11
@@ -541,9 +539,8 @@ object OptionsModelForm: TOptionsModelForm
       end
       object Label16: TLabel
         Left = 370
-        Top = 210
+        Top = 206
         AutoSize = True
-        AutoSize = False
         Caption = 'e.g. scott.product and tom.statistic)'
         Font.Color = clGray
         Font.Height = 11
@@ -555,9 +552,8 @@ object OptionsModelForm: TOptionsModelForm
       end
       object Label17: TLabel
         Left = 370
-        Top = 196
+        Top = 192
         AutoSize = True
-        AutoSize = False
         Caption = 'Prefixes to access tables from different users,'
         Font.Color = clGray
         Font.Height = 11

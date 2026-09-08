@@ -2,7 +2,7 @@
 unit SqlExpr;
 {$mode delphi}
 interface
-uses Classes, DB, SQLDB, SysUtils, DBXpress;
+uses Classes, DB, SQLDB, SysUtils, DBXpress, SQLite3Conn, SQLiteLib, MySQL80Conn, MySQLLib;
 
 const
   // Schema type constants (Delphi dbExpress)
@@ -26,9 +26,11 @@ type
     procedure UpdateConnectorType;
     procedure ApplyParamsToConnection;
   public
+    constructor Create(AOwner: TComponent); override;
     procedure Open;
     procedure Close; reintroduce;
     procedure ExecuteDirect(const ASQL: string); reintroduce;
+    procedure ReleaseIdleTransaction;
     property ActiveStatements: Integer read FActiveStatements;
   published
     property DriverName: string read FDriverName write SetDriverNameEx;
@@ -45,6 +47,8 @@ type
   private
     function GetSQLConnection: TSQLConnection;
     procedure SetSQLConnection(Value: TSQLConnection);
+  protected
+    procedure InternalClose; override;
   public
     procedure SetSchemaInfo(SchemaType: Integer; const SchemaObjectName, SchemaPattern: string); reintroduce;
     function ExecSQL(ExecDirect: Boolean): Integer; overload;
@@ -73,6 +77,17 @@ implementation
 
 { TSQLConnection }
 
+constructor TSQLConnection.Create(AOwner: TComponent);
+begin
+  inherited Create(AOwner);
+  // dbExpress connections carry an implicit transaction, SQLDB needs an
+  // explicit TSQLTransaction. Own one from the start so that datasets linked
+  // to this connection while the .lfm is streamed (Database = SQLConn) or
+  // before Open inherit it in TCustomSQLQuery.SetDatabase - otherwise their
+  // Transaction stays nil and the first Open raises "Transaction not set".
+  Transaction := TSQLTransaction.Create(Self);
+end;
+
 procedure TSQLConnection.SetDriverNameEx(const Value: string);
 begin
   FDriverName := Value;
@@ -86,7 +101,7 @@ begin
   LowerDriver := LowerCase(FDriverName);
   NewType := '';
   if Pos('mysql', LowerDriver) > 0 then
-    NewType := 'MySQL 5.7'
+    NewType := 'MySQL 8.0'
   else if Pos('sqlite', LowerDriver) > 0 then
     NewType := 'SQLite3'
   else if Pos('oracle', LowerDriver) > 0 then
@@ -151,22 +166,7 @@ begin
   // Map Params to SQLDB connection properties
   ApplyParamsToConnection;
 
-  // Ensure a transaction is available (SQLDB requires one)
-  if Transaction = nil then
-  begin
-    Transaction := TSQLTransaction.Create(Self);
-    Transaction.DataBase := Self;
-  end;
-
-  try
-    inherited;
-  except
-    on E: Exception do
-    begin
-      // Re-raise with more context
-      raise;
-    end;
-  end;
+  inherited Open;
 end;
 
 procedure TSQLConnection.Close;
@@ -188,7 +188,34 @@ begin
     Transaction.Commit;
 end;
 
+procedure TSQLConnection.ReleaseIdleTransaction;
+var
+  i: Integer;
+begin
+  // dbExpress reads are auto-committed; SQLDB keeps the transaction (and with
+  // SQLite its SHARED lock, which blocks every other writer) open until an
+  // explicit commit. Once no dataset of this connection is open any more,
+  // COMMIT and re-BEGIN (deferred, takes no lock) so that the file is free
+  // while the application is connected but idle (sqlite-bug-catalog #13).
+  if (Transaction = nil) or (not Transaction.Active) then
+    Exit;
+  for i := 0 to DataSetCount - 1 do
+    if DataSets[i].Active then
+      Exit;
+  Transaction.CommitRetaining;
+end;
+
 { TSQLDataSet }
+
+procedure TSQLDataSet.InternalClose;
+var
+  Conn: TSQLConnection;
+begin
+  inherited InternalClose;
+  Conn := GetSQLConnection;
+  if (Conn <> nil) and Conn.Connected then
+    Conn.ReleaseIdleTransaction;
+end;
 
 function TSQLDataSet.GetSQLConnection: TSQLConnection;
 begin
@@ -217,7 +244,7 @@ begin
   if SchemaType = stTables then
   begin
     if Pos('mysql', LowerDriver) > 0 then
-      SQL.Text := 'SELECT NULL AS RECNO, NULL AS CATALOG_NAME, NULL AS SCHEMA_NAME, ' +
+      SQL.Text := 'SELECT CAST(NULL AS CHAR) AS RECNO, CAST(NULL AS CHAR) AS CATALOG_NAME, CAST(NULL AS CHAR) AS SCHEMA_NAME, ' +
                   'TABLE_NAME, TABLE_TYPE FROM INFORMATION_SCHEMA.TABLES ' +
                   'WHERE TABLE_SCHEMA = DATABASE() ORDER BY TABLE_NAME'
     else if Pos('postgre', LowerDriver) > 0 then
@@ -241,10 +268,10 @@ begin
     // 9:COLUMN_SUBTYPE 10:COLUMN_LENGTH 11:COLUMN_PRECISION 12:COLUMN_SCALE 13:COLUMN_NULLABLE
     QuotedName := StringReplace(SchemaObjectName, '''', '''''', [rfReplaceAll]);
     if Pos('mysql', LowerDriver) > 0 then
-      SQL.Text := 'SELECT NULL AS RECNO, NULL AS CATALOG_NAME, NULL AS SCHEMA_NAME, ' +
+      SQL.Text := 'SELECT CAST(NULL AS CHAR) AS RECNO, CAST(NULL AS CHAR) AS CATALOG_NAME, CAST(NULL AS CHAR) AS SCHEMA_NAME, ' +
                   'TABLE_NAME, COLUMN_NAME, ORDINAL_POSITION AS COLUMN_POSITION, ' +
                   '0 AS COLUMN_TYPE, 0 AS COLUMN_DATATYPE, DATA_TYPE AS COLUMN_TYPENAME, ' +
-                  'NULL AS COLUMN_SUBTYPE, CHARACTER_MAXIMUM_LENGTH AS COLUMN_LENGTH, ' +
+                  'CAST(NULL AS CHAR) AS COLUMN_SUBTYPE, CHARACTER_MAXIMUM_LENGTH AS COLUMN_LENGTH, ' +
                   'NUMERIC_PRECISION AS COLUMN_PRECISION, NUMERIC_SCALE AS COLUMN_SCALE, ' +
                   'CASE IS_NULLABLE WHEN ''YES'' THEN 1 ELSE 0 END AS COLUMN_NULLABLE ' +
                   'FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME=''' + QuotedName + ''' ' +
@@ -284,10 +311,10 @@ begin
     // 5:COLUMN_NAME 6:COLUMN_POSITION 7:PKEY_NAME 8:INDEX_TYPE 9:SORT_ORDER 10:FILTER
     QuotedName := StringReplace(SchemaObjectName, '''', '''''', [rfReplaceAll]);
     if Pos('mysql', LowerDriver) > 0 then
-      SQL.Text := 'SELECT NULL AS RECNO, NULL AS CATALOG_NAME, NULL AS SCHEMA_NAME, ' +
+      SQL.Text := 'SELECT CAST(NULL AS CHAR) AS RECNO, CAST(NULL AS CHAR) AS CATALOG_NAME, CAST(NULL AS CHAR) AS SCHEMA_NAME, ' +
                   'TABLE_NAME, INDEX_NAME, COLUMN_NAME, SEQ_IN_INDEX AS COLUMN_POSITION, ' +
                   'CASE NON_UNIQUE WHEN 0 THEN INDEX_NAME ELSE NULL END AS PKEY_NAME, ' +
-                  'INDEX_TYPE, COLLATION AS SORT_ORDER, NULL AS FILTER ' +
+                  'INDEX_TYPE, COLLATION AS SORT_ORDER, CAST(NULL AS CHAR) AS FILTER ' +
                   'FROM INFORMATION_SCHEMA.STATISTICS WHERE TABLE_NAME=''' + QuotedName + ''' ' +
                   'AND TABLE_SCHEMA = DATABASE() ORDER BY INDEX_NAME, SEQ_IN_INDEX'
     else if Pos('postgre', LowerDriver) > 0 then

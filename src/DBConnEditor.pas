@@ -123,6 +123,11 @@ procedure TDBConnEditorForm.FormCreate(Sender: TObject);
 begin
   DMMain.InitForm(self, True);
 
+  //LCL TStringGrid raises on out-of-range cells (CLX grew the cell storage
+  //silently), so make room for the 6 fixed parameter rows + the 'Params' row
+  //before filling the grid.
+  ParamStrGrid.RowCount:=7;
+
   //These Values must not be translated
   ParamStrGrid.Cells[0, 0]:='Param';
   ParamStrGrid.Cells[1, 0]:='Value';
@@ -208,7 +213,7 @@ begin
 
     DBConn.Name:=theName;
 
-    theIni.UpdateFile;
+    UpdateIniFile(theIni);
   finally
     theIni.Free;
   end;
@@ -382,6 +387,9 @@ begin
   end;
 
   DBConn.Free;
+
+  //Write DBConn.ini now instead of only at program exit
+  DMDB.StoreDBConns;
 
   ModalResult:=mrOK;
 end;

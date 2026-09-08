@@ -58,8 +58,8 @@
       <Filename Value="../../bin/DBDplugin_DataImporter"/>
     </Target>
     <SearchPaths>
-      <IncludeFiles Value="$(ProjOutDir);../.."/>
-      <OtherUnitFiles Value="../../;../../clx_shims;../../EmbeddedPDF"/>
+      <IncludeFiles Value="$(ProjOutDir);../../src"/>
+      <OtherUnitFiles Value="../../src;../../src/clx_shims;../../src/EmbeddedPDF"/>
       <UnitOutputDirectory Value="lib/$(TargetCPU)-$(TargetOS)"/>
     </SearchPaths>
     <Parsing>

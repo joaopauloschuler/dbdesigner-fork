@@ -313,7 +313,7 @@ begin
   //Post SetWorkTool Event
   sendCLXEvent(Application.MainForm.Handle, QCustomEvent_create(QEventType_SetWorkTool, @SelectedWorkTool));
 
-  if(Application.MainForm.Visible)then
+  if(Application.MainForm.CanFocus)then
     Application.MainForm.SetFocus;
 
   //Clear current WorkTool selection
@@ -727,7 +727,7 @@ begin
 
       theIni.WriteString('GeneralSettings', 'AddQuotesToDefVals', IntToStr(Ord(AddQuotesToDefVals)));
 
-      theIni.UpdateFile;
+      UpdateIniFile(theIni);
     finally
       theIni.Free;
     end;

@@ -370,6 +370,11 @@ begin
     theSubst.Free;
   end;
 
+  if(RevEngSkippedTables>0)then
+    MessageDlg(IntToStr(RevEngSkippedTables)+
+      ' table(s) already exist in the model and were skipped.',
+      mtInformation, [mbOK], 0);
+
   EERModel.ModelHasChanged;
 
   DMEER.RefreshPalettes;

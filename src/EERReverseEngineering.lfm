@@ -308,13 +308,13 @@ object EERReverseEngineeringForm: TEERReverseEngineeringForm
     end
     object RelGroupBox: TGroupBox
       Left = 20
-      Top = 200
+      Top = 212
       Width = 277
-      Height = 95
+      Height = 83
       TabOrder = 1
       object BuildRelPrimKeyRBtn: TRadioButton
         Left = 30
-        Top = 20
+        Top = 8
         Width = 225
         Height = 17
         Caption = 'Build Relations based on Primary Keys'
@@ -323,7 +323,7 @@ object EERReverseEngineeringForm: TEERReverseEngineeringForm
       end
       object BuildRelTblNamesRBtn: TRadioButton
         Left = 30
-        Top = 42
+        Top = 30
         Width = 231
         Height = 17
         Caption = 'Based on Tablenames and ID-Fieldnames'
@@ -332,7 +332,7 @@ object EERReverseEngineeringForm: TEERReverseEngineeringForm
       end
       object UseNativeRelationsRBtn: TRadioButton
         Left = 30
-        Top = 64
+        Top = 52
         Width = 229
         Height = 17
         Caption = 'Use Native Selects to retrive Relations'
@@ -342,10 +342,10 @@ object EERReverseEngineeringForm: TEERReverseEngineeringForm
       end
     end
     object BuildRelationsCBox: TCheckBox
-      Left = 30
-      Top = 195
-      Width = 95
-      Height = 13
+      Left = 20
+      Top = 190
+      Width = 200
+      Height = 21
       Caption = 'Build Relations'
       Checked = True
       State = cbChecked
@@ -354,9 +354,9 @@ object EERReverseEngineeringForm: TEERReverseEngineeringForm
     end
     object DataTypeSubstGroupBox: TGroupBox
       Left = 314
-      Top = 20
+      Top = 26
       Width = 237
-      Height = 163
+      Height = 157
       TabOrder = 3
       object SubstCBox: TComboBox
         Left = 29
@@ -384,10 +384,10 @@ object EERReverseEngineeringForm: TEERReverseEngineeringForm
       end
     end
     object UseSubstCBox: TCheckBox
-      Left = 324
-      Top = 14
-      Width = 147
-      Height = 13
+      Left = 314
+      Top = 4
+      Width = 237
+      Height = 21
       Caption = 'Use Datatype substitution'
       Checked = True
       State = cbChecked
@@ -396,9 +396,9 @@ object EERReverseEngineeringForm: TEERReverseEngineeringForm
     end
     object StdInsertsGroupBox: TGroupBox
       Left = 314
-      Top = 200
+      Top = 212
       Width = 237
-      Height = 95
+      Height = 83
       TabOrder = 5
       object LimitStdInsCBox: TCheckBox
         Left = 30
@@ -420,10 +420,10 @@ object EERReverseEngineeringForm: TEERReverseEngineeringForm
       end
     end
     object CreateStdInsertsCBox: TCheckBox
-      Left = 324
-      Top = 192
-      Width = 209
-      Height = 19
+      Left = 314
+      Top = 190
+      Width = 237
+      Height = 21
       Caption = 'Create Standard Inserts from table data'
       TabOrder = 6
       OnClick = CreateStdInsertsCBoxClick

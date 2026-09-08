@@ -4,7 +4,7 @@ object EditorDatatypeForm: TEditorDatatypeForm
   ActiveControl = DatatypeNameEd
   BorderStyle = bsToolWindow
   Caption = 'Editor Datatype'
-  ClientHeight = 399
+  ClientHeight = 411
   ClientWidth = 395
   Color = clBtnFace
   FormStyle = fsStayOnTop
@@ -73,7 +73,7 @@ object EditorDatatypeForm: TEditorDatatypeForm
     Left = 20
     Top = 137
     Width = 171
-    Height = 126
+    Height = 140
     Caption = 'Parameter'
     TabOrder = 6
     object AddParamBtn: TSpeedButton
@@ -128,9 +128,9 @@ object EditorDatatypeForm: TEditorDatatypeForm
     end
     object ParamRequiredCBox: TCheckBox
       Left = 14
-      Top = 78
+      Top = 82
       Width = 145
-      Height = 17
+      Height = 19
       Caption = 'Parameters are required'
       TabOrder = 0
     end
@@ -143,9 +143,9 @@ object EditorDatatypeForm: TEditorDatatypeForm
     end
     object EditValueAsStringCBox: TCheckBox
       Left = 14
-      Top = 97
+      Top = 103
       Width = 141
-      Height = 17
+      Height = 19
       Caption = 'Edit values as strings'
       TabOrder = 2
     end
@@ -154,7 +154,7 @@ object EditorDatatypeForm: TEditorDatatypeForm
     Left = 206
     Top = 137
     Width = 165
-    Height = 126
+    Height = 140
     Caption = 'Options'
     TabOrder = 7
     object AddOptionBtn: TSpeedButton
@@ -212,7 +212,7 @@ object EditorDatatypeForm: TEditorDatatypeForm
       Left = 14
       Top = 20
       Width = 127
-      Height = 91
+      Height = 105
       TabOrder = 0
     end
   end
@@ -243,7 +243,6 @@ object EditorDatatypeForm: TEditorDatatypeForm
       Width = 23
       Height = 22
       Anchors = [akTop, akRight]
-      Enabled = False
       Flat = True
       Glyph.Data = {
         360C0000424D360C000000000000360000002800000040000000100000000100
@@ -348,8 +347,6 @@ object EditorDatatypeForm: TEditorDatatypeForm
       NumGlyphs = 4
       Transparent = False
       OnClick = AbortBtnClick
-      OnMouseEnter = SubmitBtnMouseEnter
-      OnMouseLeave = SubmitBtnMouseLeave
     end
     object SubmitBtn: TSpeedButton
       Left = 319
@@ -357,7 +354,6 @@ object EditorDatatypeForm: TEditorDatatypeForm
       Width = 23
       Height = 22
       Anchors = [akTop, akRight]
-      Enabled = False
       Flat = True
       Glyph.Data = {
         760E0000424D760E00000000000036000000280000004C000000100000000100
@@ -479,8 +475,6 @@ object EditorDatatypeForm: TEditorDatatypeForm
       NumGlyphs = 4
       Transparent = False
       OnClick = SubmitBtnClick
-      OnMouseEnter = SubmitBtnMouseEnter
-      OnMouseLeave = SubmitBtnMouseLeave
     end
     object Bevel1: TBevel
       Left = 20
@@ -492,30 +486,30 @@ object EditorDatatypeForm: TEditorDatatypeForm
   end
   object GroupBox3: TGroupBox
     Left = 20
-    Top = 280
+    Top = 304
     Width = 351
-    Height = 59
+    Height = 56
     Caption = ' '
     TabOrder = 11
     object Label5: TLabel
       Left = 31
-      Top = 26
+      Top = 22
       AutoSize = True
       Caption = 'Physical Datatype:'
     end
     object PhysicalDatatypeEd: TEdit
-      Left = 125
-      Top = 22
-      Width = 206
+      Left = 130
+      Top = 18
+      Width = 201
       Height = 21
       TabOrder = 1
     end
   end
   object EnablePhysicalMappingCBox: TCheckBox
-    Left = 32
-    Top = 278
-    Width = 191
-    Height = 17
+    Left = 20
+    Top = 284
+    Width = 251
+    Height = 19
     Caption = 'Enable Physical Datatype Mapping'
     TabOrder = 12
   end

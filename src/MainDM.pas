@@ -95,6 +95,10 @@ type
     function GetLanguageCode: string;
     procedure SetLanguageCode(LanguageCode: string);
 
+    //Font combo boxes (Model Options / DBDesigner Options)
+    procedure FillFontCBox(CBox: TComboBox; const CurrentFont: string);
+    function GetFontCBoxSelection(CBox: TComboBox; const DefaultFont: string): string;
+
     //Copies a file
     procedure CopyDiskFile(sourcefile, destinationfile: string; PromtBeforeOverwrite: Boolean = True);
 
@@ -140,6 +144,10 @@ type
     procedure SaveWinPos(win: TForm; DoSize: Boolean);
     //Recalls Windowposition from INI File
     procedure RestoreWinPos(win: TForm; DoSize: Boolean);
+    //True when an (EWMH) window manager runs on the display. Without one
+    //(e.g. bare Xvfb) a maximize request is never answered and LCL/GTK2 end
+    //up in an endless resize loop, so callers must not use wsMaximized then.
+    function HasWindowManager: Boolean;
 
 
     //Create prozess
@@ -291,6 +299,16 @@ const
 
 var
   DMMain: TDMMain;
+  // True when started with --selftest: every settings/ini writer must skip
+  // UpdateFile so an automated run never persists its state (WorkMode,
+  // window positions, recent files...) into the user's ~/.DBDesigner4.
+  SettingsReadOnly: Boolean = False;
+
+// Flush a settings/ini writer. With SettingsReadOnly the file is redirected to
+// a throw-away copy in the temp dir first: TMemIniFile.Destroy flushes dirty
+// contents on its own (FPC sets CacheUpdates), so merely skipping UpdateFile
+// would not prevent the write.
+procedure UpdateIniFile(theIni: TMemIniFile);
 {$IFDEF MSWINDOWS}
   global_winname: string;
 
@@ -301,7 +319,37 @@ type
 implementation
 
 uses {$IFDEF LINUX}BaseUnix, Unix, {$ENDIF}
+  {$IFDEF LCLGTK2}glib2, gdk2, {$ENDIF}
   EditorString, StrUtils;
+
+var
+  WMChecked: Boolean = False;
+  WMPresent: Boolean = True;
+
+function TDMMain.HasWindowManager: Boolean;
+{$IFDEF LCLGTK2}
+const
+  XA_WINDOW = 33;
+var
+  AtomType: TGdkAtom;
+  AFormat, ALength: gint;
+  Data: Pointer;
+{$ENDIF}
+begin
+  if(Not(WMChecked))then
+  begin
+    WMChecked:=True;
+{$IFDEF LCLGTK2}
+    Data:=nil;
+    WMPresent:=gdk_property_get(gdk_get_default_root_window,
+      gdk_atom_intern('_NET_SUPPORTING_WM_CHECK', False), XA_WINDOW,
+      0, 4, 0, @AtomType, @AFormat, @ALength, @Data);
+    if(Data<>nil)then
+      g_free(Data);
+{$ENDIF}
+  end;
+  Result:=WMPresent;
+end;
 
 {$R *.lfm}
 
@@ -740,7 +788,7 @@ begin
       end;
     end;
 
-    theIni.UpdateFile;
+    UpdateIniFile(theIni);
   finally
     theIni.Free;
   end;
@@ -755,7 +803,7 @@ var theIni: TMemIniFile;
 {$IFDEF LINUX}
   theTimer: TTimer;
 {$ENDIF}
-  WinPos: TPoint;
+  WinPos, WinSize: TPoint;
 begin
   winname:=win.name;
 
@@ -807,11 +855,26 @@ begin
 
       if(DoSize)then
       begin
-        win.Width:=
-          theIni.ReadInteger('WindowPositions', winname+'Width', 140);
-        win.Height:=
-          theIni.ReadInteger('WindowPositions', winname+'Height', 140);
-        if(theIni.ReadInteger('WindowPositions', winname+'State', 0)=1)then
+        // Default to the form's design size (not 140x140, which is smaller
+        // than the docked content) and never restore a size that does not fit
+        // the current screen: the geometry was saved on another display and a
+        // window larger than the screen makes LCL/GTK2 fight over the size
+        // (endless resize loop, see docs/ui-bug-catalog.md #5).
+        WinSize.X:=theIni.ReadInteger('WindowPositions', winname+'Width', win.Width);
+        WinSize.Y:=theIni.ReadInteger('WindowPositions', winname+'Height', win.Height);
+        if(WinSize.X>Screen.Width-win.Left)then
+          WinSize.X:=Screen.Width-win.Left;
+        if(WinSize.Y>Screen.Height-win.Top)then
+          WinSize.Y:=Screen.Height-win.Top;
+        if(WinSize.X<win.Constraints.MinWidth)then
+          WinSize.X:=win.Constraints.MinWidth;
+        if(WinSize.Y<win.Constraints.MinHeight)then
+          WinSize.Y:=win.Constraints.MinHeight;
+        win.Width:=WinSize.X;
+        win.Height:=WinSize.Y;
+        //Only maximize when a window manager can actually do it
+        if(theIni.ReadInteger('WindowPositions', winname+'State', 0)=1)and
+          (HasWindowManager)then
           win.WindowState:=wsMaximized;
       end;
     except
@@ -1202,7 +1265,7 @@ begin
   try
     theIni.WriteString('GeneralSettings', 'Language', LanguageCode);
 
-    theIni.UpdateFile;
+    UpdateIniFile(theIni);
   finally
     theIni.Free;
   end;
@@ -1734,7 +1797,7 @@ begin
   theIni:=TMemIniFile.Create(SettingsPath+ProgName+'_Settings.ini');
   try
     theIni.WriteString(section, name, value);
-    theIni.UpdateFile;
+    UpdateIniFile(theIni);
   finally
     theIni.Free;
   end;
@@ -2071,6 +2134,65 @@ begin
   {$ENDIF}
 end;
 
+// Fill a font combo with the installed font families and select CurrentFont.
+// A saved font name (e.g. "Tahoma" from a model created on Windows, or the
+// old "Nimbus Sans L" name) is often not installed on this machine; it is
+// then inserted at the top of the list so it remains visible and selectable
+// instead of leaving the combo blank (or showing the design-time text).
+procedure TDMMain.FillFontCBox(CBox: TComboBox; const CurrentFont: string);
+var i: integer;
+begin
+  CBox.Items.BeginUpdate;
+  try
+    CBox.Items.Assign(Screen.Fonts);
+    if(CurrentFont<>'')then
+    begin
+      i:=CBox.Items.IndexOf(CurrentFont);
+      if(i=-1)then
+      begin
+        CBox.Items.Insert(0, CurrentFont);
+        i:=0;
+      end;
+    end
+    else
+      i:=-1;
+  finally
+    CBox.Items.EndUpdate;
+  end;
+  CBox.ItemIndex:=i;
+  CBox.Text:=CurrentFont;
+end;
+
+// Return the font chosen in a font combo. The user may pick a list entry
+// or type a name; an empty text falls back to DefaultFont.
+function TDMMain.GetFontCBoxSelection(CBox: TComboBox; const DefaultFont: string): string;
+begin
+  Result:=Trim(CBox.Text);
+  if(Result='')and(CBox.ItemIndex>=0)then
+    Result:=CBox.Items[CBox.ItemIndex];
+  if(Result='')then
+    Result:=DefaultFont;
+end;
+
+procedure UpdateIniFile(theIni: TMemIniFile);
+begin
+  if SettingsReadOnly then
+    theIni.Rename(IncludeTrailingPathDelimiter(GetTempDir(False))+
+      'DBDesignerFork_selftest_discard.ini', False);
+  theIni.UpdateFile;
+end;
+
+function RunningSelfTest: Boolean;
+var i: Integer;
+begin
+  Result:=False;
+  for i:=1 to ParamCount do
+    if (CompareText(ParamStr(i), '--selftest')=0) or
+       (CompareText(ParamStr(i), '-selftest')=0) then
+      Exit(True);
+end;
+
+initialization
+  SettingsReadOnly:=RunningSelfTest;
+
 end.
-
-

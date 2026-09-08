@@ -5,7 +5,7 @@ program TestSQLite;
 
 uses
   {$IFDEF UNIX}cthreads,{$ENDIF}
-  Classes, SysUtils, DB, SQLDB, SQLite3Conn;
+  Classes, SysUtils, DB, SQLDB, SQLite3Conn, SQLiteLib;
 
 var
   Conn: TSQLite3Connection;

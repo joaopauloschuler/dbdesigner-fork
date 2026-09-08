@@ -118,7 +118,9 @@ type
     //Returns first command from SQL-Script and removes this command from the list
     function GetFirstSQLCmdFromScript(var cmds: String): String;
 
-    function ExecuteSQLCmdScript(cmds: String): integer;
+    //Errors<>nil: failed statements are appended to it (statement + message)
+    //and the script goes on without a message box (used by the DB sync)
+    function ExecuteSQLCmdScript(cmds: String; Errors: TStrings = nil): integer;
   private
     { Private declarations }
     RunFirstTime: Boolean;
@@ -296,8 +298,10 @@ begin
   ospostfix:='';
   {$ENDIF}
 
-  //delete old file
-  DeleteFile(DMMain.SettingsPath+'DBConn.ini');
+  //delete old file (not in --selftest mode: the rewrite below is discarded
+  //there, so deleting would wipe the user's connection list)
+  if not SettingsReadOnly then
+    DeleteFile(DMMain.SettingsPath+'DBConn.ini');
 
   //Save IniFile
   theIni:=TMemIniFile.Create(DMMain.SettingsPath+'DBConn.ini');
@@ -344,7 +348,7 @@ begin
       end;
     end;
 
-    theIni.UpdateFile;
+    UpdateIniFile(theIni);
   finally
     theIni.Free;
   end;
@@ -727,7 +731,7 @@ begin
     theIni.WriteString('GeneralSettings', 'DefaultDB',
       DefaultDatabaseType);
 
-    theIni.UpdateFile;
+    UpdateIniFile(theIni);
   finally
     theIni.Free;
   end;
@@ -914,7 +918,8 @@ begin
       commentLine:=False;
 
       if(Not(delimOpen))then
-        if(Copy(Trim(theCmdList[0]), 1, 2)='//')then
+        if(Copy(Trim(theCmdList[0]), 1, 2)='//')or
+          (Copy(Trim(theCmdList[0]), 1, 2)='--')then
           commentLine:=True;
 
       if(Not(commentLine))then
@@ -962,7 +967,7 @@ begin
   end;
 end;
 
-function TDMDB.ExecuteSQLCmdScript(cmds: String): integer;
+function TDMDB.ExecuteSQLCmdScript(cmds: String; Errors: TStrings = nil): integer;
 var ignoreScriptErrors: Boolean;
   mRes, totalRowsAffected, RowsAffected: integer;
 begin
@@ -981,7 +986,9 @@ begin
     except
       on x: Exception do
       begin
-        if(Not(ignoreScriptErrors))then
+        if(Errors<>nil)then
+          Errors.Add(Trim(OutputQry.SQL.Text)+#13#10+x.Message)
+        else if(Not(ignoreScriptErrors))then
         begin
           if(cmds='')then
             MessageDlg(DMMain.GetTranslatedMessage('ERROR while executing Query: '+#13#10#13#10+'%s', 145,

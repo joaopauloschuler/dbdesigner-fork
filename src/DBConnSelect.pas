@@ -103,6 +103,7 @@ type
     procedure ConnectionsListViewDblClick(Sender: TObject);
     procedure DBConnTVExpanding(Sender: TObject; Node: TTreeNode;
       var AllowExpansion: Boolean);
+    procedure DBConnTVClick(Sender: TObject);
     procedure DBConnTVItemClick(Sender: TObject; Button: TMouseButton;
       Node: TTreeNode; const Pt: TPoint);
     procedure RenameHostMIClick(Sender: TObject);
@@ -168,6 +169,11 @@ end;
 procedure TDBConnSelectForm.FormDestroy(Sender: TObject);
 begin
   StoreNetworkHosts;
+
+  //Persist the connection list right away (new/edited/renamed/deleted
+  //connections); until now it was only written by TDMDB.DataModuleDestroy,
+  //so a kill or crash before a clean File > Exit lost the changes
+  DMDB.StoreDBConns;
 
   DBHosts.Free;
 end;
@@ -347,7 +353,7 @@ begin
       theIni.WriteString('Host'+IntToStr(i), 'User_Name', NetworkHosts.Items[i-1].SubItems[2]);
     end;
 
-    theIni.UpdateFile;
+    UpdateIniFile(theIni);
   finally
     theIni.Free;
   end;
@@ -760,6 +766,19 @@ begin
   end
   else {if(node.Level=0)then}
     AllowExpansion:=True;
+end;
+
+// LCL OnClick is a TNotifyEvent; the CLX OnItemClick handler below needs the
+// clicked node, so resolve it from the mouse position (a click on empty tree
+// space is ignored, as CLX did).
+procedure TDBConnSelectForm.DBConnTVClick(Sender: TObject);
+var Pt: TPoint;
+  Node: TTreeNode;
+begin
+  Pt:=DBConnTV.ScreenToClient(Mouse.CursorPos);
+  Node:=DBConnTV.GetNodeAt(Pt.X, Pt.Y);
+  if(Node<>nil)then
+    DBConnTVItemClick(Sender, mbLeft, Node, Pt);
 end;
 
 procedure TDBConnSelectForm.DBConnTVItemClick(Sender: TObject;

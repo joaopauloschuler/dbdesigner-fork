@@ -59,41 +59,51 @@ end;
 
 procedure TCustomClientDataSet.InternalOpen;
 begin
-  // If we have a provider, try to copy data from its source dataset
-  if (FSourceDataSet = nil) and (FProviderName <> '') then
-    FSourceDataSet := FindProviderDataSet;
-
-  if (FSourceDataSet <> nil) and (not FSourceDataSet.Active) then
-  begin
-    try
-      FSourceDataSet.Open;
-    except
-      // If source can't open, proceed without it
-      FSourceDataSet := nil;
-    end;
-  end;
-
-  if FSourceDataSet <> nil then
-  begin
-    // Copy field definitions from the source dataset
-    FieldDefs.Clear;
-    FieldDefs.Assign(FSourceDataSet.FieldDefs);
-    // Create the in-memory dataset structure
-    inherited InternalOpen;
-    // Copy data from source to our buffer
-    CopyFromDataset(FSourceDataSet);
-  end
-  else
-    inherited InternalOpen;
+  // The buffer is prepared by Open (CreateDataset via CopyFromDataset);
+  // TBufDataset.InternalOpen itself refuses to open without fields.
+  inherited InternalOpen;
 end;
 
 procedure TCustomClientDataSet.Open;
+var
+  WasReadOnly, SourceWasActive: Boolean;
 begin
+  if Active then
+    Exit;
+
   // If we have a provider, resolve the source dataset before opening
   if (FSourceDataSet = nil) and (FProviderName <> '') then
     FSourceDataSet := FindProviderDataSet;
 
-  inherited Open;
+  if FSourceDataSet = nil then
+  begin
+    inherited Open;
+    Exit;
+  end;
+
+  // Open the provider's dataset; its exception (SQL error, no connection,
+  // ...) must reach the caller - silently opening an empty buffer would only
+  // give TBufDataset's "Missing (compatible) underlying dataset".
+  SourceWasActive := FSourceDataSet.Active;
+  if not SourceWasActive then
+    FSourceDataSet.Open;
+
+  // CopyFromDataset builds the FieldDefs from the source fields, calls
+  // CreateDataset, opens the buffer and appends every source row (which needs
+  // the buffer to be writable); afterwards the cursor sits on the last row.
+  WasReadOnly := ReadOnly;
+  ReadOnly := False;
+  try
+    CopyFromDataset(FSourceDataSet, True);
+  finally
+    ReadOnly := WasReadOnly;
+    // Like Delphi's TDataSetProvider: a source dataset the provider opened
+    // for the fetch is closed again afterwards (the rows live in this
+    // buffer), so no statement/lock stays behind (sqlite-bug-catalog #13).
+    if not SourceWasActive then
+      FSourceDataSet.Close;
+  end;
+  First;
 end;
 
 initialization
