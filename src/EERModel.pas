@@ -8968,6 +8968,7 @@ var s, s1: string;
   theRegion: TEERRegion;
   theRel: TEERRel;
   theTableType: integer;
+  EngineName: string;
   isTemporary: Boolean;
   relCounter, relSum: integer;
   DBQuote: string;
@@ -9227,18 +9228,23 @@ begin
 
   s:=s+')';
 
-  //TableType (MYISAM is standard)
+  //TableType (MYISAM is standard). MySQL 5.5 dropped the old TYPE= keyword,
+  //ENGINE= is accepted since 4.0.18. HEAP is the old name of MEMORY; BDB and
+  //ISAM no longer exist (BDB -> InnoDB as the transactional engine, ISAM ->
+  //the default MyISAM, i.e. no clause).
   if(theTableType>0) and (DatabaseType = 'My SQL')then
   begin
-    s:=s+#13#10+'TYPE=';
-
     case theTableType of
-      1: s:=s+'InnoDB';
-      2: s:=s+'HEAP';
-      3: s:=s+'BDB';
-      4: s:=s+'ISAM';
-      5: s:=s+'MERGE';
+      1: EngineName:='InnoDB';
+      2: EngineName:='MEMORY';
+      3: EngineName:='InnoDB';
+      5: EngineName:='MERGE';
+    else
+      EngineName:='';
     end;
+
+    if(EngineName<>'')then
+      s:=s+#13#10+'ENGINE='+EngineName;
   end;
 
   LocalComment := trim(Comments);

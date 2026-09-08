@@ -942,3 +942,44 @@ navigation (`Down`x4 `Right` for File > Open Recent). Shots: `fix13-*`.
   backtrace for an access violation: wrap the call in `try/except`, `writeln(stderr,
   E.Message); DumpExceptionBackTrace(stderr)` - the .lpi has DWARF3 debug info, so
   line numbers come out.
+
+## Fix: MySQL 8 connector, schema query field loss, ENGINE= (mysql-bug-catalog #1, #2, #3)
+
+- **#1 no connector**: `src/clx_shims/sqlexpr.pas` now uses `MySQL80Conn` and maps a
+  `DriverName` containing `mysql` to `ConnectorType 'MySQL 8.0'` (was `'MySQL 5.7'`, whose
+  unit was never linked; `mysql57conn` would also need the absent `libmysqlclient.so.20`).
+  New `src/clx_shims/mysqllib.pas` (Linux only, same idea as `sqlitelib.pas`): at start-up
+  it `LoadLibrary`s `libmysqlclient.so.21` first, then `libmysqlclient.so`, and calls
+  `mysql80dyn.InitialiseMysql(<name>)` with the first that loads, so the parameterless
+  `InitialiseMysql` in `TMySQL80Connection.DoInternalConnect` only bumps the ref count
+  (FPC's own order is the unversioned dev symlink first). `LD_DEBUG=libs` on the test shows
+  `find library=libmysqlclient.so.21` only. Oracle/MSSQL/Firebird/ODBC/PostgreSQL are still
+  unlinked - they map to connector names that will fail at `Open`.
+- **#2 "List index (3) out of bounds"**: MySQL types a bare `NULL AS x` column as
+  `MYSQL_TYPE_NULL`; FPC's `mysqlconn.inc` `AddFieldDefs` skips types `MySQLDataType`
+  does not know, so the shim's dbExpress padding columns vanished (stTables 5 -> 2 fields,
+  stColumns 14 -> 10, stIndexes 11 -> 7) and every positional `Fields[n]` in
+  `DBDM.GetDBTables` / `DBEERDM` read the wrong column. The three MySQL branches of
+  `TSQLDataSet.SetSchemaInfo` now say `CAST(NULL AS CHAR) AS x`. Beware the same thing in
+  `SHOW KEYS` (MySQL 8's `Packed` is NULL-typed, 15 -> 14 fields): `Fields[2]`/`Fields[4]`
+  used by the MySQL reverse engineering sit before it, so they are fine; anything after
+  `Packed` must use `FieldByName`.
+- **#3 `TYPE=InnoDB`**: `TEERTable.GetSQLCreateCode` (`src/EERModel.pas`) emits
+  `ENGINE=` now, with HEAP -> `MEMORY`, BDB -> `InnoDB`, ISAM -> no clause (default engine),
+  MERGE unchanged. The synchronisation (`EERMySQLSyncDB`) creates tables through the same
+  function, so it is fixed too. Other table options untouched.
+- New `tests/TestMySQLShim.pas` (`fpc -Mdelphi -Fusrc/clx_shims -FU<scratch> -o<scratch>/TestMySQLShim tests/TestMySQLShim.pas`):
+  connects to 127.0.0.1:3306 bpsa/bpsa/dbdtest (`MYSQL_*` env overrides), creates a table
+  with PK/UNIQUE/prefix index, inserts, selects, asserts the ConnectorType mapping, the
+  5/14/11 field counts and the values by position for the three schema queries plus
+  `SHOW KEYS`, drops the table; prints `SKIP: ...` and exits 0 when the server is unreachable.
+  Constants gotcha: the shim's `stColumns` is 3 and `stIndexes` is 4 (stSysTables = 2).
+- Verified on DISPLAY=:0 (`$S/fix01-*`): export "My SQL" -> `ENGINE=InnoDB`,
+  `tests/mysql-roundtrip.sh` loads it into `dbdtest` with zero errors (12 tables);
+  connect via the selector, Reverse Engineering lists the 12 tables and Execute recovers
+  them (columns OK; AutoInc/UNIQUE/FK rules still lost - catalog #4, #5, #7);
+  Synchronise `order.xml` into an empty `dbdtest2`: 12 tables, all `ENGINE=InnoDB`, no
+  error box; Query mode `SELECT * FROM product` -> 3 rows; `--selftest` 107 PASS / 0 FAIL.
+  Driving gotcha: the GTK save dialog opens in "Recently Used" and ignores a typed
+  absolute path + Return there - double-click a folder in the list first, then type the
+  file name and click Save. `dbdtest` was left loaded with the 12 tables; `dbdtest2` dropped.
