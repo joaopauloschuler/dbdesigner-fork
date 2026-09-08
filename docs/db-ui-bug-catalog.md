@@ -78,6 +78,7 @@ Steps: Plugins > DataImporter; click the "Column Mapping" tab, then "General Opt
 Observed: the page never changes - "Text Options" stays visible in both screenshots (`swf_di.png`, lower two panels are after each tab click). Also: "Apply Preset" label is truncated to "Apply Pres", the "Store these settings as Preset" button is cut off at the right window edge ("tore these settings as Prese"), "Fieldname" label clipped to "Fieldnam", the source tab control ("Import from Text Files") shows scroll arrows although it has one page, the area under the "Text with seperator" radio buttons is empty (separator/quote controls not shown), "seperator" typo, and the Execute button is disabled with no hint why. Selecting OrderMySQL from the plugin's connection dialog fails with "TMySQL80Connection : Server connect failed." because the password is no longer in DBConn.ini (the main app dropped the `Password=` line when it rewrote the file after adding a connection - see #2) and the plugin's selector shows an empty password box.
 Expected: tabs switch pages; labels fit; the password box is at least offered before connecting.
 Suspected cause: plugin form (`DBDplugin_DataImporter` sources, `Main.lfm`/`MainForm.pas` of the DataImporter project) - `TPageControl` pages with `TabVisible`/`OnChanging` returning False, or the tab strip is a `TTabControl` whose `OnChange` handler is not wired after the LCL conversion; label `AutoSize`/`Width` values from the CLX form. Fix scope: medium.
+Status: fixed in e94f70a - the tabs did switch (lost first click); the clipping was the CLX 8pt layout under the LCL's 10pt font: `DBImportData.lfm` re-laid out (925x600, autosize labels, taller option groups, 300 px source tab control with "From Text Files"/"From Database" captions - the arrows were GTK2 tab overflow, there were two pages), "separator" spelled, German leftovers translated, separator group visible by default, `DirEd.OnKeyDown` wired, status text + hint explain the disabled Execute. The password box is the shared selector's; the plugin now pre-selects the main app's open connection (`DBConn_Current.ini` written by `PluginMIClick`). On the way: `Progress.lfm` CLX `BorderStyle` (#11), swallowed SQL errors (#12), unmapped columns inserted as `''` (#12). Verified: 3-row CSV imported into `product_import` with Auto-Mapping.
 
 ### 9. SimpleWebFront plugin: form does not fill its window (blank strip right/bottom), Database Connection fields empty even though DBDesigner is connected
 
@@ -86,6 +87,7 @@ Steps: Plugins > SimpleWebFront while connected to OrderMySQL.
 Observed (`plugin_swf.png`): window 812x406 with the client content ending at ~800x350 and a horizontal/vertical scrollbar pair on the outside; Hostname/Database/Username/Password empty; Output Directory "/". Buttons and tree are functional as far as clicked.
 Expected: form sized to the content (or anchors), connection fields pre-filled from the current connection passed in `plugin_tmp.xml`.
 Suspected cause: SimpleWebFront main form `AutoScroll`/`ClientWidth` in the converted .lfm; connection parameters not read from the plugin XML. Fix scope: small.
+Status: fixed in e94f70a - `Main.lfm` had `Width/Height` plus explicit `HorzScrollBar.Range`/`VertScrollBar.Range` (now `ClientWidth/ClientHeight = 799/330`, no ranges); `plugin_tmp.xml` carries no connection, so `PluginMIClick` writes the open connection's name to `~/.DBDesigner4/DBConn_Current.ini` and `PrefillConnectionFromDBDesigner` fills the empty Hostname/Database/Username(/Password if stored) from `DBConn.ini`. Grid Options label/combo overlap and the `Line1..Line4` memo leftovers fixed too. Verified: fields show 127.0.0.1/dbdtest/bpsa, Create Webpages produced `index.php`, `db_open.php` (correct host/user/db) etc. View Editor OK crash found on the way (#13).
 
 ### 10. Export SQL Script dialog: "Last change date/user column trigger" caption is overdrawn by the "Trigger prefix" edit; disabled advanced options render as bare text
 
@@ -94,6 +96,30 @@ Steps: File > Export > SQL Create Script...; look at the "Advanced SQL Settings 
 Observed: the group-box caption "Last change date/user column trigger" is partially covered by the EXCDT_ edit above it; for My SQL the disabled options (Hide NULL Field Option, Portable Indexes, GO Statement, ...) show no check-box glyph at all, for PostgreSQL a grey tick appears left of them. Copy Script to Clipboard / Save Script to file / close work (clipboard content not verified: no xclip on this machine).
 Expected: proper vertical spacing; consistent disabled check-box rendering.
 Suspected cause: `src/EERExportSQLScript.lfm` Top/Height values of the trigger group boxes; disabled `TCheckBox` glyph drawing under GTK2 (may be the theme). Fix scope: small.
+
+### 11. DataImporter plugin: Execute raises "Error reading Label1.BorderStyle: Unknown property" and then imports nothing
+
+Severity: functional.
+Steps: DataImporter, connect, check a file, Execute.
+Observed: LCL "Press OK to ignore and risk data corruption" box while creating the progress form; after OK nothing is imported and no message appears.
+Cause: `Plugins/DataImporter/Progress.lfm` had the CLX-only `BorderStyle = bsSingle` on four `TLabel`s (same family as the `Rows =` property of ui-bug-catalog #3).
+Status: fixed in e94f70a - property removed; no other label `BorderStyle` in `Plugins/*/*.lfm`.
+
+### 12. DataImporter plugin: failed INSERTs are reported as success ("3 Lines of Data imported"), unmapped columns inserted as ''
+
+Severity: functional (silent data loss).
+Steps: DataImporter, pick a destination table whose columns are not mapped (or any INSERT that MySQL rejects), Execute.
+Observed: "Data import finished. 3 Lines of Data imported." but the table is unchanged.
+Cause: `TDMDB.ExecSQL` (`src/DBDM.pas`) built its `EDatabaseError` without `raise`, so every error was swallowed (original code); and `ImportBtnClick` inserted `''` for every destination column without a mapping (auto-increment keys, NOT NULL ints under strict mode).
+Status: fixed in e94f70a - `ExecSQL(s, RaiseOnError=False)`; the importer passes `True`, catches the error and shows "Data import failed after N lines" with the server message and the statement; only mapped columns go into the INSERT (error if none). Sync callers keep the tolerant behaviour.
+
+### 13. SimpleWebFront View Editor: OK does nothing (a "Division by zero" box is hidden behind the modal editor)
+
+Severity: functional (no view can be created, so nothing can be generated).
+Steps: SimpleWebFront > Views > Create View..., name + table, OK.
+Observed: the editor stays open; a "Division by zero - Press OK to ignore" box exists behind it.
+Cause: `GetOrderByClause` (`Plugins/SimpleWebFront/EditorView.pas`) read `OrderColumnsComboBox.Items[ItemIndex]` with `ItemIndex = -1` (the LCL resets it on `Items.Clear` in `ShowColsInListBox`); `TGtkListStoreStringList.Get` reports out-of-bounds through `RaiseGDBException`, i.e. a deliberate integer division by zero; the `assert`s are compiled out.
+Status: fixed in e94f70a - -1 means no order/ascending, `ShowColsInListBox` re-selects index 0; editor re-laid out (500x615, no scroll ranges) so the Order By and Where-clause groups are not clipped.
 
 ## Not bugs / could not reproduce
 
