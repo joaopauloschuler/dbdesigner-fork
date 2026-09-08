@@ -2161,8 +2161,16 @@ begin
   if(QEvent_type(Event)=QEventType_EnableMainFormRefreshTmr)then
   begin
     RefreshTmr.Enabled:=True;
-    // Clear active form reference when a child form closes
-    FActiveEERForm := nil;
+    // A child form closed. UnregisterEERForm has already switched to the
+    // remaining model (if any); clearing unconditionally left the surviving
+    // model without an active form (empty palettes, Plugins/Save in
+    // Database/Model Options doing nothing - db-ui-bug-catalog #15).
+    if(FEERFormList.Count=0)or(FEERFormList.IndexOf(FActiveEERForm)<0)then
+      FActiveEERForm := nil
+    else if(FActiveEERForm.ClassName='TEERForm')then
+      //the closing form's FormClose cleared the palettes; refill them for
+      //the model that is now shown (same events as on activation)
+      TEERForm(FActiveEERForm).FormActivate(nil);
 
     Result:=True;
   end;
