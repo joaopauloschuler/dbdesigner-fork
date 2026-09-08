@@ -450,6 +450,14 @@ var i, s: integer;
 begin
   GetUserSelectedDBConn:=nil;
 
+  //--selftest: never show the connection selector or try a real database
+  //connection. The Query-mode EditTable path (PaletteModel AddBtn ->
+  //EditorQuery.SetTable -> GetDBConnButtonClick) reaches this with no user
+  //to answer the selector; if the modal-close timer was already consumed the
+  //selector (or the failed-connect retry loop) blocks the self-test forever.
+  if(SettingsReadOnly)then
+    Exit;
+
   s:=-1;
   for i:=0 to DBConnections.Count-1 do
     if(TDBConn(DBConnections[i]).name=defDBConn)then
@@ -514,6 +522,10 @@ var
 begin
   if(Sender.ClassNameIs('TSpeedButton'))then
     DMDB.DisconnectFromDB;
+
+  //--selftest: no real connections (see GetUserSelectedDBConn).
+  if(SettingsReadOnly)then
+    Exit;
 
   //do until a successful connection is established or the user selects abort
   while(1=1)do
