@@ -118,6 +118,7 @@ Steps: double-click `product`; click the key cell of `name` (becomes PK, NN, AI 
 Observed: `name` moves under `idproduct` and the children get `FKnameCol (FK)` (correct, `29-after-ok.png`), but the `product` table is now cut off at the bottom: `pic` is half visible and the bottom border is gone (compare `01-main.png`). The PK separator line is drawn below the two key columns.
 Expected: the table control grows to hold all rows.
 Suspected cause: `TEERTable.RefreshObj`/`PaintObj` height calculation in `src/EERModel.pas` does not add the extra pixels for the PK/non-PK separator when the PK count changes, or the control's `Height` is set before the columns are re-sorted (`ApplyChanges` in `src/EditorTable.pas` sorts PK columns first after the size was computed). Fix scope: small.
+Status: not a bug, verified in c79715a - probes in `RefreshObj`/`PaintObj2Canvas` show `ColCount=7 Obj_H=142 Height=106` (75 % zoom) before and after the PK toggle, and the cached image, the control and the row positions are identical (`fix10-12/p2-cmp.png` overlays the catalog's own `01-main`/`29-after-ok`). The "missing border" is the dotted selection frame that `PaintObj2Canvas` draws at `yo+tblHeight-3`, on top of the solid border, while the editor leaves the table selected; `pic` is fully drawn. The height/width logic was exercised anyway: PK removed again, a 38-character column added (200x119) and deleted (back to 110x106) - the control follows the rows and the longest name in every case (`12-crop2.png`, `16-crop2.png`). No code change. See notes-to-myself.md "Fix: model-edit #10-#12".
 
 ### 11. n:m relation tool: the generated join table is dropped on top of existing tables
 
@@ -126,6 +127,7 @@ Steps: n:m tool (palette centre y=360); click `productgroup`, click `creditcard`
 Observed: `productgroup_has_creditcard` with `FKidproductgroupCol (FK)` / `FKidcreditcardCol (FK)` and `Rel_13`/`Rel_14` are created correctly, but the table is placed at the midpoint of the two parents, over `carthasproduct` and the "Stores all products..." note (`54-nm.png`). Its columns are not marked as PK (no key icon) although an n:m join table normally gets a composite PK of the two FKs.
 Expected: a free spot near the midpoint, FK columns as PK (check `TEERModel.NewRelation`/`nmTable` creation in `src/EERModel.pas`, search `_has_`).
 Suggested fix scope: small (position search); the PK question needs comparison with DBDesigner 4 semantics.
+Status: fixed in c79715a - new `TEERModel.GetFreeObjPos` (ring search around the midpoint, position-grid step when the grid is on, tables/notes/images with a 10-px margin as obstacles, canvas bounds respected) is used by the n:m branch of `TEERTable.DoMouseDown` after the join table has its real size; `productgroup_has_creditcard` now lands in the free gap above the note (`fix10-12/21-crop.png` vs `18-crop.png`). The PK part was a misread: the original creates both relations as identifying `rk_1n` and `CheckRelations` marks the FK columns `PrimaryKey`; the canvas shows key icons for both (`18-nm-zoom.png`), so nothing was restored.
 
 ### 12. Table Editor, Table Options page: the "Row format" combo is too narrow ("defau" clipped)
 
@@ -134,6 +136,7 @@ Steps: Table Editor of `product`; tree node Table Options.
 Observed: the combo at the bottom right of "How Settings" shows `defau` (`25-tableopts.png`); the Password field shows the password in clear text (`theproducts...`). All other fields readable.
 Expected: combo wide enough for "default"/"dynamic"/"fixed"/"compressed".
 Suspected cause: fixed `Width` in `src/EditorTable.lfm` (`RowFormatCBox` or similar) sized for the Windows font. Fix scope: trivial.
+Status: fixed in c79715a - `RowFormatLU` widened 75 -> 160 px and the "Row Settings" group box moved from `Top = -2` to `Top = 0` (the LCL caption was clipped to "How Settings" by the tab sheet); `23-crop.png`. The Password field stays in clear text: the original `src/EditorTable.xfm` has no `EchoMode`/`PasswordChar` on `TblPasswordEd` either, and the value is the MySQL `PASSWORD=` table option written in clear text to the model XML.
 
 ## Pass 2 not bugs / verified OK
 
