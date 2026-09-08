@@ -72,6 +72,7 @@ object EditorRelationForm: TEditorRelationForm
       ColCount = 3
       DefaultColWidth = 84
       DefaultRowHeight = 16
+      Flat = True
       Options = [goFixedVertLine, goFixedHorzLine, goVertLine, goHorzLine, goRangeSelect, goEditing]
       ScrollBars = ssVertical
       TabOrder = 0

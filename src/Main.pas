@@ -982,10 +982,13 @@ begin
 
         s:=Copy(s, 1, Length(s)-2);
 
-        if(MessageDlg('Are you sure you want to delete the selected Objects?'+#13#10+
-          'The following Objects will be deleted:'+#13#10#13#10+
-          s, mtConfirmation, [mbYes, mbNo], 0)=mrYes)then
-          TEERForm(FActiveEERForm).EERModel.DeleteSelectedObjs;
+        //Nothing selected (Ctrl+Del bypasses the OnShow-time check that
+        //disables the menu item): no confirmation with an empty list
+        if(ObjectList.Count>0)then
+          if(MessageDlg('Are you sure you want to delete the selected Objects?'+#13#10+
+            'The following Objects will be deleted:'+#13#10#13#10+
+            s, mtConfirmation, [mbYes, mbNo], 0)=mrYes)then
+            TEERForm(FActiveEERForm).EERModel.DeleteSelectedObjs;
       finally
         ObjectList.Free;
       end;

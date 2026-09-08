@@ -1690,3 +1690,51 @@ navigation (`Down`x4 `Right` for File > Open Recent). Shots: `fix13-*`.
   windows: find them with `xdotool search --class DBDesignerFork` + `IsViewable` and
   `import -window` them like any other window. The GTK2 tree view paints the unfocused
   selection with the ACTIVE style - any `Color:=` on a `TListBox` overrides it.
+
+## Fix: model-edit #2, #4, #7 - stale line after the Table Editor, Relation Editor FK grid, Ctrl+Del with nothing selected
+
+- **#2 stale 1-px line** (`src/EERModel.pas`, `TEERRel.PaintObj2Canvas_RelStart/
+  _RelMiddle/_RelEnd`): not an invalidation problem at all. The line is white, 190 px
+  long, at canvas y=502, x=364..553 - exactly the `RelEnd` paintbox of the *splitted*
+  `forumpost` relation (onlinecustomer -> forumpost), whose horizontal end segment sits
+  there (`ctl=328,468 190x14`, line row 7 -> 468+7+27). Clicking on it selects that
+  relation. The three segment painters read `width`/`height` inside
+  `with RelEnd do with theCanvas do` - under the LCL those resolve to
+  `TCanvas.Width/Height` (`GetDeviceSize` of the GDK drawable: 3072 for the model
+  panel), the gotcha already fixed for the region and the caption/interval labels.
+  For a splitted relation the stub is `w:=EvalZoomFac(25); if w>width-1 then
+  w:=width-1`. `TEERRel.DoPaint` (RelStart's OnPaint) also paints RelEnd through
+  `RelEnd.Canvas` (a `TControlCanvas` with no handle yet): the first `width` read
+  returns 0 (`w:=-1`), `MoveTo(xo+width-1)` allocates the handle and moves to -1,
+  `LineTo(xo+width-1-w)` now sees 3072 -> a white line from -1 to 3072 clipped to the
+  190-px control. The second (black dash-dot-dot) pass draws from 3071 to 3072, off
+  the clip, so the white "background clearing" pass stays. Why it only shows after
+  the Table Editor OK: that is one of the many direct `DoPaint(self)` calls outside an
+  expose (the GTK2 double buffer hides the same thing during normal exposes). Fix:
+  capture the control size in `ctlW/ctlH` before the `with` blocks. Side effect: the
+  splitted stubs and the crow's-foot/end icons at `IconXY:=Point(xo+width-...)` were
+  off-clip before too and now appear (`fix02-04-07/30-canvas.png` vs `01-canvas.png`).
+  Verified: rename `productgroup` -> `productgroup_renamed` twice, no leftover
+  (`30-fixed1/2`), drag of the table 100 px down leaves nothing at the old place
+  (`31-moved.png`).
+- **#4 Relation Editor FK grid** (`src/EditorRelation.pas/.lfm`): no `OnDrawCell` exists;
+  the "black band" is the LCL `tsLazarus` title bevel (`cl3DDKShadow` right/bottom
+  edge of every fixed cell, most visible at the last column against the white gap).
+  `Flat=True` in the .lfm plus `FixedGridLineColor`/`BorderColor:=clSilver` in
+  `SetRelation` (both are *not* streamed for `TStringGrid` - `FixedGridLineColor` in
+  the .lfm gives "Unknown property" at load and the editor never opens). Columns:
+  `AutoAdjustColumns` with the old widths as minimums, the Comment column takes the
+  rest of `ClientWidth` (`43-releditor-final.png`).
+- **#7 Ctrl+Del with nothing selected** (`src/Main.pas` `DeleteMIClick`): the
+  `MessageDlg` is now inside `if ObjectList.Count>0`. Verified: click on empty canvas,
+  Ctrl+Del, no window appears.
+- `xvfb-run -a ./bin/DBDesignerFork --selftest`: 93 PASS / 0 FAIL / 78 SKIP;
+  `WorkMode=1` and `DBConn.ini` md5 unchanged.
+- Gotchas: a `writeln` probe that reads `theCanvas.ClipRect` (or anything that needs
+  the handle) *before* the drawing hides this bug - the handle then exists at the first
+  `width` read. Compare pixel rows of two screenshots with PIL instead of eyeballing
+  1-px lines (`Image.load()`, count pixels that differ per row). Minimise/restore, a
+  window resize and toggling "Display Page Grid" do *not* repaint the model panel
+  under the compositor - restart the app for a clean canvas. `xdotool click --repeat 2
+  --delay 60` is more reliable for the double-click on the small `CartRel` label than
+  `--delay 80`; the label is at client (124,314) with the window at 0,0.

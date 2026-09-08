@@ -10954,13 +10954,16 @@ end;
 procedure TEERRel.PaintObj2Canvas_RelStart(theCanvas: TCanvas; xo, yo: integer);
 var i, j, theBmpNr: integer;
   IconXY: TPoint;
-  w, h: integer;
+  w, h, ctlW, ctlH: integer;
 begin
   if(ParentEERModel.DisableModelRefresh)then
     Exit;
     
   if(Invisible)then
     Exit;
+
+  ctlW:=Width;
+  ctlH:=Height;
 
   with theCanvas do
   begin
@@ -10969,17 +10972,17 @@ begin
 
     if(Not(Splitted))then
     begin
-      w:=width-1;
-      h:=height-1;
+      w:=ctlW-1;
+      h:=ctlH-1;
     end
     else
     begin
       w:=TEERModel(Parent).EvalZoomFac(25);
-      if(w>width-1)then
-        w:=width-1;
+      if(w>ctlW-1)then
+        w:=ctlW-1;
       h:=TEERModel(Parent).EvalZoomFac(23);
-      if(h>height-1)then
-        h:=height-1;
+      if(h>ctlH-1)then
+        h:=ctlH-1;
     end;
 
 
@@ -11032,17 +11035,17 @@ begin
       end
       else if(relDirection=re_left)then
       begin
-        MoveTo(xo+width-1, yo+ParentEERModel.RelIconDSize);
-        LineTo(xo+width-1-w, yo+ParentEERModel.RelIconDSize);
+        MoveTo(xo+ctlW-1, yo+ParentEERModel.RelIconDSize);
+        LineTo(xo+ctlW-1-w, yo+ParentEERModel.RelIconDSize);
 
-        IconXY:=Point(xo+width-ParentEERModel.RelIconSize, yo+0);
+        IconXY:=Point(xo+ctlW-ParentEERModel.RelIconSize, yo+0);
       end
       else if(relDirection=re_top)then
       begin
-        MoveTo(xo+ParentEERModel.RelIconDSize, yo+height-1);
-        LineTo(xo+ParentEERModel.RelIconDSize, yo+height-1-h);
+        MoveTo(xo+ParentEERModel.RelIconDSize, yo+ctlH-1);
+        LineTo(xo+ParentEERModel.RelIconDSize, yo+ctlH-1-h);
 
-        IconXY:=Point(xo+0, yo+height-ParentEERModel.RelIconSize);
+        IconXY:=Point(xo+0, yo+ctlH-ParentEERModel.RelIconSize);
       end
       else if(relDirection=re_bottom)then
       begin
@@ -11096,8 +11099,8 @@ begin
           7);
 
     if(DMEER.Notation=noCrowsFoot)then
-      if(width>TEERModel(Parent).EvalZoomFac(10))and
-        (height>TEERModel(Parent).EvalZoomFac(10))then
+      if(ctlW>TEERModel(Parent).EvalZoomFac(10))and
+        (ctlH>TEERModel(Parent).EvalZoomFac(10))then
       begin
         //Icons 20..23, 24..27 (OptionalStart)
         theBmpNr:=(relDirection+2) mod 4+20+4*Ord(OptionalStart);
@@ -11112,7 +11115,7 @@ begin
 end;
 
 procedure TEERRel.PaintObj2Canvas_RelMiddle(theCanvas: TCanvas; xo, yo: integer);
-var i, theBmpNr: integer;
+var i, theBmpNr, ctlW, ctlH: integer;
   IconXY: TPoint;
 begin
   if(ParentEERModel.DisableModelRefresh)then
@@ -11121,6 +11124,9 @@ begin
   if(Invisible)or(Splitted)then
     Exit;
     
+  ctlW:=RelMiddle.Width;
+  ctlH:=RelMiddle.Height;
+
   with RelMiddle do
   begin
     with theCanvas do
@@ -11164,23 +11170,23 @@ begin
 
         if(relDirection=re_right)or(relDirection=re_left)then
         begin
-          if(height>1)then
+          if(ctlH>1)then
           begin
-            MoveTo(xo+ParentEERModel.RelIconDSize, yo+height-1);
+            MoveTo(xo+ParentEERModel.RelIconDSize, yo+ctlH-1);
             LineTo(xo+ParentEERModel.RelIconDSize, yo+0);
           end;
 
-          IconXY:=Point(xo+0, yo+height div 2-ParentEERModel.RelIconDSize);
+          IconXY:=Point(xo+0, yo+ctlH div 2-ParentEERModel.RelIconDSize);
         end
         else if(relDirection=re_top)or(relDirection=re_bottom)then
         begin
-          if(width>1)then
+          if(ctlW>1)then
           begin
             MoveTo(xo+0, yo+ParentEERModel.RelIconDSize);
-            LineTo(xo+width-1, yo+ParentEERModel.RelIconDSize);
+            LineTo(xo+ctlW-1, yo+ParentEERModel.RelIconDSize);
           end;
 
-          IconXY:=Point(xo+width div 2-ParentEERModel.RelIconDSize, yo+0);
+          IconXY:=Point(xo+ctlW div 2-ParentEERModel.RelIconDSize, yo+0);
         end
       end;
 
@@ -11218,7 +11224,7 @@ end;
 procedure TEERRel.PaintObj2Canvas_RelEnd(theCanvas: TCanvas; xo, yo: integer);
 var i, j: integer;
   IconXY: TPoint;
-  w, h: integer;
+  w, h, ctlW, ctlH: integer;
   theBmpNr: integer;
 begin
   if(ParentEERModel.DisableModelRefresh)then
@@ -11227,23 +11233,29 @@ begin
   if(Invisible)then
     Exit;
     
+  // Control size captured outside "with theCanvas do": width/height in there
+  // resolve to TCanvas.Width/Height under LCL (the GDK drawable size, or 0
+  // before the handle exists), see PaintObj2Canvas_RelCaption.
+  ctlW:=RelEnd.Width;
+  ctlH:=RelEnd.Height;
+
   with RelEnd do
   begin
     with theCanvas do
     begin
       if(Not(Splitted))then
       begin
-        w:=width-1;
-        h:=height-1;
+        w:=ctlW-1;
+        h:=ctlH-1;
       end
       else
       begin
         w:=TEERModel(Parent).EvalZoomFac(25);
-        if(w>width-1)then
-          w:=width-1;
+        if(w>ctlW-1)then
+          w:=ctlW-1;
         h:=TEERModel(Parent).EvalZoomFac(23);
-        if(h>height-1)then
-          h:=height-1;
+        if(h>ctlH-1)then
+          h:=ctlH-1;
       end;
 
       if(selected)or(Splitted)then
@@ -11292,10 +11304,10 @@ begin
 
         if(relDirection=re_right)then
         begin
-          MoveTo(xo+width-1, yo+ParentEERModel.RelIconDSize);
-          LineTo(xo+width-1-w, yo+ParentEERModel.RelIconDSize);
+          MoveTo(xo+ctlW-1, yo+ParentEERModel.RelIconDSize);
+          LineTo(xo+ctlW-1-w, yo+ParentEERModel.RelIconDSize);
 
-          IconXY:=Point(xo+width-ParentEERModel.RelIconSize, yo+0);
+          IconXY:=Point(xo+ctlW-ParentEERModel.RelIconSize, yo+0);
         end
         else if(relDirection=re_left)then
         begin
@@ -11313,10 +11325,10 @@ begin
         end
         else if(relDirection=re_bottom)then
         begin
-          MoveTo(xo+ParentEERModel.RelIconDSize, yo+height-1-h);
-          LineTo(xo+ParentEERModel.RelIconDSize, yo+height-1);
+          MoveTo(xo+ParentEERModel.RelIconDSize, yo+ctlH-1-h);
+          LineTo(xo+ParentEERModel.RelIconDSize, yo+ctlH-1);
 
-          IconXY:=Point(xo+0, yo+height-ParentEERModel.RelIconSize);
+          IconXY:=Point(xo+0, yo+ctlH-ParentEERModel.RelIconSize);
         end;
       end;
 
@@ -11342,8 +11354,8 @@ begin
           7);
 
       if(DMEER.Notation=noCrowsFoot)then
-        if(width>TEERModel(Parent).EvalZoomFac(10))and
-          (height>TEERModel(Parent).EvalZoomFac(10))then
+        if(ctlW>TEERModel(Parent).EvalZoomFac(10))and
+          (ctlH>TEERModel(Parent).EvalZoomFac(10))then
         begin
           //Icons 12..15, 16..19 (OptionalEnd)
           theBmpNr:=(relDirection+2) mod 4+12+4*Ord(OptionalEnd);
