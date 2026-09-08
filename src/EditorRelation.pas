@@ -204,7 +204,7 @@ begin
 end;
 
 procedure TEditorRelationForm.SetRelation(theRelation: TEERRel);
-var i: integer;
+var i, w: integer;
 begin
   EERModel:=TEERModel(theRelation.Parent);
   EERRel:=theRelation;
@@ -246,6 +246,33 @@ begin
     else
       FKGrid.Cells[2, i+1]:='';
   end;
+
+  //Flat header without the LCL's black cl3DDKShadow bevel (Flat is set in
+  //the .lfm; FixedGridLineColor/BorderColor are not streamed for TStringGrid)
+  FKGrid.FixedGridLineColor:=clSilver;
+  FKGrid.BorderColor:=clSilver;
+
+  //Size the columns to their content (the fixed widths above were made for
+  //the Windows font and clip names like "idonlinecustomer" under the LCL);
+  //the Comment column takes whatever is left of the grid width
+  FKGrid.AutoAdjustColumns;
+  if(FKGrid.ColWidths[0]<84)then
+    FKGrid.ColWidths[0]:=84;
+  if(FKGrid.ColWidths[1]<100)then
+    FKGrid.ColWidths[1]:=100;
+  w:=FKGrid.ClientWidth-FKGrid.ColWidths[0]-FKGrid.ColWidths[1]-
+    3*FKGrid.GridLineWidth;
+  if(w<110)then
+    w:=110;
+  FKGrid.ColWidths[2]:=w;
+  //The grid keeps the focused cell / horizontal scroll position of the
+  //previous relation (FixedCols=1): with the cursor in the Comment column the
+  //LCL scrolls "Dest. Name" out of view and the FK names are hidden - start
+  //at the first scrollable column again
+  FKGrid.LeftCol:=FKGrid.FixedCols;
+  FKGrid.Col:=FKGrid.FixedCols;
+  if(FKGrid.RowCount>FKGrid.FixedRows)then
+    FKGrid.Row:=FKGrid.FixedRows;
 
   CreateRefDefCBox.Checked:=EERRel.CreateRefDef;
 

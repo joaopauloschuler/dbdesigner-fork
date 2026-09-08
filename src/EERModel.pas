@@ -160,6 +160,7 @@ type
     function NewRegion(x, y, w, h: integer; LogTheAction: Boolean): Pointer;
     procedure SendRegionsToBack;
     function NewImage(x, y, w, h: integer; LogTheAction: Boolean): Pointer;
+    function GetFreeObjPos(x, y, w, h: integer; ExcludeObj: TObject = nil): TPoint;
 
     //Set, Get ModelName
     procedure SetModelName(name: string);
@@ -2879,17 +2880,119 @@ begin
 
 end;
 
+//Return the position nearest to (x, y) where a w x h object does not
+//overlap any table, note or image of the model (regions and relation lines
+//are not obstacles - tables live inside regions and the lines are re-routed).
+//Used by the n:m tool, which used to drop the join table on the midpoint of
+//its two parents regardless of what was there (model-edit-bug-catalog #11).
+//Candidates are visited ring by ring around (x, y), nearest first inside a
+//ring, with the position grid as step when it is active; the search gives up
+//after 60 rings and returns the original position.
+function TEERModel.GetFreeObjPos(x, y, w, h: integer; ExcludeObj: TObject = nil): TPoint;
+const margin=10;
+  maxRings=60;
+var ring, dx, dy, sx, sy, cx, cy, bestX, bestY: integer;
+  bestDist, dist: Int64;
+  found: Boolean;
+
+  function PosIsFree(px, py: integer): Boolean;
+  var j: integer;
+    o: TEERObj;
+  begin
+    PosIsFree:=False;
+    if(px<0)or(py<0)or(px+w>EERModel_Width)or(py+h>EERModel_Height)then
+      Exit;
+    for j:=0 to ComponentCount-1 do
+    begin
+      if(Components[j]=ExcludeObj)then
+        continue;
+      if(Components[j] is TEERTable)or
+        (Components[j] is TEERNote)or
+        (Components[j] is TEERImage)then
+      begin
+        o:=TEERObj(Components[j]);
+        if(px<o.Obj_X+o.Obj_W+margin)and(px+w+margin>o.Obj_X)and
+          (py<o.Obj_Y+o.Obj_H+margin)and(py+h+margin>o.Obj_Y)then
+          Exit;
+      end;
+    end;
+    PosIsFree:=True;
+  end;
+
+begin
+  GetFreeObjPos:=Point(x, y);
+
+  sx:=10;
+  sy:=10;
+  if(UsePositionGrid)then
+  begin
+    if(PositionGrid.X>0)then
+      sx:=PositionGrid.X;
+    if(PositionGrid.Y>0)then
+      sy:=PositionGrid.Y;
+    x:=(x div sx)*sx;
+    y:=(y div sy)*sy;
+  end;
+
+  for ring:=0 to maxRings do
+  begin
+    found:=False;
+    bestDist:=0;
+    bestX:=x;
+    bestY:=y;
+    for dy:=-ring to ring do
+      for dx:=-ring to ring do
+      begin
+        //Only the border of the ring; the inner cells were tested before
+        if(Abs(dx)<>ring)and(Abs(dy)<>ring)then
+          continue;
+        cx:=x+dx*sx;
+        cy:=y+dy*sy;
+        dist:=Int64(dx*sx)*(dx*sx)+Int64(dy*sy)*(dy*sy);
+        if(found)and(dist>=bestDist)then
+          continue;
+        if(PosIsFree(cx, cy))then
+        begin
+          found:=True;
+          bestDist:=dist;
+          bestX:=cx;
+          bestY:=cy;
+        end;
+      end;
+
+    if(found)then
+    begin
+      GetFreeObjPos:=Point(bestX, bestY);
+      Exit;
+    end;
+  end;
+
+end;
+
 procedure TEERModel.SendRegionsToBack;
 var i: integer;
+  theRegions: TList;
 begin
-  //Set TEERRegion Component-Indices to max
-  for i:=ComponentCount-2 downto 0 do
-    if(Components[I].Classname='TEERRegion')then
-      Components[I].ComponentIndex:=
-        ComponentCount-2;
+  //Under the LCL the z-order (painting and mouse hit-testing) of the
+  //EER objects is the order of Parent.Controls, index 0 being the
+  //bottom-most control. The CLX-era code changed ComponentIndex, which
+  //only reorders the owner's component list and has no effect on the
+  //z-order at all. Move every region below all other objects, keeping the
+  //relative order of the regions, and put the GridPaintBox underneath.
+  theRegions:=TList.Create;
+  try
+    for i:=0 to ControlCount-1 do
+      if(Controls[i] is TEERRegion)then
+        theRegions.Add(Controls[i]);
+
+    for i:=theRegions.Count-1 downto 0 do
+      TControl(theRegions[i]).SendToBack;
+  finally
+    theRegions.Free;
+  end;
 
   //send GridPaintBox to background
-  GridPaintBox.ComponentIndex:=ComponentCount-1;
+  GridPaintBox.SendToBack;
 end;
 
 
@@ -4395,6 +4498,12 @@ begin
           TEERTable(Components[i]).BringToFront;
         end;
       end;
+
+    //Regions loaded into a model that already has objects (paste, undo,
+    //plugin import, appended model) or listed after the other sections
+    //in the file must not cover the relations, notes and images
+    SendRegionsToBack;
+
     //Check PluginData
     for i:=0 to PluginData.Count-1 do
       if(TEERPluginData(PluginData[i]).Obj_id>=maxid)then
@@ -5072,6 +5181,12 @@ begin
           TEERTable(Components[i]).BringToFront;
         end;
       end;
+
+    //Regions loaded into a model that already has objects (paste, undo,
+    //plugin import, appended model) or listed after the other sections
+    //in the file must not cover the relations, notes and images
+    SendRegionsToBack;
+
     //Check PluginData
     for i:=0 to PluginData.Count-1 do
       if(TEERPluginData(PluginData[i]).Obj_id>=maxid)then
@@ -8032,6 +8147,16 @@ begin
               newNMtable.Obj_Y:=(newNMtable.Obj_Y div ParentEERModel.PositionGrid.Y) * ParentEERModel.PositionGrid.Y;
             end;
 
+            //Don't drop the join table onto the objects that already sit
+            //between its parents - take the nearest free spot instead
+            //(model-edit-bug-catalog #11)
+            with ParentEERModel.GetFreeObjPos(newNMtable.Obj_X, newNMtable.Obj_Y,
+              newNMtable.Obj_W, newNMtable.Obj_H, newNMtable) do
+            begin
+              newNMtable.Obj_X:=X;
+              newNMtable.Obj_Y:=Y;
+            end;
+
             newNMtable.RefreshObj;
           end;
           wtRel11Sub:
@@ -10929,13 +11054,16 @@ end;
 procedure TEERRel.PaintObj2Canvas_RelStart(theCanvas: TCanvas; xo, yo: integer);
 var i, j, theBmpNr: integer;
   IconXY: TPoint;
-  w, h: integer;
+  w, h, ctlW, ctlH: integer;
 begin
   if(ParentEERModel.DisableModelRefresh)then
     Exit;
     
   if(Invisible)then
     Exit;
+
+  ctlW:=Width;
+  ctlH:=Height;
 
   with theCanvas do
   begin
@@ -10944,17 +11072,17 @@ begin
 
     if(Not(Splitted))then
     begin
-      w:=width-1;
-      h:=height-1;
+      w:=ctlW-1;
+      h:=ctlH-1;
     end
     else
     begin
       w:=TEERModel(Parent).EvalZoomFac(25);
-      if(w>width-1)then
-        w:=width-1;
+      if(w>ctlW-1)then
+        w:=ctlW-1;
       h:=TEERModel(Parent).EvalZoomFac(23);
-      if(h>height-1)then
-        h:=height-1;
+      if(h>ctlH-1)then
+        h:=ctlH-1;
     end;
 
 
@@ -11007,17 +11135,17 @@ begin
       end
       else if(relDirection=re_left)then
       begin
-        MoveTo(xo+width-1, yo+ParentEERModel.RelIconDSize);
-        LineTo(xo+width-1-w, yo+ParentEERModel.RelIconDSize);
+        MoveTo(xo+ctlW-1, yo+ParentEERModel.RelIconDSize);
+        LineTo(xo+ctlW-1-w, yo+ParentEERModel.RelIconDSize);
 
-        IconXY:=Point(xo+width-ParentEERModel.RelIconSize, yo+0);
+        IconXY:=Point(xo+ctlW-ParentEERModel.RelIconSize, yo+0);
       end
       else if(relDirection=re_top)then
       begin
-        MoveTo(xo+ParentEERModel.RelIconDSize, yo+height-1);
-        LineTo(xo+ParentEERModel.RelIconDSize, yo+height-1-h);
+        MoveTo(xo+ParentEERModel.RelIconDSize, yo+ctlH-1);
+        LineTo(xo+ParentEERModel.RelIconDSize, yo+ctlH-1-h);
 
-        IconXY:=Point(xo+0, yo+height-ParentEERModel.RelIconSize);
+        IconXY:=Point(xo+0, yo+ctlH-ParentEERModel.RelIconSize);
       end
       else if(relDirection=re_bottom)then
       begin
@@ -11071,8 +11199,8 @@ begin
           7);
 
     if(DMEER.Notation=noCrowsFoot)then
-      if(width>TEERModel(Parent).EvalZoomFac(10))and
-        (height>TEERModel(Parent).EvalZoomFac(10))then
+      if(ctlW>TEERModel(Parent).EvalZoomFac(10))and
+        (ctlH>TEERModel(Parent).EvalZoomFac(10))then
       begin
         //Icons 20..23, 24..27 (OptionalStart)
         theBmpNr:=(relDirection+2) mod 4+20+4*Ord(OptionalStart);
@@ -11087,7 +11215,7 @@ begin
 end;
 
 procedure TEERRel.PaintObj2Canvas_RelMiddle(theCanvas: TCanvas; xo, yo: integer);
-var i, theBmpNr: integer;
+var i, theBmpNr, ctlW, ctlH: integer;
   IconXY: TPoint;
 begin
   if(ParentEERModel.DisableModelRefresh)then
@@ -11096,6 +11224,9 @@ begin
   if(Invisible)or(Splitted)then
     Exit;
     
+  ctlW:=RelMiddle.Width;
+  ctlH:=RelMiddle.Height;
+
   with RelMiddle do
   begin
     with theCanvas do
@@ -11139,23 +11270,23 @@ begin
 
         if(relDirection=re_right)or(relDirection=re_left)then
         begin
-          if(height>1)then
+          if(ctlH>1)then
           begin
-            MoveTo(xo+ParentEERModel.RelIconDSize, yo+height-1);
+            MoveTo(xo+ParentEERModel.RelIconDSize, yo+ctlH-1);
             LineTo(xo+ParentEERModel.RelIconDSize, yo+0);
           end;
 
-          IconXY:=Point(xo+0, yo+height div 2-ParentEERModel.RelIconDSize);
+          IconXY:=Point(xo+0, yo+ctlH div 2-ParentEERModel.RelIconDSize);
         end
         else if(relDirection=re_top)or(relDirection=re_bottom)then
         begin
-          if(width>1)then
+          if(ctlW>1)then
           begin
             MoveTo(xo+0, yo+ParentEERModel.RelIconDSize);
-            LineTo(xo+width-1, yo+ParentEERModel.RelIconDSize);
+            LineTo(xo+ctlW-1, yo+ParentEERModel.RelIconDSize);
           end;
 
-          IconXY:=Point(xo+width div 2-ParentEERModel.RelIconDSize, yo+0);
+          IconXY:=Point(xo+ctlW div 2-ParentEERModel.RelIconDSize, yo+0);
         end
       end;
 
@@ -11193,7 +11324,7 @@ end;
 procedure TEERRel.PaintObj2Canvas_RelEnd(theCanvas: TCanvas; xo, yo: integer);
 var i, j: integer;
   IconXY: TPoint;
-  w, h: integer;
+  w, h, ctlW, ctlH: integer;
   theBmpNr: integer;
 begin
   if(ParentEERModel.DisableModelRefresh)then
@@ -11202,23 +11333,29 @@ begin
   if(Invisible)then
     Exit;
     
+  // Control size captured outside "with theCanvas do": width/height in there
+  // resolve to TCanvas.Width/Height under LCL (the GDK drawable size, or 0
+  // before the handle exists), see PaintObj2Canvas_RelCaption.
+  ctlW:=RelEnd.Width;
+  ctlH:=RelEnd.Height;
+
   with RelEnd do
   begin
     with theCanvas do
     begin
       if(Not(Splitted))then
       begin
-        w:=width-1;
-        h:=height-1;
+        w:=ctlW-1;
+        h:=ctlH-1;
       end
       else
       begin
         w:=TEERModel(Parent).EvalZoomFac(25);
-        if(w>width-1)then
-          w:=width-1;
+        if(w>ctlW-1)then
+          w:=ctlW-1;
         h:=TEERModel(Parent).EvalZoomFac(23);
-        if(h>height-1)then
-          h:=height-1;
+        if(h>ctlH-1)then
+          h:=ctlH-1;
       end;
 
       if(selected)or(Splitted)then
@@ -11267,10 +11404,10 @@ begin
 
         if(relDirection=re_right)then
         begin
-          MoveTo(xo+width-1, yo+ParentEERModel.RelIconDSize);
-          LineTo(xo+width-1-w, yo+ParentEERModel.RelIconDSize);
+          MoveTo(xo+ctlW-1, yo+ParentEERModel.RelIconDSize);
+          LineTo(xo+ctlW-1-w, yo+ParentEERModel.RelIconDSize);
 
-          IconXY:=Point(xo+width-ParentEERModel.RelIconSize, yo+0);
+          IconXY:=Point(xo+ctlW-ParentEERModel.RelIconSize, yo+0);
         end
         else if(relDirection=re_left)then
         begin
@@ -11288,10 +11425,10 @@ begin
         end
         else if(relDirection=re_bottom)then
         begin
-          MoveTo(xo+ParentEERModel.RelIconDSize, yo+height-1-h);
-          LineTo(xo+ParentEERModel.RelIconDSize, yo+height-1);
+          MoveTo(xo+ParentEERModel.RelIconDSize, yo+ctlH-1-h);
+          LineTo(xo+ParentEERModel.RelIconDSize, yo+ctlH-1);
 
-          IconXY:=Point(xo+0, yo+height-ParentEERModel.RelIconSize);
+          IconXY:=Point(xo+0, yo+ctlH-ParentEERModel.RelIconSize);
         end;
       end;
 
@@ -11317,8 +11454,8 @@ begin
           7);
 
       if(DMEER.Notation=noCrowsFoot)then
-        if(width>TEERModel(Parent).EvalZoomFac(10))and
-          (height>TEERModel(Parent).EvalZoomFac(10))then
+        if(ctlW>TEERModel(Parent).EvalZoomFac(10))and
+          (ctlH>TEERModel(Parent).EvalZoomFac(10))then
         begin
           //Icons 12..15, 16..19 (OptionalEnd)
           theBmpNr:=(relDirection+2) mod 4+12+4*Ord(OptionalEnd);

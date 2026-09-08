@@ -121,6 +121,7 @@ object MainForm: TMainForm
   OnCreate = FormCreate
   OnDestroy = FormDestroy
   OnKeyDown = FormKeyDown
+  OnShortCut = FormShortCut
   OnShow = FormShow
   PixelsPerInch = 96
   object QuerySplitter: TSplitter
@@ -3182,15 +3183,18 @@ object MainForm: TMainForm
     end
     object EditMI: TMenuItem
       Caption = 'Edit'
+      OnClick = EditMIClick
       object UndoMI: TMenuItem
         Caption = 'Undo'
         GroupIndex = 1
         ImageIndex = 0
+        ShortCut = 16474
         OnClick = UndoMIClick
       end
       object RedoMI: TMenuItem
         Caption = 'Redo'
         GroupIndex = 1
+        ShortCut = 16473
         OnClick = RedoMIClick
       end
       object N13: TMenuItem
@@ -3202,6 +3206,7 @@ object MainForm: TMainForm
         Enabled = False
         GroupIndex = 1
         ImageIndex = 8
+        ShortCut = 16451
         OnClick = CopyMIClick
       end
       object CopyselectedObjectsasImageMI: TMenuItem
@@ -3215,6 +3220,7 @@ object MainForm: TMainForm
         Enabled = False
         GroupIndex = 1
         ImageIndex = 1
+        ShortCut = 16472
         OnClick = CutMIClick
       end
       object PasteMI: TMenuItem
@@ -3222,6 +3228,7 @@ object MainForm: TMainForm
         Enabled = False
         GroupIndex = 1
         ImageIndex = 4
+        ShortCut = 16470
         OnClick = PasteMIClick
       end
       object N5: TMenuItem
@@ -3239,6 +3246,7 @@ object MainForm: TMainForm
         Caption = 'Select All Objects'
         Enabled = False
         GroupIndex = 1
+        ShortCut = 16449
         OnClick = SelectAllMIClick
       end
       object N20: TMenuItem

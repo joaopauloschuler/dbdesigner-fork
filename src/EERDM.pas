@@ -862,6 +862,18 @@ begin
 
     //Close Log
     theModel.EndSubAction;
+
+    //Bring the centred objects into view: scroll the model's scroll box so
+    //that the centre of the model bounds is in the middle of the visible area
+    //(otherwise the objects simply vanish from the top-left view)
+    if(theModel.Parent is TScrollingWinControl)then
+      with TScrollingWinControl(theModel.Parent) do
+      begin
+        HorzScrollBar.Position:=
+          theModel.EvalZoomFac((m_left+m_right) div 2+move_x)-ClientWidth div 2;
+        VertScrollBar.Position:=
+          theModel.EvalZoomFac((m_top+m_bottom) div 2+move_y)-ClientHeight div 2;
+      end;
   end;
 end;
 

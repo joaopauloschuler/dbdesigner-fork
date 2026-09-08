@@ -1563,3 +1563,337 @@ navigation (`Down`x4 `Right` for File > Open Recent). Shots: `fix13-*`.
   `TEST SUMMARY` block, not a grep. `DBConn.ini`/`DBDesignerFork_Settings.ini` restored
   byte-for-byte from the backups (`Password=bpsa`, `WorkMode=1`), `DBConn_Current.ini`
   (written by Plugins > DataImporter) removed.
+
+## Fix: model-edit #5 - z-order of objects created in the session (SendRegionsToBack was a no-op)
+
+- What the catalog reported: tables from the Table tool and relations from the
+  relation tools could not be selected, double-clicked or deleted with the mouse;
+  the clicks "fell through" to the region or canvas underneath.
+- What I found on DISPLAY=:0 with temporary `writeln(StdErr)` probes in
+  `TEERModel.DoMouseDown` (dumping `Controls[i]` order), `TEERObj.DoMouseDown/
+  DoMouseUp/DoDblClick` and `SetSelected`: every creation path already produced a
+  control at the *top* of `Parent.Controls`, and the clicks reached it. With the
+  clicks placed on the objects, a session-created table (inside the `OnlineStore`
+  region and outside any region), a session-created 1:n relation (line and label),
+  a delete via Ctrl+Del (relation + `FKidNewsCol` removed), Save-free reopen, and
+  the same on a File > New model all worked *before* the code change. The catalog's
+  symptoms match clicks that landed next to the very small targets instead: the
+  relation line between `News` and `Employee` is ~13 px long and the drawn line is
+  1 px inside a 14-px-wide control, the label is 16 px high; a click on the region
+  background deselects everything (so Ctrl+Del lists nothing = catalog #7) and a
+  double-click there opens the Region Editor - exactly what #5 describes. The
+  "first click after windowactivate is lost" effect adds to it.
+- Real defect found on the way: `TEERModel.SendRegionsToBack` (called by
+  `NewTable`, `NewRelation`, `NewNote`, `PopupMenuSelectRegion`) still used the
+  CLX approach - it set `ComponentIndex` of the regions and the `GridPaintBox`.
+  Under the LCL that only reorders the owner's component list; painting and
+  mouse hit-testing use the parent's `Controls` order (`TWinControl.ControlAtPos`
+  walks `FControls` from the end), so the call did nothing. Nobody noticed because
+  `NewRegion` (also used by the XML loader) does a real `SendToBack` and the
+  loader parses `REGIONS` before the other sections.
+- Change (src/EERModel.pas): `SendRegionsToBack` now collects the `TEERRegion`
+  controls and calls `SendToBack` on them in reverse order (relative order kept),
+  then sends `GridPaintBox` to the back. `LoadFromFile2` and the duplicated tail
+  in `LoadFromFile` call it after the tables' `BringToFront` loop, so regions that
+  arrive in a model that already has objects (paste, undo of a delete, plugin
+  import, appended model, XML with `REGIONS` after `RELATIONS`) can never cover
+  relation parts, notes or images.
+- Verified on DISPLAY=:0 with the fixed build (`$S/shots/model-edit/fix05/50-65`):
+  `Table_15` inside `OnlineStore` and `Table_16` outside select (dotted frame) and
+  open their Table Editor; 1:n (Non-Identifying, palette y=315) `News` ->
+  `Employee`: click on the line selects the relation, click on the label selects
+  it, double-click opens the Relation Editor (`Rel_12`, `idNews`/`FKidNewsCol`),
+  Ctrl+Del lists `Rel_12` and removes it plus the FK column; File > New with two
+  tables and a relation behaves the same. `xvfb-run -a ./bin/DBDesignerFork
+  --selftest`: 93 PASS / 0 FAIL / 78 SKIP; `WorkMode=1` and `DBConn.ini` md5
+  unchanged.
+- Gotchas for driving the model editor with xdotool: the palette buttons at
+  client y=270/293/315/338/360 are Region / Table / 1:n Non-Identifying / 1:1
+  Non-Identifying / n:m (the catalog's "12th button" is the 1:n Non-Identifying
+  one); always confirm with the status bar (`crop 700x20+0+868`). A region is
+  selected by clicking its caption (top-left), a click on its background starts a
+  rubber band and deselects everything. Table Editor Cancel is at client
+  (669,466) of the 702x491 dialog, Relation Editor Cancel at (383,447) of 414x472;
+  loop `xwininfo -id <xid> | grep IsViewable` until the modal dialog is gone
+  before sending anything else, otherwise the following clicks are swallowed.
+  Redirected `StdErr` is buffered by FPC in 256-byte chunks - `Flush(StdErr)`
+  after each debug `writeln`, and never `echo >>` into the same log file (the
+  app's own file offset overwrites it). `pkill -x DBDesignerFork` kills all
+  instances; mutter's frame process owns look-alike windows with the same title,
+  filter `xdotool search --name` results by `getwindowpid`.
+
+## Fix: model-edit #1, #6, #8 - Table Editor index columns invisible, Tab in the in-place editors, "vanished" OK button on linked tables, PK rename -> FK column
+
+- **#1 empty index column list** (`src/EditorTable.pas` `ShowIndex`): the list *was* filled
+  (probe: `lbitems=1`), it just painted nothing. `ShowIndex` set
+  `IndexColListBox.Color:=clWindow` (or `clBackground` for FK-refdef indices); under GTK2
+  `TGtk2WSCustomListBox.SetColor` applies that colour with `gtk_widget_modify_base` to the
+  NORMAL, ACTIVE *and* PRELIGHT states of the tree view. GTK2 draws the selected row of an
+  *unfocused* tree view in the ACTIVE state, whose text colour in this theme is white - and
+  `ShowIndex` pre-selects the first column (`ItemIndex:=0`), so the single row
+  `idproductgroup` was white on white until a click focused the list (SELECTED state,
+  orange). `IndexListBox` never gets a `Color` assignment, which is why it was fine. Fix:
+  `clDefault` (enabled) / `clBtnFace` (disabled FK index) - both map to "theme default"
+  in `SetWidgetColor`. Adding a column via the grid popup "Add Column(s) to Selected
+  Index", changing the kind (dropdown must be opened and picked with the mouse - the
+  `OnCloseUp` handler, db-ui #19 lesson) and the eraser button all worked already; the
+  UNIQUE INDEX survives OK + reopen.
+- **#6 Tab swallowed in the Column Name editor** (`src/EditorTableField.pas`,
+  `src/EditorTableFieldDatatypeInplace.pas`): the probe showed VK_TAB reaching
+  `TEditorTableFieldEdit.DoKeyDown` (key=9) and nothing else - no `OnExit`, no focus
+  move (the LCL's `DoTabKey` runs after the handler and did not navigate either), so the
+  next letters were appended to the name. Fix: `DoKeyDown` handles Tab/Shift+Tab with
+  `ApplyChanges(goRight/goLeft)` (the constants existed but were never implemented) and
+  sets `Key:=0` (same reason as the doubled-character fix: an unhandled key is
+  re-dispatched by the GTK toplevel). `goRight` on a *new* row opens the datatype editor
+  (like Return); otherwise both modes hide the editor and feed VK_TAB / VK_LEFT into
+  `ColumnGridKeyDown`, so the cursor moves exactly like the grid's own Tab/Left
+  (Column Name <-> DataType <-> Default Value <-> Comments, last row -> new row). The
+  datatype in-place combo got the same Tab handling (`ApplyChanges`; if it did not open
+  the next row's name editor, simulate the grid key).
+- **#8 OK button gone after renaming `News.idNews`**: nothing to do with the rename -
+  the button was already missing when the editor opened. `News` and `Employee` carry
+  `IsLinkedObject="1"` in `Examples/order.xml` (placed from the `bookshop` linked model,
+  `<LINKEDMODELS>` at the end of the file; their headers are painted without the header
+  bitmap and with the blue border), and `SetTable` hides `SubmitBtn` for linked objects
+  and read-only models while `FormClose` discards the edits - original DBDesigner 4
+  semantics (linked objects are refreshed from their model). The catalog's re-check on
+  `productgroup` kept the OK button because that table is not linked. What changed:
+  `TableReadOnly` is computed in `SetTable`, `SubmitBtn.Visible` is set in both
+  directions, a grey `ReadOnlyLbl` (new label in `BottomPnl`, `EditorTable.lfm`) says
+  `Linked object from model "bookshop" - read only, changes cannot be applied.` (or the
+  read-only-model variant), `TableNameEd` becomes read-only and the in-place editors,
+  PK/NN/AI/flag toggles, Insert/Delete column and the Indices page handlers exit early -
+  so the grid no longer pretends to accept edits that are thrown away.
+- **PK rename -> FK column propagation** (found while verifying #8 on
+  `productgroup` -> `product`): `TEditorTableForm.ApplyChanges` called
+  `EERModel.CheckAllRelations` right after `SourceEERTable.Assign(EERTable)`.
+  `CheckRelations` deletes FK columns that no longer map to a PK (`FK_checked=False`) and
+  creates columns for `FKFields.Values[<pk>]` - but the `idproductgroup=idproductgroup`
+  -> `pg=FKpgCol` mapping is only rebuilt by `TEERRel.RefreshObj`, which ran later (from
+  `SourceEERTable.RefreshObj`). Result: `product` lost `idproductgroup (FK)` and got
+  `FKpgCol` only on the *next* relation check. Fix: `SourceEERTable.RefreshRelations`
+  before `CheckAllRelations`. Verified: after `pg` + Return + OK the canvas shows
+  `product.FKpgCol (FK)` immediately (`fix01-06-08/53-canvas-after-fix.png`). The
+  News -> Employee case of the catalog cannot be exercised in order.xml (both linked).
+- Escape in the datatype in-place editor (round-4 note): no `GLib-GObject-CRITICAL` on
+  stderr this time after Return / Escape / Down / Up in the grid - not reproduced,
+  nothing changed for it deliberately.
+- Driving gotchas: `xdotool search --name "DBDesigner Fork - order"` also returns the
+  `mutter-x11-frames` window (1878x923 at y=32) - filter with
+  `xprop -id <w> WM_CLASS | grep DBDesignerFork` to get the client (1878x886 at 42,69);
+  the same for the 702x491 Table Editor. Never pipe a script that starts the app into
+  `tail`/`read` - the app inherits stdout and the pipe never closes (redirect the app's
+  stdout to /dev/null). The "New Index" button first opens a 391x61 modal name prompt
+  (accept with its check mark) - a right-click sent while it is open goes nowhere. The
+  grid's popup (`ColPopupMenu`, 274x163) and the combo dropdown are override-redirect
+  windows: find them with `xdotool search --class DBDesignerFork` + `IsViewable` and
+  `import -window` them like any other window. The GTK2 tree view paints the unfocused
+  selection with the ACTIVE style - any `Color:=` on a `TListBox` overrides it.
+
+## Fix: model-edit #2, #4, #7 - stale line after the Table Editor, Relation Editor FK grid, Ctrl+Del with nothing selected
+
+- **#2 stale 1-px line** (`src/EERModel.pas`, `TEERRel.PaintObj2Canvas_RelStart/
+  _RelMiddle/_RelEnd`): not an invalidation problem at all. The line is white, 190 px
+  long, at canvas y=502, x=364..553 - exactly the `RelEnd` paintbox of the *splitted*
+  `forumpost` relation (onlinecustomer -> forumpost), whose horizontal end segment sits
+  there (`ctl=328,468 190x14`, line row 7 -> 468+7+27). Clicking on it selects that
+  relation. The three segment painters read `width`/`height` inside
+  `with RelEnd do with theCanvas do` - under the LCL those resolve to
+  `TCanvas.Width/Height` (`GetDeviceSize` of the GDK drawable: 3072 for the model
+  panel), the gotcha already fixed for the region and the caption/interval labels.
+  For a splitted relation the stub is `w:=EvalZoomFac(25); if w>width-1 then
+  w:=width-1`. `TEERRel.DoPaint` (RelStart's OnPaint) also paints RelEnd through
+  `RelEnd.Canvas` (a `TControlCanvas` with no handle yet): the first `width` read
+  returns 0 (`w:=-1`), `MoveTo(xo+width-1)` allocates the handle and moves to -1,
+  `LineTo(xo+width-1-w)` now sees 3072 -> a white line from -1 to 3072 clipped to the
+  190-px control. The second (black dash-dot-dot) pass draws from 3071 to 3072, off
+  the clip, so the white "background clearing" pass stays. Why it only shows after
+  the Table Editor OK: that is one of the many direct `DoPaint(self)` calls outside an
+  expose (the GTK2 double buffer hides the same thing during normal exposes). Fix:
+  capture the control size in `ctlW/ctlH` before the `with` blocks. Side effect: the
+  splitted stubs and the crow's-foot/end icons at `IconXY:=Point(xo+width-...)` were
+  off-clip before too and now appear (`fix02-04-07/30-canvas.png` vs `01-canvas.png`).
+  Verified: rename `productgroup` -> `productgroup_renamed` twice, no leftover
+  (`30-fixed1/2`), drag of the table 100 px down leaves nothing at the old place
+  (`31-moved.png`).
+- **#4 Relation Editor FK grid** (`src/EditorRelation.pas/.lfm`): no `OnDrawCell` exists;
+  the "black band" is the LCL `tsLazarus` title bevel (`cl3DDKShadow` right/bottom
+  edge of every fixed cell, most visible at the last column against the white gap).
+  `Flat=True` in the .lfm plus `FixedGridLineColor`/`BorderColor:=clSilver` in
+  `SetRelation` (both are *not* streamed for `TStringGrid` - `FixedGridLineColor` in
+  the .lfm gives "Unknown property" at load and the editor never opens). Columns:
+  `AutoAdjustColumns` with the old widths as minimums, the Comment column takes the
+  rest of `ClientWidth` (`43-releditor-final.png`).
+- **#7 Ctrl+Del with nothing selected** (`src/Main.pas` `DeleteMIClick`): the
+  `MessageDlg` is now inside `if ObjectList.Count>0`. Verified: click on empty canvas,
+  Ctrl+Del, no window appears.
+- `xvfb-run -a ./bin/DBDesignerFork --selftest`: 93 PASS / 0 FAIL / 78 SKIP;
+  `WorkMode=1` and `DBConn.ini` md5 unchanged.
+- Gotchas: a `writeln` probe that reads `theCanvas.ClipRect` (or anything that needs
+  the handle) *before* the drawing hides this bug - the handle then exists at the first
+  `width` read. Compare pixel rows of two screenshots with PIL instead of eyeballing
+  1-px lines (`Image.load()`, count pixels that differ per row). Minimise/restore, a
+  window resize and toggling "Display Page Grid" do *not* repaint the model panel
+  under the compositor - restart the app for a clean canvas. `xdotool click --repeat 2
+  --delay 60` is more reliable for the double-click on the small `CartRel` label than
+  `--delay 80`; the label is at client (124,314) with the window at 0,0.
+
+## Fix: model-edit #9 - Edit menu items permanently disabled, no Ctrl+C/X/V/A shortcuts
+
+- **Root cause** (`src/Main.xfm` vs `src/Main.lfm`): the Kylix form refreshed the
+  Edit menu through the CLX-only `TMenuItem.OnShow` events (`CopyMI/CutMI/
+  CopyselectedObjectsasImageMI.OnShow=DeleteMIShow`, `PasteMI.OnShow=PasteMIShow`,
+  `SelectAllMI/CenterModelMI.OnShow=ActivateEERMIOnShow`, `Undo/RedoMIShow`). The LCL
+  `TMenuItem` has no `OnShow`, the port dropped the handlers from the .lfm (the methods
+  survived unused in Main.pas) and the items stayed at their streamed `Enabled=False`.
+  Copy/Cut/Paste/Select All never had a `ShortCut`; the Ctrl+A/C/V/X blocks in
+  `DoApplicationEvent` were already commented out in the original.
+- **Fix** (`src/Main.pas`, `src/Main.lfm`): `RefreshEditMenuItems(QueryClipboard)`
+  (calls the old `UndoMIShow/RedoMIShow/PasteMIShow` logic and sets Copy / Copy as
+  Image / Cut / Delete from `GetSelectedObjsCount`, Select All / Center Model from the
+  active model) is called from `EditMI.OnClick` - under GTK2 the `activate` signal of a
+  menu-bar item fires when its submenu opens, so this replaces `OnShow` - and from the
+  new `MainForm.OnShortCut`, which the LCL runs before it looks a key up in the menu.
+  Shortcuts in the .lfm: Undo Ctrl+Z (16474), Redo Ctrl+Y (16473), Copy Ctrl+C
+  (16451), Cut Ctrl+X (16472), Paste Ctrl+V (16470), Select All Ctrl+A (16449).
+  Keys are not stolen from edit controls: `TextEditControlHasFocus` (`Screen.
+  ActiveControl` is a `TCustomEdit`/`TCustomComboBox`/SynEdit) makes the refresh
+  disable the items, and a disabled item is not a shortcut match, so the key goes on
+  to the control. A *modal* editor never sees the main menu anyway
+  (`TApplication.IsShortcut` consults only `Screen.GetCurrentModalForm`). The same
+  guard now covers the Ctrl+Z / Ctrl+Shift+Z / Ctrl+Del branches of
+  `DoApplicationEvent` (previously Ctrl+Z in the Table Editor's name box undid a model
+  action).
+- **GTK2 gotcha that cost an hour**: the first version queried `Clipboard.AsText`
+  inside the shortcut refresh. `gtk_clipboard_wait_for_text` runs a nested main loop,
+  which processed the Ctrl key *release* before `TMenu.IsShortcut` computed the shift
+  state with `GetKeyState(VK_CONTROL)` (live, not from the message) - the lookup then
+  searched for plain `C`, found nothing, and Ctrl+C did nothing while the probes showed
+  the item enabled. `FormShortCut` therefore refreshes without the clipboard query
+  (`PasteMI` is enabled whenever a model is active and no edit control has the focus;
+  `PasteMIClick` checks for `<` itself); only the menu-open refresh asks the clipboard.
+- **Paste** (`PasteMIClick`): the pasted tables kept the original names; tables whose
+  name collides with another table are renamed `name_1`, `name_2`, ... and refreshed.
+  Paste ignores clipboard text that is not model XML. The pasted copy is selectable and
+  opens its own Table Editor (columns and PRIMARY index intact, `fix09/10-editor-copy`).
+- **Center Model** (`src/EERDM.pas` `CenterModel`): additionally scrolls the model's
+  scroll box so the centre of the model bounds is in the middle of the view - before,
+  the objects moved to the middle of the 3072-px canvas and the top-left view went blank.
+- **Copy as Image**: guarded against no active model and reports in the status bar;
+  `Clipboard.Assign(TBitmap)` is the LCL way (image/bmp). Could not be verified
+  externally: no xclip/xsel on the box, and a python GTK3 reader could not read even a
+  clipboard set by another python GTK3 process in this sandbox (X selection transfer
+  between processes does not complete here), so only the in-app text round trip is proven.
+- Verified on DISPLAY=:0 (`$S/shots/model-edit/fix09/`): Edit menu with `productgroup`
+  selected shows Copy/Copy as Image/Cut/Delete/Select All/Center Model enabled with
+  their shortcuts, Paste disabled with an empty clipboard (`04-editmenu-sel`); Ctrl+C
+  -> "1 Object(s) copied", Ctrl+V -> `productgroup_1` at +30/+30, selected
+  (`08/09-status`, `09-crop`), double-click opens its Table Editor (`10`); inside the
+  editor's Table Name edit Ctrl+A / Ctrl+C / End / Ctrl+V doubled the text
+  (`11-crop`) and the canvas got no second paste (`12-crop`); Ctrl+X -> confirmation
+  listing `productgroup_1`, Yes removes it (`13`, `14-crop`); Ctrl+A selects all 33
+  objects (`15`); the menu then shows "Undo Delete Object(s)" and Paste enabled (`16`);
+  Center Model (`21-centered-scrolled`). `xvfb-run -a ./bin/DBDesignerFork --selftest`:
+  93 PASS / 0 FAIL / 78 SKIP (unchanged - the items are still streamed disabled and
+  the self-test clicks without opening the menu); `WorkMode=1`, `DBConn.ini` md5
+  unchanged, settings restored from the backup (Save As changes `RecentSaveFileAsDir`).
+- Driving gotchas: `xwininfo -geometry` of a decorated window is *not* its screen
+  position (the main window prints `-0-0`, the Table Editor `+260+156` while it sits
+  at 274,205) - use `Absolute upper-left X/Y`; three Cancel clicks were lost that way.
+  Override-redirect popups (menus) do report their real position. `gdb -p` is blocked
+  (ptrace scope), so `writeln(StdErr)` probes are the only backtrace substitute.
+- Not done: the canvas/table context menus keep their own items (Select Object / Edit /
+  Refresh / Delete / Copy Table Name ... and "Select All" on the canvas popup, which
+  calls `TEERForm.SelectAllMIClick`) - no Copy/Paste there, as in the original.
+  `DoApplicationEvent` still handles Ctrl+S/O/T/R/W/E/Q for the whole application,
+  including inside modal dialogs' edit boxes (pre-existing).
+
+## Fix: model-edit #10-#12 - "clipped" table after a second PK column (not a bug), n:m join table placement, Table Options page
+
+- **#10 is not a height bug.** Probes in `TEERTable.RefreshObj` / `PaintObj2Canvas`
+  showed `ColCount=7 Obj_H=142 Height=106` before and after the PK toggle on
+  `product.name` (order.xml is displayed at 75 % zoom, `EvalZoomFac`), and the
+  cached image, the control and the painted rows are identical in size. What both
+  observers saw is the *selection frame*: `PaintObj2Canvas` draws it (white line
+  plus black `psDot` line) at `yo+tblHeight-3` - exactly on top of the solid bottom
+  border - and the Table Editor leaves the table selected, so the last row's
+  descenders touch a dotted line instead of a solid one and the 3x crop looks "cut
+  off". The catalog's own `pass2/01-main.png` vs `29-after-ok.png` have the same
+  row positions (`fix10-12/p2-cmp.png`). The PK separator "below the two key
+  columns" is correct (`i>0 and PK<>PrimaryKey` in `PaintCachedImg`). The height
+  path was still exercised in all the cases the task lists: remove the PK again,
+  add a column with a 38-character name (`200x119`, `12-crop2.png`), delete it
+  again (`110x106`, `16-crop2.png`) - the control grows and shrinks with the rows
+  and the width follows the longest name. No code change for #10.
+- **#11 join table placement** (`src/EERModel.pas`): the n:m branch of
+  `TEERTable.DoMouseDown` placed `<a>_has_<b>` at the midpoint of its parents,
+  which in order.xml is on top of the "Stores all products..." note next to
+  `carthasproduct`. New `TEERModel.GetFreeObjPos(x, y, w, h, ExcludeObj)` walks
+  rings around the wanted top-left (step = `PositionGrid` when
+  `UsePositionGrid`, else 10 model px; nearest candidate inside a ring wins; 60
+  rings max, then the original position) and returns the first spot where the
+  `w x h` rectangle plus a 10-px margin does not intersect any `TEERTable`,
+  `TEERNote` or `TEERImage` and stays inside `EERModel_Width/Height`. Regions
+  and relation parts are deliberately not obstacles (tables live inside regions;
+  lines are re-routed by `RefreshRelations`). It is called after the two
+  relations exist and `RefreshObj` gave the join table its real `Obj_W/Obj_H`,
+  after the grid snap. Verified: `productgroup_has_creditcard` lands in the gap
+  above the note, overlapping nothing (`fix10-12/21-crop.png` vs `18-crop.png`).
+  The reverse-engineering placer (`EERReverseEngineerPlaceTables`) keeps its own
+  grid logic - it lays out many tables at once and a per-table nearest search
+  would not give the row/column layout users expect.
+- **#11 PK question**: the FK columns of the join table *are* the composite
+  primary key already - the original code creates both relations with `rk_1n`
+  (identifying) and `CheckRelations` sets `PrimaryKey:=True` for identifying
+  kinds; the canvas shows key icons for `FKidproductgroupCol (FK)` /
+  `FKidcreditcardCol (FK)` (`fix10-12/18-nm-zoom.png`). The catalog's "no key
+  icon" was a 1x misread at 75 % zoom. Nothing restored.
+- **#12 Table Options page** (`src/EditorTable.lfm`): `RowFormatLU` 75 -> 160 px
+  (the group box is 295 wide, nothing else sits in that row) so
+  `default/dynamic/fixed/compressed` are readable; `GroupBox1` ("Row Settings")
+  moved from `Top = -2` to `Top = 0` - the LCL caption is taller than the Kylix one
+  and the tab sheet clipped the top of the "R", which read as "How Settings"
+  (`22-caption-zoom.png`; page control is 135 high, the 127-px box still fits).
+  `TblPasswordEd` stays a plain edit: `src/EditorTable.xfm` has no
+  `EchoMode/PasswordChar` on it either (the value is the MySQL `PASSWORD=` table
+  option, stored in clear text in the model XML), so a masked field would only
+  hide what the file shows anyway.
+- Verified on DISPLAY=:0 (`$S/shots/model-edit/fix10-12/`): `03/13` before,
+  `23-crop.png` after for the options page; `18` / `21` for the n:m placement;
+  `xvfb-run -a ./bin/DBDesignerFork --selftest`: 93 PASS / 0 FAIL / 78 SKIP;
+  `WorkMode=1` restored from the backup, `DBConn.ini` md5 unchanged.
+- Driving gotchas this time: `: > bin/stderr.log` while the app runs leaves the
+  app's file offset in place - the file becomes sparse and `grep` calls it binary
+  (`grep -a ... | tr -d '\0'`). Two clicks on the key cell (one "to be safe")
+  toggle the PK twice; always screenshot the grid before OK. `xdotool key
+  Delete` on a selected grid row deletes the column (`ColumnGridKeyDown`).
+  Clicking the tree node "Table Options" at client (67,312) twice is harmless
+  when the first click after `windowactivate` is lost.
+
+## Verification: round 5 (model-edit-bug-catalog #1-#12)
+
+- All twelve entries re-driven on DISPLAY=:0 against the rebuilt branch: 11 verified, #3 not
+  re-driven (n/a by design). Full table and the sweep in `docs/model-edit-bug-catalog.md`
+  "Verification (round 5)"; screenshots `<scratchpad>/shots/model-edit/verify/`.
+- New #13 (fixed, 2930524): `TEditorRelationForm.SetRelation` sized the FK grid columns but
+  left `Col`/`LeftCol` from the previous relation; with the cursor in the Comment column the
+  LCL scrolled "Dest. Name" out of the grid (FixedCols=1, only cols 1-2 scroll), so the second
+  relation opened in a session showed `Source Column | Comment` only. Reset
+  `LeftCol/Col/Row` after the widths. New #14 (open, stderr only): the GLib
+  "no emission of signal key-press-event to stop" critical reproduces with Return on a grid
+  cell followed by Return in the in-place name editor.
+- DDL round trip of the edited model: SQLite and MySQL scripts create all 14 tables; the
+  failures are the model's stored Standard Inserts (`INSERT INTO productgroup(idproductgroup..`)
+  which are free text and keep the old names after a rename - as in the original. Use
+  `--force` / strip `INSERT` lines when loading a renamed model.
+- Driving gotchas this round: `import -window ""` (empty xid) waits for an interactive click
+  and hangs the shell - guard every `shot`; `pkill -f DBDplugin_` matches the calling shell
+  (exit 144) - use `pkill -x DBDplugin_DataI` / `DBDplugin_Simpl` (15-char comm names); the
+  Table Editor form is reused, so a lost click leaves the *previous* focus (Table Name edit
+  with its text selected) and the next keystrokes rename the table instead of the column -
+  screenshot before Return; grid popups open at the mouse position, recompute the item
+  position per right-click; combo boxes in the export dialog are editable - click the arrow
+  (x+67), not the text; the Read view of a wide crop is downscaled, so measure line positions
+  with PIL (`sum(px)<500` per row) rather than by eye (cost three misplaced clicks on a
+  relation line); an appended popup screenshot shifts every y of the image below it.

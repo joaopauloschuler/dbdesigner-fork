@@ -106,6 +106,21 @@ begin
 
   if(Key=VK_ESCAPE)then
     HideEdit;
+
+  //Tab commits the cell and moves on like Tab in the grid (Column Name ->
+  //DataType, ...), Shift+Tab moves back. The key is consumed: the LCL's own
+  //tab navigation would jump to the next dialog control and GTK's toplevel
+  //would re-dispatch an unhandled key to the focused widget (see the
+  //doubled-character fix in ColumnGridKeyDown). model-edit-bug-catalog #6
+  if(Key=VK_TAB)then
+  begin
+    if(ssShift in Shift)then
+      ApplyChanges(goLeft)
+    else
+      ApplyChanges(goRight);
+
+    Key:=0;
+  end;
 end;
 
 procedure TEditorTableFieldEdit.SetData(TableEd: TEditorTableForm; theCol, theRow: integer; NewName: string = '');
@@ -160,6 +175,7 @@ procedure TEditorTableFieldEdit.ApplyChanges(mode: integer = -1);
 var theStr: string;
   theColumn: TEERColumn;
   i, j, moveBy: integer;
+  GridKey: Word;
   theValue: string;
   NewRowWasAdded: Boolean;
 begin
@@ -322,6 +338,24 @@ begin
       SetData(TableEditor, Col, TableEditor.ColumnGrid.Row-1);
       {TableEditor.ColumnGrid.Row:=TableEditor.ColumnGrid.Row+1;
       SetData(TableEditor, Col, TableEditor.ColumnGrid.Row)}
+    end;
+  end
+  else if(mode=goRight)or(mode=goLeft)then
+  begin
+    HideEdit;
+
+    //A new column continues with its datatype (as Return does)
+    if(NewRowWasAdded)and(mode=goRight)then
+      TableEditor.EditDatatype
+    else
+    begin
+      //Otherwise move the grid cursor exactly as the grid's own Tab/Left
+      //handling does (Column Name <-> DataType <-> Default Value <-> Comments)
+      if(mode=goRight)then
+        GridKey:=VK_TAB
+      else
+        GridKey:=VK_LEFT;
+      TableEditor.ColumnGridKeyDown(TableEditor.ColumnGrid, GridKey, []);
     end;
   end;
 
