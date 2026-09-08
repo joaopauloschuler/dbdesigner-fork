@@ -77,6 +77,7 @@ dialog. Everything below was observed with those two edits in place unless state
 - Fix idea: `if Fields[1].AsString = '0' then ik_UNIQUE_INDEX`; store `Sub_part` in `LengthParam`; use `FieldByName` because of #2. Complexity: **small**.
 
 ### 6. Connection created in the Database Connection Editor is not persisted to `~/.DBDesigner4/DBConn.ini`
+- **FIXED** (branch a3, see notes-to-myself.md "Fix: DBConn.ini written at once, sync error summary, sync comments"). Cause: `DBConn.ini` was only written by `TDMDB.DataModuleDestroy` (a clean File > Exit does write it - verified); the editor's OK and the selector never saved, so a kill/crash before exit lost the new connection. Now `TDBConnEditorForm.ConnectBtnClick` (OK) and `TDBConnSelectForm.FormDestroy` call `DMDB.StoreDBConns`. Note: passwords are never stored in `DBConn.ini` by design (`StoreDBConns` skips `Password`), so a hand-written `Password=` line disappears at the first rewrite.
 - Severity: **wrong result** (the connection disappears on the next start; had to be added by hand for the later stages)
 - Repro: Database > Connect to Database > New Database Connection, fill name/host/database/user/password, OK — the selector lists it (`$S/connsel2.png`) and it connects — then kill the app (or close it after the connection was used). `DBConn.ini` still has only `[OrderSQLite]`; `grep -c OrderMySQL` = 0 while the app was running and after `kill <pid>`. Not verified whether a clean File > Exit writes it (my Exit attempt via keyboard did not close the app; see "Not tested"). The SQLite catalog notes the earlier session "never saved one" either.
 - Suspects: `TDMDB.StoreDBConns` (`src/DBDM.pas` ~300-350) is only called at shutdown / from the editor's OK path through `UpdateIniFile` (the `--selftest` read-only change in `MainDM`); check that `SettingsReadOnly` is false in normal runs and that the editor's OK calls `StoreDBConns`. Complexity: **small** once located. A hand-written entry that works (`DriverName=MySQL`, `HostName=127.0.0.1`, `Port=3306`, `Database=dbdtest`, `User_Name=bpsa`, `Password=bpsa`) is left in `~/.DBDesigner4/DBConn.ini` as `[OrderMySQL]` (the original file is `$S/DBConn.ini.bak`).
@@ -88,17 +89,19 @@ dialog. Everything below was observed with those two edits in place unless state
 - Suspects: `EERMySQLReverseEngineer` only calls `EERReverseEngineerMakeRelations` (name/PK heuristic). MySQL 8 offers `information_schema.KEY_COLUMN_USAGE` + `REFERENTIAL_CONSTRAINTS` (the query in `tests/mysql-roundtrip.sh` returns exactly what is needed). Complexity: **medium** (mirror the SQLite implementation with `SkipExisting`).
 
 ### 8. Synchronisation continues after a failed CREATE TABLE and shows one modal error box per statement
+- **FIXED** (same notes section). `EERMySQLSyncDB` collects failed statements in a list (`ExecuteSQLCmdScript` got an optional `Errors: TStrings` that replaces the per-statement `MessageDlg`; the RENAME/DROP/ALTER statements go through a nested `ExecSyncStmt`), logs `ERROR: ...` and `FAILED to create table X` in the progress memo (the table is not counted as created and its column comparison is skipped instead of raising on `show fields`), lists all failures at the end of the log and shows one summary box.
 - Severity: **cosmetic / usability**
 - Repro: stage E; each of the 3 InnoDB tables raises an "ERROR while executing Query" box (`$S/sync_err1.png`) that must be dismissed; the progress memo still says "Create non existing table webserver" as if it had worked (`$S/sync4_c.png`); the tables are simply missing afterwards.
 - Suspects: `TDMDBEER.EERMySQLSyncDB` (`src/DBEERDM.pas` ~2700-2760) `try ExecSQL except MessageDlg` per statement. Fine once #3 is fixed; a summary line in the progress memo would be enough. Complexity: **small**.
 
 ### 9. Tables created by synchronisation lose column and table comments
+- **FIXED** (same notes section). Cause: the sync called `GetSQLCreateCode` / `GetSQLColumnCreateDefCode` with `OutputComments` at its default `False`. Now `True`; the `-- ...` header lines this also produces are skipped by `GetFirstSQLCmdFromScript` (only `//` was treated as a comment line before). `SHOW CREATE TABLE product` after a sync shows the column `COMMENT`s and `onlinecustomer` its table `COMMENT`.
 - Severity: **cosmetic / wrong result (minor)**
 - Repro: after stage E `SHOW CREATE TABLE product` in `dbdtest2` has no `COMMENT` clauses, while the same table created from the exported script in `dbdtest` has `COMMENT 'The AutoIncrement ID Field'` etc. (`$S/shimtest.txt` "show create" vs `mysql dbdtest2 -e "SHOW CREATE TABLE product\G"`).
 - Suspects: the sync builds its own CREATE/ALTER text in `EERMySQLSyncDB` instead of `GetSQLCreateCode` with comments on. Not checked further. Complexity: **small/medium**.
 
 ## Not tested
-- Clean File > Exit and whether it writes the new connection (#6); the keyboard path `File` + `End` + `Return` did not close the app.
+- ~~Clean File > Exit and whether it writes the new connection (#6)~~ - it does (fix round); the keyboard path `File` + `End` + `Return` opens the recent-files submenu, click the last menu item instead.
 - Reverse engineering with "Create Standard Inserts from table data", datatype substitution variants, "Based on Tablenames and ID-Fieldnames" relation mode.
 - `SHOW TABLE STATUS` / table options round trip (only noticed `Create_time` rendered as `7-9-26`).
 - Synchronisation "Apply changes to Model" direction, "Don't delete existing Tables" unchecked (DROP path), "Synchronise Standard Inserts", column rename via `PrevColName`.

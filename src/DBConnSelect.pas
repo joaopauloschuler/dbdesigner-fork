@@ -170,6 +170,11 @@ procedure TDBConnSelectForm.FormDestroy(Sender: TObject);
 begin
   StoreNetworkHosts;
 
+  //Persist the connection list right away (new/edited/renamed/deleted
+  //connections); until now it was only written by TDMDB.DataModuleDestroy,
+  //so a kill or crash before a clean File > Exit lost the changes
+  DMDB.StoreDBConns;
+
   DBHosts.Free;
 end;
 

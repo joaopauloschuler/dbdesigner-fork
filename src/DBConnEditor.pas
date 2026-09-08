@@ -388,6 +388,9 @@ begin
 
   DBConn.Free;
 
+  //Write DBConn.ini now instead of only at program exit
+  DMDB.StoreDBConns;
+
   ModalResult:=mrOK;
 end;
 

@@ -2353,6 +2353,27 @@ var EERModel: TEERModel;
   IndexDropCounter, IndexCreateCounter, IndexUpdateCounter: integer;
   oldDecSep: Char;
   FieldOnGeneratorOrSequence:string;
+  SyncErrors: TStringList;
+  ErrCount: integer;
+
+  //Execute one statement; a failure is collected in SyncErrors (and logged)
+  //instead of raising / showing a message box, so the sync goes on and the
+  //user gets a single summary at the end
+  procedure ExecSyncStmt(const stmt: string; IgnoreErrors: Boolean);
+  begin
+    DMDB.SchemaSQLQuery.SQL.Text:=stmt;
+    try
+      DMDB.SchemaSQLQuery.ExecSQL(True);
+    except
+      on x: Exception do
+        if(Not(IgnoreErrors))then
+        begin
+          SyncErrors.Add(stmt+#13#10+x.Message);
+          Log.Add('  ERROR: '+x.Message);
+        end;
+    end;
+  end;
+
 begin
   EERModel:=theModel;
 
@@ -2379,6 +2400,7 @@ begin
   IndexColumnParams:=TStringList.Create;
   IndexRecreate:=TList.Create;
   DBIndices:=TList.Create;
+  SyncErrors:=TStringList.Create;
   try
     //Get Tables from Model
     EERModel.GetEERObjectList([EERTable], ModelTables);
@@ -2436,20 +2458,40 @@ begin
           if(DbTables.IndexOf(theTable.PrevTableName)=-1)then
           begin
             Log.Add('Create non existing table '+theTable.ObjName);
-            inc(TableCreateCounter);
 
-  //          DMDB.SchemaSQLQuery.SQL.Text:=
-  //          DMDB.SchemaSQLQuery.ExecSQL;
+            //Errors are collected in SyncErrors, not shown one by one.
+            //OutputComments=True so the table/column COMMENT clauses are
+            //created like in the exported script (the -- header lines are
+            //skipped by GetFirstSQLCmdFromScript)
+            ErrCount:=SyncErrors.Count;
             DMDB.ExecuteSQLCmdScript(theTable.GetSQLCreateCode(True, //Define PKs
               True, //CreateIndices
               True, //DefineFK
               True, //TblOptions
-              False)); //StdInserts are executed seperatly
+              False, //StdInserts are executed seperatly
+              True), //OutputComments
+              SyncErrors);
 
+            if(SyncErrors.Count>ErrCount)then
+            begin
+              for j:=ErrCount to SyncErrors.Count-1 do
+                Log.Add('  ERROR: '+Copy(SyncErrors[j], Pos(#13#10, SyncErrors[j])+2, Length(SyncErrors[j])));
+              Log.Add('  FAILED to create table '+theTable.ObjName);
+            end
+            else
+            begin
+              inc(TableCreateCounter);
+              DbTables.Add(theTable.ObjName);
 
-            //Execute Standard Inserts also if user whishes
-            if(StdInsertsOnCreate)and(Trim(theTable.StandardInserts.Text)<>'')then
-              DMDB.ExecuteSQLCmdScript(theTable.StandardInserts.Text);
+              //Execute Standard Inserts also if user whishes
+              if(StdInsertsOnCreate)and(Trim(theTable.StandardInserts.Text)<>'')then
+              begin
+                ErrCount:=SyncErrors.Count;
+                DMDB.ExecuteSQLCmdScript(theTable.StandardInserts.Text, SyncErrors);
+                for j:=ErrCount to SyncErrors.Count-1 do
+                  Log.Add('  ERROR: '+Copy(SyncErrors[j], Pos(#13#10, SyncErrors[j])+2, Length(SyncErrors[j])));
+              end;
+            end;
 
             //Clear previous colname for DB-Sync when table has just been created
             for j:=0 to theTable.Columns.Count-1 do
@@ -2463,9 +2505,8 @@ begin
             inc(TableRenameCounter);
 
             //Rename in DB
-            DMDB.SchemaSQLQuery.SQL.Text:='RENAME TABLE '+theTable.PrevTableName+
-              ' TO '+theTable.ObjName;
-            DMDB.SchemaSQLQuery.ExecSQL;
+            ExecSyncStmt('RENAME TABLE '+theTable.PrevTableName+
+              ' TO '+theTable.ObjName, False);
 
             //Set renamed TableName in DBList
             DbTables[DbTables.IndexOf(theTable.PrevTableName)]:=theTable.ObjName;
@@ -2494,8 +2535,7 @@ begin
             DbTables[i]));
           inc(TableDropCounter);
 
-          DMDB.SchemaSQLQuery.SQL.Text:='drop table '+DbTables[i];
-          DMDB.SchemaSQLQuery.ExecSQL;
+          ExecSyncStmt('drop table '+DbTables[i], False);
         end;
       end;
 
@@ -2508,8 +2548,20 @@ begin
       for i:=0 to ModelTables.Count-1 do
       begin
         theTable:=TEERTable(ModelTables[i]);
+
+        //A table whose creation failed above is not in the DB, nothing to compare
+        if(DbTables.IndexOf(theTable.ObjName)=-1)then
+        begin
+          Log.Add('Skip table '+theTable.ObjName+' (not in database)');
+          continue;
+        end;
+
         Log.Add(DMMain.GetTranslatedMessage('Compare columns from table %s', 156,
           theTable.ObjName));
+
+        //Any error in the comparison of this table is collected and the
+        //sync goes on with the next table
+        try
 
         SQLStr.Clear;
         NewPrimaryKey:=False;
@@ -2732,7 +2784,7 @@ begin
               if(ChangeColumnName)then
               begin
                 SQLStr.Add('ALTER TABLE '+theTable.ObjName+' CHANGE COLUMN '+
-                  theColumn.PrevColName+' '+theTable.GetSQLColumnCreateDefCode(ColNr,FieldOnGeneratorOrSequence));
+                  theColumn.PrevColName+' '+theTable.GetSQLColumnCreateDefCode(ColNr,FieldOnGeneratorOrSequence, False, False, 'My SQL', True));
 
                 DbColumns.Delete(DbColumns.IndexOf(theColumn.PrevColName));
                 DbColumns.Add(theColumn.ColName);
@@ -2740,7 +2792,7 @@ begin
               //Just change type
               else
                 SQLStr.Add('ALTER TABLE '+theTable.ObjName+' MODIFY COLUMN '+
-                  theTable.GetSQLColumnCreateDefCode(ColNr,FieldOnGeneratorOrSequence));
+                  theTable.GetSQLColumnCreateDefCode(ColNr,FieldOnGeneratorOrSequence, False, False, 'My SQL', True));
             end;
           end;
 
@@ -2770,10 +2822,10 @@ begin
 
             if(j=0)then
               SQLStr.Add('ALTER TABLE '+theTable.ObjName+' ADD COLUMN '+
-                theTable.GetSQLColumnCreateDefCode(j,FieldOnGeneratorOrSequence)+' FIRST')
+                theTable.GetSQLColumnCreateDefCode(j,FieldOnGeneratorOrSequence, False, False, 'My SQL', True)+' FIRST')
             else
               SQLStr.Add('ALTER TABLE '+theTable.ObjName+' ADD COLUMN '+
-                theTable.GetSQLColumnCreateDefCode(j,FieldOnGeneratorOrSequence)+' AFTER '+TEERColumn(theTable.Columns[j-1]).ColName);
+                theTable.GetSQLColumnCreateDefCode(j,FieldOnGeneratorOrSequence, False, False, 'My SQL', True)+' AFTER '+TEERColumn(theTable.Columns[j-1]).ColName);
           end;
         end;
 
@@ -2846,34 +2898,16 @@ begin
         //Execute the SQL2 Commandos (used for indices)
         //Ignore Errors
         for j:=0 to SQL2Str.Count-1 do
-        begin
-          DMDB.SchemaSQLQuery.SQL.Text:=SQL2Str[j];
-          try
-            DMDB.SchemaSQLQuery.ExecSQL(True);
-          except
-          end;
-        end;
-
+          ExecSyncStmt(SQL2Str[j], True);
 
         //Execute the SQL Commandos
         for j:=0 to SQLStr.Count-1 do
-        begin
-          DMDB.SchemaSQLQuery.SQL.Text:=SQLStr[j];
-          DMDB.SchemaSQLQuery.ExecSQL(True);
-        end;
+          ExecSyncStmt(SQLStr[j], False);
 
         //Execute the SQL2 Commandos, again (used for indices)
         //Ignore Errors
         for j:=0 to SQL2Str.Count-1 do
-        begin
-          DMDB.SchemaSQLQuery.SQL.Text:=SQL2Str[j];
-          try
-            DMDB.SchemaSQLQuery.ExecSQL(True);
-          except
-            {on x: Exception do
-              ShowMessage(x.Message);}
-          end;
-        end;
+          ExecSyncStmt(SQL2Str[j], True);
 
 
         //Indices
@@ -3074,10 +3108,7 @@ begin
 
         //Execute the SQL Commandos
         for j:=0 to SQLStr.Count-1 do
-        begin
-          DMDB.SchemaSQLQuery.SQL.Text:=SQLStr[j];
-          DMDB.SchemaSQLQuery.ExecSQL(True);
-        end;
+          ExecSyncStmt(SQLStr[j], False);
 
 
         // -----------------------------------------------
@@ -3085,6 +3116,16 @@ begin
         //Clear previous colname for DB-Sync
         for j:=0 to theTable.Columns.Count-1 do
           TEERColumn(theTable.Columns[j]).PrevColName:='';
+
+        except
+          on x: Exception do
+          begin
+            if(DMDB.SchemaSQLQuery.Active)then
+              DMDB.SchemaSQLQuery.Close;
+            SyncErrors.Add('Table '+theTable.ObjName+#13#10+x.Message);
+            Log.Add('  ERROR: '+x.Message);
+          end;
+        end;
       end;
 
       //---------------------
@@ -3184,10 +3225,44 @@ begin
       else
         Log.Add(DMMain.GetTranslatedMessage('1 Index updated.', 186));
 
+    //One summary of all failed statements instead of a message box each
+    if(SyncErrors.Count>0)then
+    begin
+      Log.Add('');
+      Log.Add(IntToStr(SyncErrors.Count)+' statement(s) FAILED:');
+      for i:=0 to SyncErrors.Count-1 do
+      begin
+        Log.Add(SyncErrors[i]);
+        Log.Add('');
+      end;
+    end;
+
     Log.Add('');
 
     EERModel.ModelHasChanged;
+
+    if(SyncErrors.Count>0)then
+    begin
+      //Short form: first line of the statement + the error message
+      s:='';
+      for i:=0 to SyncErrors.Count-1 do
+      begin
+        if(i>=5)then
+        begin
+          s:=s+'...'+#13#10;
+          break;
+        end;
+        j:=1;
+        while(j<=Length(SyncErrors[i]))and(Not(SyncErrors[i][j] in [#10, #13]))do
+          inc(j);
+        s:=s+Copy(SyncErrors[i], 1, j-1)+' ...'+#13#10+
+          Copy(SyncErrors[i], Pos(#13#10, SyncErrors[i])+2, Length(SyncErrors[i]))+#13#10#13#10;
+      end;
+      MessageDlg(IntToStr(SyncErrors.Count)+' statement(s) failed during the synchronisation '+
+        '(see the progress log for the full statements):'+#13#10#13#10+s, mtError, [mbOk], 0);
+    end;
   finally
+    SyncErrors.Free;
     DbTables.Free;
     ModelTables.Free;
     DbColumns.Free;

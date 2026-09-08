@@ -1038,3 +1038,50 @@ navigation (`Down`x4 `Right` for File > Open Recent). Shots: `fix13-*`.
 - Driving: the GTK Save dialog opened directly in the last used folder (`$S`) this time,
   so typing the name into "Name" and clicking Save (785,600 in the 840x630 dialog) was
   enough. The Reverse Engineering dialog is 573x627 at +694+254 with Execute at (425,573).
+
+## Fix: DBConn.ini written at once, sync error summary, sync comments (mysql-bug-catalog #6, #8, #9)
+
+- **#6**: nothing was broken in `StoreDBConns`/`UpdateIniFile` - a clean File > Exit did write
+  the new connection (verified: `Fix06Test` appeared in `DBConn.ini` after Exit). The list was
+  simply never saved before `TDMDB.DataModuleDestroy`, so a kill or crash lost it. Now
+  `TDBConnEditorForm.ConnectBtnClick` (the OK button) and `TDBConnSelectForm.FormDestroy`
+  (covers edit, rename, delete, drag-drop) call `DMDB.StoreDBConns`. Gotchas: passwords are
+  never written (by design, `StoreDBConns` skips the `Password` param), so a hand-edited
+  `Password=bpsa` line vanishes at the first rewrite and the selector's Password box must be
+  typed; `Port` is not written either for a MySQL connection made in the editor (the greyed
+  3306 is the default anyway). `--selftest` still leaves the file untouched (`SettingsReadOnly`
+  redirects the rewrite, md5 unchanged).
+- **#8**: `TDMDB.ExecuteSQLCmdScript(cmds; Errors: TStrings = nil)` - with `Errors` the failed
+  statement + message is appended there and the script goes on, no `MessageDlg` (query mode
+  still passes nil and behaves as before). `EERMySQLSyncDB` (`src/DBEERDM.pas`) keeps a
+  `SyncErrors` list; the CREATE goes through `ExecuteSQLCmdScript(..., SyncErrors)` and only
+  counts / runs the standard inserts / adds the name to `DbTables` when nothing failed,
+  otherwise logs `ERROR: <msg>` and `FAILED to create table X`. RENAME, DROP and the ALTER
+  batches go through a nested `ExecSyncStmt(stmt, IgnoreErrors)`; the whole per-table column
+  comparison is in a try/except that closes `SchemaSQLQuery` and records the error (before,
+  the `show fields from order` of a table whose CREATE had failed raised out of the sync with
+  the "Press OK to ignore and risk data corruption" box - now such tables are skipped with
+  `Skip table X (not in database)`). At the end the log lists every failure in full and one
+  `MessageDlg` shows the count with the first statement line + message of up to 5 of them.
+  Repro used: `Examples/order.xml` with `onlineorder` renamed to the reserved word `order`
+  (`$S/fix08-order_mod.xml`) into an empty `dbdtest3`: 2 failures (`order` and the child
+  `onlineorderhasproduct` with the FK to it), 10 tables created, one box (`$S/fix08-errbox4.png`,
+  log in `$S/fix08-logA.png`/`fix08-logB.png`).
+- **#9**: the sync passed `GetSQLCreateCode(True, True, True, True, False)` - `OutputComments`
+  defaulted to False; the MODIFY/CHANGE/ADD COLUMN statements used `GetSQLColumnCreateDefCode`
+  the same way. Both now pass `OutputComments=True`. That also emits the `-- ----` header
+  block above the CREATE, which `GetFirstSQLCmdFromScript` sent to the server as its own
+  (empty) statement, so lines starting with `--` are now skipped like `//` lines (outside an
+  open string literal). Verified: `order.xml` -> empty `dbdtest2`, no error box, `SHOW CREATE
+  TABLE product` has the four column `COMMENT`s and `onlinecustomer` `COMMENT='This Table
+  stores all Online Customers.'`, 3 rows in `product` from the standard inserts.
+- Noticed, not fixed (not a catalog entry): the sync logs `Modifying column X` for every
+  nullable column of a freshly created table - `EERMySQLSyncDB` compares `NotNull` with
+  `SHOW FIELDS` `Null <> 'Y'`, and MySQL answers `YES`/`NO`, so nullable columns always look
+  changed. The MODIFY re-applies the same definition, harmless but noisy.
+- Driving: File > Exit via keyboard `End` lands on the recent-files submenu; click the last
+  item of the File menu (menu window `212x399` at +42+95, item at y+385) instead. The
+  connection selector rows are at y 62/84/104/124, password box at (560,268).
+- `--selftest` 107 PASS / 0 FAIL, `DBConn.ini` md5 unchanged; `dbdtest2`/`dbdtest3` dropped,
+  `DBConn.ini` restored from `$S/fix06-DBConn.ini.bak` (with the `Password=` line).
+
