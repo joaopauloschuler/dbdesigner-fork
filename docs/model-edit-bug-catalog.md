@@ -23,6 +23,8 @@ Observed: the table, the DB Model tree and the `ProductgroupRel` line update cor
 Expected: no leftover pixels after the editor closes.
 Suspected cause: the invalidate rectangle after `EditorTable` closes (`TEERTable.RefreshObj`/`DoPaint` in `src/EERModel.pas`) covers the old table bounds only, while the region background is redrawn with an off-by-one row (or the selection frame of the table is cleared with the region's colour minus one line). Fix scope: small.
 
+Status: fixed in 3d2c6f3 - not an invalidation problem: the white 190-px line at y=502 is the `RelEnd` paintbox of the *splitted* `forumpost` relation (onlinecustomer -> forumpost). `TEERRel.PaintObj2Canvas_RelStart/_RelMiddle/_RelEnd` read `width`/`height` inside `with RelEnd do with theCanvas do`, which the LCL resolves to `TCanvas.Width/Height` (GDK drawable size 3072, or 0 before the handle exists). `TEERRel.DoPaint` paints RelEnd through `RelEnd.Canvas`: the first `width` read gives 0 (`w:=-1`), `MoveTo` allocates the handle, `LineTo(xo+width-1-w)` then draws the white "clear" pass from -1 to 3072 clipped to the control, and the black dash-dot-dot pass lands off-clip. It shows after the Table Editor OK because that path repaints directly outside an expose. The painters now capture the control size first; the splitted stubs and end icons appear too. Verified with two renames and a table drag (`fix02-04-07/30-fixed1/2`, `31-moved.png`). See notes-to-myself.md "Fix: model-edit #2, #4, #7".
+
 ### 3. Return in the Table Editor's "Table Name" edit closes the dialog (acts as OK)
 
 Severity: cosmetic / usability (minor).
@@ -37,6 +39,8 @@ Steps: order.xml; double-click the `CartRel` relation label.
 Observed: the `Source Column` cell shows `idonlinecustome` (last letter clipped, column too narrow for the text), and the `Comment` header cell has a black background band on its right/top edge (`13-releditor.png`). Name, kind (1:n), visibility, source/destination tables, FK mapping, Reference Definition (RESTRICT/RESTRICT) are all shown correctly.
 Expected: columns wide enough for the longest name (or auto-sized), uniform header background.
 Suspected cause: fixed `ColWidths` in `src/EditorRelation.lfm` sized for the Windows font; header drawn in `OnDrawCell` of `src/EditorRelation.pas` with a partly uninitialised brush. Fix scope: small.
+
+Status: fixed in 3d2c6f3 - there is no `OnDrawCell`; the black band is the LCL `tsLazarus` title bevel (`cl3DDKShadow` right/bottom edge of every fixed cell, most visible on the last column). `FKGrid` is now `Flat` with silver fixed/border lines and `SetRelation` runs `AutoAdjustColumns` (old widths as minimums, Comment column fills the rest): `idonlinecustomer` is complete (`fix02-04-07/43-releditor-final.png`).
 
 ### 5. Objects created in the running session (tables from the Table tool, relations from the relation tools) cannot be selected or edited with the mouse; objects loaded from the file can
 
@@ -63,6 +67,8 @@ Steps: click on empty canvas (or on an object that cannot be selected, see #5); 
 Observed: "Are you sure you want to delete the selected Objects? The following Objects will be deleted:" with an empty list (`30-confirm.png`, `34-confirm.png`); Yes does nothing.
 Expected: nothing happens (the Edit menu item is disabled by `DeleteMIShow` when nothing is selected, but the shortcut bypasses the `OnShow`-time check).
 Suspected cause: `TMainForm.DeleteMIClick` (`src/Main.pas:~950-990`) does not test `ObjectList.Count=0` before `MessageDlg`. Fix scope: small.
+
+Status: fixed in 3d2c6f3 - `DeleteMIClick` shows the confirmation only for a non-empty list; click on empty canvas + Ctrl+Del opens nothing.
 
 ### 8. Table Editor: after renaming a column in the grid the OK button disappears - the edit cannot be confirmed
 
