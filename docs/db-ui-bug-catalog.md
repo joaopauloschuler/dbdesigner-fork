@@ -16,6 +16,7 @@ Steps: Database > Connect to Database; click the OrderMySQL row; click the small
 Observed: nothing happens (no editor window, no stderr output); `connsel_afterdots.png`. The only route to the editor is "New Database Connection"; existing connections cannot be edited from the UI (DBConn.ini must be edited by hand).
 Expected: the Database Connection Editor opens pre-filled with the row's settings (that is what the button did in the CLX build via `ConnectionsListView` row buttons / DblClick).
 Suspected cause: `src/DBConnSelect.pas` - `ConnectionsListViewDblClick` (line ~103) / the per-row button image is drawn by the list view but its click is not routed to an edit handler under LCL. Also double-clicking the row connects rather than edits (`ConnectionsListViewDblClick` -> connect). Fix scope: small/medium.
+Status: fixed in c9c00bc - the `...` button was wired to `ConnectionsListViewClick` but its hit-test required `mx < x2` where col5 is only 22 px wide, so clicks on the visibly-wider button missed. Dropped the upper bound (col5 is last), extracted `EditSelectedDBConn`, and added an "Edit Connection" popup-menu item as a guaranteed route. Editor OK persists via `StoreDBConns`. Verified: `...` and right-click Edit open the editor pre-filled; edited OrderMySQL description round-trips through `DBConn.ini`.
 
 ### 2. Database Connection Editor: "Port" field is permanently disabled and new connections are saved without a `Port=` line
 
@@ -24,6 +25,7 @@ Steps: Connect to Database > New Database Connection; Driver = MySQL; click into
 Observed: the field is greyed and does not take focus - the keystrokes go to whatever control was focused before (in this run the "7" landed in Username, which became `bpsa7`; `conneditor_filled2.png`). After OK the new `[TestConnUI]` section in `~/.DBDesigner4/DBConn.ini` has `HostName=` but no `Port=` key (the hand-written `[OrderMySQL]` section has `Port=3306`).
 Expected: editable port, persisted as `Port=`.
 Suspected cause: `src/DBConnEditor.pas:515` `PortEd.Enabled:=False` in `CheckHostEdits` (label enabled, edit disabled - looks like a typo for `True`), and the save routine never writes `Port`. Fix scope: small.
+Status: fixed in c9c00bc - `CheckHostEdits` set `PortEd.Enabled:=False` for MySQL (now `True`); `ConnectBtnClick` now stores `PortEd.Text` in `Params['Port']` and `RefreshParams` loads it. `StoreDBConns` writes it as `Port=`. Verified: Port field takes focus, typed `3307` -> `Port=3307` in the ini for a new MySQL connection.
 
 ### 3. Database Connection Editor cosmetics: "Port:" label overlaps the Hostname drop-down button; selecting MySQL pre-fills "root" into Username on top of what was typed; Advanced grid has no "Value" column header
 
@@ -32,6 +34,7 @@ Steps: as in #2; see `conneditor_filled.png`, `pair2.png`.
 Observed: "Port:" label starts at the right edge of the hostname combo button; switching Driver to MySQL after typing a username produced `rootbpsa` (username is overwritten/prepended rather than left alone when non-empty); Advanced page grid has only "Param" in the header row, second column header blank.
 Expected: label to the right of the combo; keep user's text; header "Value".
 Suspected cause: `src/DBConnEditor.lfm` (PortLbl Left/HostIPEd Width), `CheckHostEdits` in `DBConnEditor.pas` (~line 507-535) setting `UserNameEd.Text`. Fix scope: small.
+Status: fixed in c9c00bc - `PortLbl` moved to `Left=276 Width=37` (clear of the Hostname combo at x=269); `DatabaseTypesCBoxCloseUp` restores the user's non-empty edit-box values after loading defaults, so MySQL no longer overwrites a typed Username with `root`; `RefreshParams` restores `Cells[1,0]:='Value'` after `Cols[1].Clear`. Verified on the real display.
 
 ### 4. Failed MySQL login shows a stale MySQL-5-era explanation instead of the server's error text
 
@@ -40,6 +43,7 @@ Steps: Connect to Database; select a MySQL connection with a wrong user/password
 Observed: modal "Error" box (`error1.png`): "Connection to database MySQL has failed. Possible causes are: ... DB Designer Fork does not connect to MySQL 5.* with password ... TMySQL80Connection : Server connect failed." The real reason (`Access denied for user 'bpsa7'@...`) is never shown. The selector dialog is closed afterwards and has to be reopened (both the connection choice and the typed password are lost).
 Expected: show `EDatabaseError.Message` from the connector (which includes the MySQL error) and return to the selector with the password field cleared.
 Suspected cause: fixed text in `src/DBConnSelect.pas` `ConnectBtnClick` (~line 378) / DMDB connect wrapper; only `E.Message` of the outer exception is appended. Fix scope: small.
+Status: fixed in c9c00bc - the FPC connector drops the real `mysql_error()` (its `SErrServerConnectFailed` has no `%s`), so `TSQLConnection.Open` (`src/clx_shims/sqlexpr.pas`) re-probes with `mysql80dyn` on failure to recover it; `GetConnectErrorMessage` lost the stale MySQL-5 blurb and `GetDBConnButtonClick` appends the real message, clears the tried password and reselects the connection. Verified: wrong password shows "Access denied for user 'bpsa'@'localhost'...", selector stays open with the row selected and password cleared.
 
 ### 5. Reverse engineering into an open model moves every existing table (the "skipped" ones) into a grid layout, destroying the model's placement
 
