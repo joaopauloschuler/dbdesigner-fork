@@ -145,7 +145,7 @@ Severity: functional (minor).
 Steps: open the Table Editor of `productgroup`; click the Column Name cell of the empty last row; type `abc`.
 Observed: the cell shows `aabc` (`verify/A-sweep-te-dupchar.png`; `synccol` became `ssynccol`, `verify/A-sweep-te-newcol.png`). Reproduced twice.
 Suspected cause: `ColumnGridKeyDown` (`src/EditorTable.pas:~1013`) starts the in-place editor on the key and the LCL grid then re-delivers the same key to the editor. Fix scope: small. Not in ui-bug-catalog.md.
-Status: open.
+Status: fixed in 826a071 - confirmed: `EditCellStr(Chr(Key))` moves the focus to `EditorTableFieldEdit` and the GTK toplevel then re-dispatches the still-unhandled key press to the new focus widget, so the letter arrived a second time. The handler now sets `Key:=0` after starting an editor (letters and Return), and in the Tab/Right/Left branches that move the column (the grid's own `goTabs` handling used to move on again past the unselectable columns, so Tab from Column Name landed on Default Value). Verified on the real display: new row `abc` -> `abc`, existing cell `Xy` -> `Xy`, Enter commits and opens the datatype editor, Tab goes Column Name -> DataType -> Default Value -> Comments -> next row, Right/Left/Up/Down work (`fix16-19/te-abc-c.png`, `te-nav.png`).
 
 ### 17. SQL Drop / Optimize / Repair script dialogs keep the full height of the Create dialog (~430 px blank)
 
@@ -153,7 +153,7 @@ Severity: cosmetic.
 Steps: File > Export > SQL Drop Script (also Optimize Table Script, Repair Table Script).
 Observed: 537x579 dialog with the settings group hidden and a large blank area above the buttons (`verify/A-sweep-drop.png`, `A-sweep-optimize.png`, `A-sweep-repair.png`). The scripts themselves are correct (12 `DROP TABLE` in FK order, `OPTIMIZE TABLE`, `REPAIR TABLE`; `<scratchpad>/verify4/A-drop.sql` etc.).
 Suspected cause: `src/EERExportSQLScript.pas:~175` - `Height:=Height-SQLCreatesSettingGBox.Height-10` is commented out (the buttons would need `akBottom` anchors). Fix scope: small.
-Status: open.
+Status: fixed in 826a071 - `SetModel` shrinks the form by `Panel1.Top-(Settings.Top+Settings.Height+8)` for modes 1-3; the button panel and the status bar are `alBottom` so nothing needs anchors. Set on `Height`, not `ClientHeight` (the LCL reports a stale `ClientHeight` of 240 before the handle exists, which left the dialog at 489 px). Verified: Drop/Optimize/Repair are 537x150 with the buttons directly under the Settings group, Create unchanged at 537x579 with the #10 layout intact (`fix16-19/export-three.png`, `export-create.png`).
 
 ### 18. Database Connection Editor, Advanced page: `TableScope` shown as `tsTable, tsView,`
 
@@ -161,7 +161,7 @@ Severity: cosmetic (minor).
 Steps: edit OrderSQLite/OrderMySQL, Advanced page.
 Observed: the `TableScope` value `[tsTable, tsView]` is displayed as `tsTable, tsView,` (brackets stripped, trailing comma) (`verify/A-03-advanced.png`).
 Suspected cause: `RefreshParams` in `src/DBConnEditor.pas` splitting the set string on `,` for the grid. Fix scope: small.
-Status: open.
+Status: fixed in 826a071 - `RefreshParams` built the string itself (`'tsTable, '+'tsView, '`) and `StoreDBConns` had a third format (`[tsTable ,tsView]`); both now use `TableScopeToStr` (`src/DBDM.pas`) = `[tsTable, tsView]`, the format the ini already holds. Verified: the Advanced grid shows `[tsTable, tsView]` (`fix16-19/ed-advanced.png`); after OK the `OrderSQLite` line in `DBConn.ini` is byte-identical to the backup and `OrderMySQL` gains the same `TableScope=[tsTable, tsView]` (the writer always emits the key; the backup had none for that section). Other diffs are pre-existing: `Password=` dropped, `HostCaption=127.0.0.1` added by the editor's `ConnectBtnClick` (c9c00bc).
 
 ### 19. DataImporter: "Fields of the Destination Table" list lags one selection behind the table combo when selected with the keyboard
 
@@ -169,7 +169,7 @@ Severity: cosmetic (minor).
 Steps: DataImporter connected to OrderMySQL; open the destination table combo and move with the Down key.
 Observed: combo shows `webserver` while the fields list still shows `forumtopic`'s columns (`verify/B-di-8.png`); the next selection re-syncs.
 Suspected cause: the list is filled from `OnChange`/`OnSelect` per intermediate item under GTK2 (`Plugins/DataImporter/DBImportData.pas`). Fix scope: small.
-Status: open.
+Status: fixed in 826a071 - the opposite: the list was filled from `OnCloseUp`, which under GTK2 fires before the new item is active and not at all when the closed combo is moved with the arrow keys. `DestTblLUCloseUp` is now wired to `OnSelect` (fires once per user selection with the new `ItemIndex`; programmatic `ItemIndex` changes are locked out by the LCL, and the callers already call the handler directly). Verified: Down/Down/Down on the closed combo shows carthasproduct/creditcard/forumpost with their own columns each time, popup + Down + Return likewise (`fix16-19/di-keyboard.png`).
 
 ## Not bugs / could not reproduce
 
@@ -200,7 +200,7 @@ Date: 2026-09-08, real display (DISPLAY=:0), build at e4ffd19 plus the verificat
 |---|---|---|
 | 1 "..." / Edit Connection | verified (main app); regressed in plugins -> fixed | Main app: both routes open the editor pre-filled (`A-01-editor-dots.png`, `A-01-editor-popup.png`). Plugins: "..." missed and Edit Connection crashed (#14) - the committed hit-test still had the upper bound; fixed in 26282ba, re-verified in DataImporter (`V-di-editor.png`) |
 | 2 Port field | verified | new connection typed `3307` -> `Port=3307` in DBConn.ini (`A-02-port-filled.png`, `A-02-sel6.png`) |
-| 3 editor cosmetics | verified | label clear of combo, typed username survives driver CloseUp, "Value" header (`A-03-backmysql.png`, `A-03-advanced.png`); see #18 for the TableScope display |
+| 3 editor cosmetics | verified | label clear of combo, typed username survives driver CloseUp, "Value" header (`A-03-backmysql.png`, `A-03-advanced.png`); the TableScope display is #18 (fixed in 826a071) |
 | 4 MySQL login error | verified | "Access denied for user 'bpsa'@'localhost' (using password: YES)", selector reopens with the row selected and password cleared (`A-04-error.png`, `A-04-after.png`) |
 | 5 reverse engineering layout | verified | OrderMySQL "12 skipped", canvas `compare -metric AE` = 0; OrderSQLite "12 skipped", `child`/`parent` in free cells (`A-05-*.png`) |
 | 6 sync memo | verified | ends on "Synchronisation finished. / 12 Tables compared. / 50 Columns compared." untouched (`A-06-sync-exec.png`) |
@@ -226,12 +226,13 @@ still fails with `near "show": syntax error` (sqlite-bug-catalog #8, expected, D
 Functional:
 - #14 (fixed, 26282ba): plugin connection editor "..." / Edit Connection.
 - #15 (fixed, 1a872fe): surviving model inactive after closing another model (found via Open from Database + Close).
-- #16 (open): Table Editor doubles the first character typed into the new-column row.
+- #16 (fixed, 826a071): Table Editor doubles the first character typed into the new-column row.
 
 Cosmetic:
-- #17 (open): Drop/Optimize/Repair script dialogs keep the Create dialog's height.
-- #18 (open): `TableScope` shown as `tsTable, tsView,` in the Advanced grid.
-- #19 (open): DataImporter fields list lags the table combo on keyboard selection.
+- #17 (fixed, 826a071): Drop/Optimize/Repair script dialogs keep the Create dialog's height.
+- #18 (fixed, 826a071): `TableScope` shown as `tsTable, tsView,` in the Advanced grid.
+- #19 (fixed, 826a071): DataImporter fields list lags the table combo on keyboard selection.
+- Table Editor (open, pre-existing): after the datatype in-place editor (`EditorTableFieldDatatypeInplace`) is dismissed with Escape, every following key in the column grid logs `GLib-GObject-CRITICAL ... no emission of signal "key-press-event" to stop` to stderr (also when the editor was opened by double-click); navigation itself works. Found while verifying #16.
 - SimpleWebFront: "Create Webpages" stays disabled with an empty Password field and gives no hint (by design of `InputComplete`; a status hint like DataImporter's would help).
 
 Swept without findings: Reverse Engineering against SQLite (14 tables, 12 skipped, 2 placed); Synchronisation with a changed model (`productgroup` column added -> "1 Column added.", applied to MySQL, reverted with ALTER TABLE); Query-mode DBGrid browsing and in-cell edit + post (no error, no write-back as documented); Open from Database (connects, empty model list, nothing created); Save in Database (blocked by #15 in the session, not re-driven after the fix); Model Options General/Database/Plugin Data pages unclipped; Table Editor datatype list is the MySQL list for every model (there is no SQLite datatype list in `DatabaseInfo.ini`, only `SQLite_MySQL_DatatypeSubst`); eraser button deletes a connection after a confirmation and removes it from DBConn.ini; HTMLReport end-to-end (69 KB report); Demo opens.

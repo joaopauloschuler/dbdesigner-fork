@@ -1504,3 +1504,62 @@ navigation (`Down`x4 `Right` for File > Open Recent). Shots: `fix13-*`.
   whenever any selector closes). `$!` after `cd bin && ./X &` is the subshell's pid, not the
   app's - use `pgrep -x DBDesignerFork`. Dead windows of old instances keep showing up in
   `xdotool search`; filter by a live pid. Menu popups sit 11 px above the main window's y.
+
+## Fix: db-ui #16-#19 - Table Editor doubled first character, Drop/Optimize/Repair dialog height, TableScope display, DataImporter fields list lag
+
+- **#16 doubled character** (`src/EditorTable.pas` `ColumnGridKeyDown`): the grid is a
+  `TDrawGrid`; a letter calls `EditCellStr(Chr(Key))`, which shows and focuses the separate
+  `EditorTableFieldEdit` (`src/EditorTableField.pas`) with the letter as its text. The handler
+  left `Key` untouched, so the LCL reported the key press as unhandled and GTK's toplevel
+  `gtk_window_key_press_event` re-dispatched it to the *current* focus widget - now the edit -
+  which inserted the letter a second time (`abc` -> `aabc`). Fix: `Key:=0` after starting an
+  editor (letters and Return). Same for the Tab/Right/Left branches that move `ColumnGrid.Col`:
+  with `goTabs` the grid's own handling moved a second time past the unselectable columns 4-6
+  (Tab from Column Name used to land on Default Value, Tab from Comments on the next row's
+  DataType). The `(Not DoCellEdit) and (a..z) or (A..Z)` condition is left as is - `Key` holds
+  uppercase VK codes, so the `DoCellEdit` half never mattered.
+- **#17 dialog height** (`src/EERExportSQLScript.pas` `SetModel`): for modes 1-3 both option
+  groups are hidden; `Panel1` (buttons) and the `TStatusBar` are `alBottom`, so
+  `Height:=Height-(Panel1.Top-(Settings.Top+Settings.Height+8))` (579 -> 150) is all that is
+  needed. Gotcha: `SetModel` runs before the handle exists and there `ClientHeight` of the form
+  reads 240 (stale), so `ClientHeight:=150` became `Height:=579-240+150=489`. Use `Height`
+  (bsDialog, no menu: equals the client height once shown). Debugging that needed
+  `writeln(stderr)` *plus* `Flush(stderr)` - without the flush nothing reached `stderr.log`.
+- **#18 TableScope** (`src/DBDM.pas`, `src/DBConnEditor.pas`): three formats existed -
+  `RefreshParams` displayed `tsTable, tsView, ` (trailing separator), `StoreDBConns` wrote
+  `[tsTable ,tsView]` for a non-empty set and `[tsTable, tsView]` for an empty one, and the
+  ini holds `[tsTable, tsView]`. New `TableScopeToStr` (interface of `DBDM`) yields
+  `[tsTable, tsView]` everywhere; the readers (`ReadDBConnFromIniFile`, `ParamStrGridDblClick`)
+  use `Pos` and accept any of them. Reminder: the selector's close rewrites `DBConn.ini` for
+  every connection (`TableScope=` appears for sections that had none, `Password=` disappears,
+  the editor adds `HostCaption=`), so diff the backup section by section, then restore it.
+- **#19 fields list** (`Plugins/DataImporter/DBImportData.pas/.lfm`): `DestTblLU` filled the
+  list from `OnCloseUp`. Under GTK2 the LCL fires `CloseUp` from the popup's hide signal while
+  `gtk_combo_box_get_active` still returns the old item, and a closed `csDropDownList` combo
+  moved with the arrow keys never closes up at all - hence one selection behind. `OnSelect` is
+  the right event: `GtkChangedCB` sends `LM_SELCHANGE` only when the active index really
+  changed, and `TGtk2WSCustomComboBox.SetItemIndex` raises `ChangeLock` so programmatic
+  `ItemIndex:=` (the `SetData`/preset paths, which call `DestTblLUCloseUp` themselves) does not
+  fire it. Rebuild with `lazbuild Plugins/DataImporter/DBDplugin_DataImporter.lpi`.
+- Found on the way, left open (pre-existing): after the datatype in-place editor is dismissed
+  with Escape (`TEditorTableFieldDatatypeInplaceEditor.HideEdit`: `ColumnGrid.SetFocus; Hide`),
+  every later key in the grid logs `GLib-GObject-CRITICAL ... no emission of signal
+  "key-press-event" to stop for instance 0x...` - same instance every time, also when the editor
+  was opened by double-click, so not caused by the new `Key:=0`. Keys still work.
+- Driving gotchas this round: `xdotool getwindowgeometry` reports the *frame* position
+  (y=106) while `import -window`/clicks need the client origin from `xwininfo -id` (y=69);
+  use `xwininfo` absolute coordinates. A double-click 37 px low opened the Region Editor.
+  The main window is not always maximized after start (600x426 once) -
+  `xdotool windowsize <id> 1878 886`. GTK submenus have no `_NET_WM_PID`, so open them with
+  the keyboard (hover the parent item, `Right`, `Down` x n, `Return`). The selector's
+  password field lost characters at `xdotool type --delay 100`; `--delay 300` and a
+  screenshot of the four dots before Connect. A lost Cancel click on the Table Editor let the
+  next `ctrl+a BackSpace bpsa` land in the editor - check the window list after every
+  close. `pkill -f`/`pgrep -f` match the calling shell (exit 144) - use `pgrep -x`.
+- `--selftest` under `xvfb-run -a` on 826a071: runner summary **93 PASS / 0 FAIL / 78 SKIP**
+  (baseline; phases 6/7/7b/8 = 41/28/19/5, Phase 7b forms unchanged). Note `grep -c
+  '\[PASS\]'` on the output says 105: the 12 Phase 1-5 lines (open file, tables, relations,
+  dialogs, export, save) are printed with the tag but not counted by the runner - read the
+  `TEST SUMMARY` block, not a grep. `DBConn.ini`/`DBDesignerFork_Settings.ini` restored
+  byte-for-byte from the backups (`Password=bpsa`, `WorkMode=1`), `DBConn_Current.ini`
+  (written by Plugins > DataImporter) removed.
