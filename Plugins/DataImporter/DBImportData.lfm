@@ -697,7 +697,7 @@ object DBImportDataForm: TDBImportDataForm
         Style = csDropDownList
         ItemHeight = 15
         TabOrder = 0
-        OnCloseUp = DestTblLUCloseUp
+        OnSelect = DestTblLUCloseUp
       end
       object SourceDG: TDrawGrid
         Left = 12

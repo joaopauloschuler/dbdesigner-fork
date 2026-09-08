@@ -135,6 +135,8 @@ type
 
 // JP: better error messages when connecting
 function GetConnectErrorMessage(DriverName: string):string;
+//Formats a TableScope set the way DBConn.ini stores it: '[tsTable, tsView]'
+function TableScopeToStr(TableScope: TTableScopes): string;
 
 const
   QEventType_SetQueryStatusLbl = QEventType(Integer(QEventType_ClxUser) + 200);
@@ -321,21 +323,8 @@ begin
         theIni.WriteString(dbconnName, 'LibraryName'+ospostfix, theDBConn.LibraryName);
         theIni.WriteString(dbconnName, 'VendorLib'+ospostfix, theDBConn.VendorLib);
 
-        s:='';
         if(theDBConn.TableScope<>[])then
-        begin
-          s:='[';
-          if(tsTable in theDBConn.TableScope)then
-            s:=s + 'tsTable ,';
-          if(tsView in theDBConn.TableScope)then
-            s:=s + 'tsView ,';
-          if(tsSysTable in theDBConn.TableScope)then
-            s:=s + 'tsSysTable ,';
-          if(tsSynonym in theDBConn.TableScope)then
-            s:=s + 'tsSynonym ,';
-
-          s:=Copy(s, 1, length(s)-2)+']';
-        end
+          s:=TableScopeToStr(theDBConn.TableScope)
         else
           s:='[tsTable, tsView]';
 
@@ -479,6 +468,25 @@ begin
   finally
     DBConnSelectForm.Free;
   end;
+end;
+
+function TableScopeToStr(TableScope: TTableScopes): string;
+  procedure AddScope(ts: TTableScope; const name: string);
+  begin
+    if(ts in TableScope)then
+    begin
+      if(Result<>'')then
+        Result:=Result+', ';
+      Result:=Result+name;
+    end;
+  end;
+begin
+  Result:='';
+  AddScope(tsTable, 'tsTable');
+  AddScope(tsView, 'tsView');
+  AddScope(tsSysTable, 'tsSysTable');
+  AddScope(tsSynonym, 'tsSynonym');
+  Result:='['+Result+']';
 end;
 
 // JP: better error messages when connecting

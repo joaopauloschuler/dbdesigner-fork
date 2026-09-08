@@ -172,7 +172,13 @@ begin
   begin
     SQLCreatesSettingGBox.Visible:=False;
     AdvSQLCreatesSettingGBox.Visible := (ScriptMode=0);
-//    Height:=Height-SQLCreatesSettingGBox.Height-10;
+
+    //Drop the blank area of the hidden groups: shrink by the gap between the
+    //Settings group and the (alBottom) button panel, which the status bar
+    //follows. Done on Height, not ClientHeight: before the handle exists the
+    //LCL reports a stale ClientHeight for the form, so a ClientHeight
+    //assignment lands 339 px too high (db-ui-bug-catalog #17).
+    Height:=Height-(Panel1.Top-(Settings.Top+Settings.Height+8));
   end;
 
   RegionsListBox.Items.Clear;

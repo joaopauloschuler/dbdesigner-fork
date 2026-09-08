@@ -1199,6 +1199,11 @@ begin
   end;
 end;
 
+//Wired to OnSelect (not OnCloseUp): under GTK2 CloseUp fires before the new
+//item is active and not at all when the closed combo is moved with the arrow
+//keys, so the fields list lagged one selection behind (db-ui-bug-catalog #19).
+//Programmatic ItemIndex changes do not fire OnSelect; the callers call this
+//directly after setting ItemIndex.
 procedure TDBImportDataForm.DestTblLUCloseUp(Sender: TObject);
 begin
   if(ActiveTableOptions<>nil)then

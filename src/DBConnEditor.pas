@@ -407,8 +407,7 @@ begin
 end;
 
 procedure TDBConnEditorForm.RefreshParams;
-var tablescope: string;
-  i: integer;
+var i: integer;
 begin
   //Conn Name
   DBConnEd.Text:=DBConn.Name;
@@ -458,17 +457,8 @@ begin
   ParamStrGrid.Cells[1, 3]:=DBConn.LibraryName;
   ParamStrGrid.Cells[1, 4]:=DBConn.VendorLib;
 
-  tablescope:='';
-  if(tsTable in DBConn.tablescope)then
-    tablescope:=tablescope+'tsTable, ';
-  if(tsView in DBConn.tablescope)then
-    tablescope:=tablescope+'tsView, ';
-  if(tsSysTable in DBConn.tablescope)then
-    tablescope:=tablescope+'tsSysTable, ';
-  if(tsSynonym in DBConn.tablescope)then
-    tablescope:=tablescope+'tsSynonym';
-
-  ParamStrGrid.Cells[1, 5]:=tablescope;
+  //Same format as DBConn.ini ('[tsTable, tsView]', db-ui-bug-catalog #18)
+  ParamStrGrid.Cells[1, 5]:=TableScopeToStr(DBConn.tablescope);
 
   for i:=0 to DBConn.Params.Count-1 do
   begin
