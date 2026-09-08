@@ -486,7 +486,7 @@ implementation
 
 {$R *.lfm}
 
-uses MainDM, ZoomSel,
+uses MainDM, ZoomSel, IniFiles,
   PaletteTools, PaletteModel, PaletteDatatypes, OptionsModel, Options,
   EERPageSetup, PaletteNav, EERExportSQLScript, DBConnSelect,
   EERReverseEngineering, EERSynchronisation, EERStoreInDatabase, Splash,
@@ -1406,7 +1406,7 @@ begin
     if(FActiveEERForm.Classname='TEERForm')then
     begin
       if(TEERForm(FActiveEERForm).EERModel.GetEERObjectCount([EERTable])=0)then
-        MessageDlg(DMMain.GetTranslatedMessage('There are no tables in the model which can be syncronised.', 15),
+        MessageDlg(DMMain.GetTranslatedMessage('There are no tables in the model which can be synchronised.', 15),
           mtError, [mbOK], 0)
       else
       begin
@@ -2161,8 +2161,16 @@ begin
   if(QEvent_type(Event)=QEventType_EnableMainFormRefreshTmr)then
   begin
     RefreshTmr.Enabled:=True;
-    // Clear active form reference when a child form closes
-    FActiveEERForm := nil;
+    // A child form closed. UnregisterEERForm has already switched to the
+    // remaining model (if any); clearing unconditionally left the surviving
+    // model without an active form (empty palettes, Plugins/Save in
+    // Database/Model Options doing nothing - db-ui-bug-catalog #15).
+    if(FEERFormList.Count=0)or(FEERFormList.IndexOf(FActiveEERForm)<0)then
+      FActiveEERForm := nil
+    else if(FActiveEERForm.ClassName='TEERForm')then
+      //the closing form's FormClose cleared the palettes; refill them for
+      //the model that is now shown (same events as on activation)
+      TEERForm(FActiveEERForm).FormActivate(nil);
 
     Result:=True;
   end;
@@ -2695,6 +2703,7 @@ procedure TMainForm.PluginMIClick(Sender: TObject);
 var thePath, theModelFilename: string;
   theFileDate: TDateTime;
   PluginChangedModel: Boolean;
+  theIni: TMemIniFile;
 begin
   if(FActiveEERForm<>nil)then
     if(FActiveEERForm.Classname='TEERForm')then
@@ -2714,6 +2723,21 @@ begin
         True, False, False);
 
       theFileDate:=DMMain.GetFileDate(thePath+'plugin_tmp.xml');
+
+      //Tell the plugin which database connection is open, so it can offer
+      //it (SimpleWebFront pre-fills its fields, DataImporter pre-selects
+      //it in the connection selector) - db-ui-bug-catalog #8/#9. Plugins
+      //read their own <exe>_Settings.ini, so this goes into a shared file.
+      theIni:=TMemIniFile.Create(thePath+'DBConn_Current.ini');
+      try
+        if(DMDB.CurrentDBConn<>nil)then
+          theIni.WriteString('Current', 'DBConnName', DMDB.CurrentDBConn.Name)
+        else
+          theIni.WriteString('Current', 'DBConnName', '');
+        theIni.UpdateFile;
+      finally
+        theIni.Free;
+      end;
 
       Enabled:=False;
       HidePalettes;

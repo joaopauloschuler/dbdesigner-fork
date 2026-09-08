@@ -1016,7 +1016,10 @@ begin
   if(Key=VK_TAB)or(Key=VK_RIGHT)then
   begin
     if(ColumnGrid.Col=8)and(Key=VK_RIGHT)then
-      ColumnGrid.Col:=1
+    begin
+      ColumnGrid.Col:=1;
+      Key:=0;
+    end
     else if(ColumnGrid.Col=8)and(Key=VK_TAB)then
     begin
       ColumnGrid.Col:=1;
@@ -1034,15 +1037,26 @@ begin
       Key:=0;
     end
     else if(ColumnGrid.Col=1)then
+    begin
       ColumnGrid.Col:=3;
+      //Consume the key: otherwise the grid's own Tab/Right handling moves on
+      //again (past the unselectable columns 4-6 to Default Value)
+      Key:=0;
+    end;
   end;
 
   if(Key=VK_LEFT)then
   begin
     if(ColumnGrid.Col=3)then
-      ColumnGrid.Col:=1
+    begin
+      ColumnGrid.Col:=1;
+      Key:=0;
+    end
     else if(ColumnGrid.Col=7)then
-      ColumnGrid.Col:=3
+    begin
+      ColumnGrid.Col:=3;
+      Key:=0;
+    end
     else if(ColumnGrid.Col=1)then
     begin
       ColumnGrid.Col:=8;
@@ -1051,13 +1065,16 @@ begin
   end;
 
   //Use StringEditor
-  if(Key=VK_RETURN)or(Key=VK_RETURN)then
+  if(Key=VK_RETURN)then
   begin
     if(ColumnGrid.Col=1)or(ColumnGrid.Col=7)or(ColumnGrid.Col=8)then
       EditCellStr;
 
     if(ColumnGrid.Col=3)then
       EditDatatype;
+
+    //The key that opened the editor must not reach it (see below)
+    Key:=0;
   end;
 
   if((Not(DoCellEdit))and
@@ -1065,10 +1082,18 @@ begin
     ((Key>=Ord('A'))and(Key<=Ord('Z'))))then
   begin
     if(ColumnGrid.Col=1)or(ColumnGrid.Col=7)or(ColumnGrid.Col=8)then
+    begin
       if(Shift=[ssShift])then
         EditCellStr(Chr(Key))
       else
         EditCellStr(Chr(Key-Ord('A')+Ord('a')));
+
+      //EditCellStr moved the focus to EditorTableFieldEdit; the GTK toplevel
+      //re-dispatches an unhandled key press to the *current* focus widget, so
+      //without consuming it here the same character was typed a second time
+      //into the editor ("abc" -> "aabc", db-ui-bug-catalog #16).
+      Key:=0;
+    end;
   end;
 
   if(Key=VK_DELETE)then

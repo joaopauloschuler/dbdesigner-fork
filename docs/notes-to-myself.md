@@ -1134,3 +1134,432 @@ navigation (`Down`x4 `Right` for File > Open Recent). Shots: `fix13-*`.
   memo scrolls to the end of the log.
 - `--selftest` 0 FAIL, `tests/TestMySQLShim.pas` SUCCESS, `dbdtest2` dropped, general log
   off and truncated, `DBConn.ini` restored from `$S/fix11-DBConn.ini.bak`.
+
+
+## Fix: db-ui #7 - Query mode DML "1 Rows affected" but never committed
+
+- **Cause**: dbExpress auto-commits every statement, SQLDB does not. Since sqlite-bug-catalog
+  #2 the shim `TSQLConnection` always owns a `TSQLTransaction`; `TCustomSQLQuery.ExecSQL`
+  starts it (`MaybeStartTransaction`) and leaves the INSERT/UPDATE/DELETE inside it. Nothing
+  committed it: `ReleaseIdleTransaction` (sqlite #13) only runs from `TSQLDataSet.InternalClose`,
+  and `ExecuteSQLCmdScript` (`src/DBDM.pas`) never *opens* `OutputQry`, so on MySQL (InnoDB)
+  and SQLite the change was rolled back by `TSQLConnection.Close` (`Transaction.Rollback`).
+  MySQL DDL (sync CREATE/ALTER) only worked because MySQL autocommits DDL implicitly. On SQLite
+  the bug was masked whenever a SELECT was run and closed afterwards - that idle-release commit
+  took the pending DML with it - which is why sqlite `CheckExternalWrite` never caught it.
+- **Fix** (`src/clx_shims/sqlexpr.pas`): `TSQLDataSet.ExecSQL(ExecDirect)` now
+  `CommitRetaining`s the connection's transaction after `inherited ExecSQL`. That covers every
+  write path in the app: `ExecuteSQLCmdScript` (Query mode Execute, sync CREATE TABLE and
+  standard inserts), `EditorTableData.ExecSQLBtnClick`, `EERStoreInDatabase`, and the
+  `SchemaSQLQuery.ExecSQL` calls in `DBEERDM`. `TSQLConnection.ExecuteDirect` (`DMDB.ExecSQL`,
+  used by sync deletes/inserts and the DataImporter plugin) already committed, but with
+  `Commit`, which `CloseDataSets` on every dataset of the transaction; it now uses
+  `CommitRetaining` too. Not `sqoAutoCommit`: SQLDB implements that with plain `Commit`.
+  `CommitRetaining` on sqlite is `COMMIT` + deferred `BEGIN` (no lock), so the sqlite #13
+  idle-release behaviour is unchanged (an external `sqlite3` could read the row while the app
+  stayed connected).
+- **Not a write path**: the Query-mode DBGrid edits go into the shim `TClientDataSet`
+  (`src/clx_shims/dbclient.pas`, a `TBufDataset` copy) which has no `ApplyUpdates`/provider
+  write-back, so grid edits never reach the database at all (as in the Delphi original without
+  `ApplyUpdates`). Left as is.
+- `tests/TestSQLExprShim.pas` gained a DML block: INSERT via `TSQLDataSet.ExecSQL` must be
+  visible on a second connection, an external write must still succeed afterwards, and a
+  DELETE must survive `Conn.Close; Conn.Open`. Old shim: "FAIL: ExecSQL DELETE rolled back by
+  Close".
+- Verified on DISPLAY=:0: Display > Query Mode, the catalog INSERT (idproduct=99) via the
+  "Execute SQL" button on OrderMySQL -> `mysql` sees the row while connected and after
+  Database > Disconnect; DELETE the same way -> 0 rows, `product` back to 3
+  (`$S/shots/db-ui/fix07/06-status-both.png`, `09-status.png`). Same on a copy of
+  `order.sqlite` (`DBConn.ini` `Database=` pointed at `$S/fix07/order_copy.sqlite` and restored)
+  checked with `sqlite3` while connected and after disconnect (`11-sqlite-insert-status.png`,
+  `12-status.png`). `--selftest` 107 PASS / 0 FAIL; `TestSQLExprShim`, `TestSQLite`,
+  `TestMySQLShim` print SUCCESS. `DBConn.ini` md5 unchanged, `WorkMode=1` restored.
+- Driving gotchas: `xdotool search --pid <pid> --name <x>` ORs the criteria (it returned the
+  Tips window for "Select Database Connection"); match with `getwindowname` instead, and skip
+  xids below the main window's (dead windows of earlier instances still say IsViewable). The
+  Query-mode "Execute SQL" button is at client (447,659) with the memo at (200,700); the first
+  click after typing is lost (repeat with `windowactivate`). The Database menu popup is
+  234x135 at +189+95, "Disconnect from Database" at y+41 - clicking by screen coordinates
+  once hit "Connect to Database" and, after aborting that login box, produced a
+  "[TCustomForm.SetFocus] DBConnSelectForm ... Can not focus" box (OK is harmless).
+
+## Fix: db-ui #5 - reverse engineering re-laid out every existing table
+
+- Cause: each of the five reverse engineering routines in `src/DBEERDM.pas`
+  (`EERReverseEngineer` ODBC/generic, `EERMySQLReverseEngineer`, `EERORCLReverseEngineer`,
+  `EERSQLiteReverseEngineer`, `EERMSSQLReverseEngineer`) carried its own copy of the
+  "Order table positions" loop, and every copy walked `EERModel.Components` for all
+  `TEERTable`s instead of the run's `DbTables` list. On a fresh model that is the same
+  set, so nobody noticed; with an open model (possible since the sqlite #14 skip logic)
+  every skipped table got a fresh grid cell too. Not `EERReverseEngineering.pas` /
+  `EERModel.pas` as the catalog guessed - the dialog only calls `DMDBEER`.
+- Change: one new `TDMDBEER.EERReverseEngineerPlaceTables(theModel, theTables, XCount)`
+  replaces the five loops. It only moves `theTables` (the new ones), but still tests the
+  candidate cell against every table of the model, so new tables land in the first free
+  cell (`80+x*250`, `40+y*160`, XCount per row) and never on top of a kept table. The
+  generic routine's quote/`schema.` prefix stripping that lived inside its loop is now a
+  small loop of its own over `DbTables` just before the placement call. The dead
+  `xpos/ypos/xanz/defwidth/defheight/tblAtPos/tmpTbl` locals of the callers are gone
+  (the Oracle routine still needs `tmpTbl` for its FK lookup).
+- Relations/indices of skipped tables: already sane, unchanged - columns, indexes and the
+  native FK derivation (SQLite `PRAGMA foreign_key_list`, MySQL `information_schema`) only
+  iterate `DbTables`, and `EERReverseEngineerMakeRelations(..., SkipExisting=True)` never
+  adds a second relation between two tables that have one. Consequence worth knowing: an FK
+  that a *skipped* table has towards a *new* table is not recovered (`weblog ->
+  webserver` after deleting `webserver` from `order.xml` and re-engineering: `webserver`
+  comes back, the relation and `weblog.idwebserver` do not - deleting the table had removed
+  the FK column from the model anyway).
+- Verified on DISPLAY=:0 (`$S/shots/db-ui/fix05/`): `./DBDesignerFork Examples/order.xml`
+  (a model path on the command line is opened directly, no GTK file dialog needed),
+  Reverse Engineering with OrderMySQL, all 12 tables: "12 table(s) already exist ... skipped",
+  the canvas crop (1560x780+40+40 of the main window) is pixel-identical before/after
+  (`compare -metric AE` = 0; the only diff in the full window is the status bar).
+  Mixed case: select `webserver`, Edit > Delete selected Object(s) (the bare `Delete` key
+  does nothing, the shortcut is Ctrl+Del), Yes; reverse engineer again -> "11 skipped",
+  only `webserver` appears at the default cell (80,40) over the logo, nothing else moved.
+  OrderSQLite (14 tables): "12 skipped", `child` and `parent` land in the next free cells
+  (330,40)/(580,40) with their `Rel_12`, all others untouched.
+- `--selftest`: 93 PASS / 0 FAIL / 78 SKIP - and the same 93/78 with the *unmodified*
+  source built from a `git stash`, so the earlier "107 PASS" is a settings/state
+  difference (skips are "In unsafe/skip list" 29, "Separator" 24, "Submenu parent" 16,
+  "Disabled" 9), not this change. `DBConn.ini` md5 unchanged, `WorkMode=1` restored after
+  each selftest run.
+- Driving: Database menu at client (185,12), popup 234x135 at +189+95, "Reverse
+  Engineering" at y+95; selector rows y 62 (OrderSQLite) / 84 (OrderMySQL), Connect at
+  (683,235); Reverse Engineering dialog Execute at (425,573); the "Information" box takes
+  Return. Edit menu popup is 300x241 at +82+95 with "Delete selected Object(s)" at y+175,
+  followed by a 405x154 "Confirmation" box (Yes at (350,125)).
+
+## Fix: db-ui #1-#4 - connection selector edit route, Port field, editor cosmetics, real MySQL login error
+
+- **#1** (`src/DBConnSelect.pas`): the per-row "..." button *was* wired to
+  `ConnectionsListViewClick`, but the hit-test required `mx < x2` where
+  `x2 = sum(cols 0..4) + col5.Width` (col5 is only 22 px wide in the .lfm). Under
+  LCL the drawn button reaches to the list's right border/scrollbar, past that
+  narrow column, so clicks on the visible button landed at `mx > x2` and did
+  nothing. Fix: dropped the upper bound (`mx > x1` only, col5 is the last column),
+  extracted the editor-open into `EditSelectedDBConn`, and added an
+  "Edit Connection" item to `DBConnPopupMenu` (new published fields
+  `EditConnectionMI`, `N3` in the .pas, entries in the .lfm) as a guaranteed route.
+  Editing persists via the editor's `ConnectBtnClick -> StoreDBConns`.
+- **#2** (`src/DBConnEditor.pas`): `CheckHostEdits` set `PortEd.Enabled:=False`
+  even for MySQL (label enabled, edit greyed) - a typo for `True`. And the port
+  was never saved: `ConnectBtnClick` didn't copy `PortEd.Text` into
+  `DBConn.Params.Values['Port']`, and the `[MySQL]` default section in
+  `DBConn_DefaultSettings.ini` has no `Port` key, so new MySQL connections got no
+  `Port=` line. Fix: enable the field for MySQL; store `Port` in `ConnectBtnClick`
+  when the field is enabled and non-empty; load it into `PortEd` in `RefreshParams`.
+  `StoreDBConns` already writes every `Params.Name` except `Password`, so `Port`
+  now round-trips as `Port=` (same key the app/sqldb read via `Params.Values['Port']`).
+- **#3** (`src/DBConnEditor.lfm` + `.pas`): (a) `PortLbl` overlapped the Hostname
+  combo (combo ends at x=269, label was `Left=266`) - moved to `Left=276 Width=37`.
+  (b) switching the driver reloaded the driver defaults over what the user typed,
+  so a typed Username was replaced by MySQL's default `root`. `DatabaseTypesCBoxCloseUp`
+  now remembers the edit-box values and restores any non-empty one after
+  `ResetDefaultParamsBtnClick`, so defaults fill only empty fields. (c) the "Value"
+  header vanished because `RefreshParams` does `ParamStrGrid.Cols[1].Clear`, which
+  wipes cell `[1,0]` too - restore `Cells[1,0]:='Value'` right after the clear.
+- **#4** (`src/clx_shims/sqlexpr.pas` + `src/DBDM.pas`): a failed MySQL login only
+  showed "Server connect failed." The FPC connector's `MySQLError()` formats the
+  fixed string `SErrServerConnectFailed` (no `%s`), so the real `mysql_error()`
+  text ("Access denied for user ...") is dropped before it reaches
+  `EDatabaseError.Message`. Fix: `TSQLConnection.Open` catches the failure and, for
+  MySQL, opens a throwaway `mysql_init`/`mysql_real_connect` handle (via `mysql80dyn`,
+  already loaded by `MySQLLib`) to read the real error, re-raising it. `GetConnectErrorMessage`
+  lost its stale "does not connect to MySQL 5.* with password" blurb (now a short
+  hint + "Server message:"), and `GetDBConnButtonClick` appends `x.Message` directly,
+  clears the tried connection's `Password` param and sets `defDBConn := SelDBConn.Name`
+  so the retry reopens the selector with the same connection selected and the
+  password box empty (instead of losing the choice).
+- Gotchas: don't undo the `RowCount:=7` / `StoreDBConns`-on-OK / `Password=` stripping
+  work (notes above). `StoreDBConns` never writes `Password`, so a hand-edited
+  `Password=bpsa` line in `DBConn.ini` disappears on the first rewrite (edit/OK,
+  selector close). The extra `mysql_real_connect` probe in #4 is an error-path-only
+  second round trip. The `sqlexpr.pas` MySQL probe is guarded `{$IFDEF LINUX}` and by
+  `Assigned(mysql_init)`.
+- Verified on DISPLAY=:0 (`<scratchpad>/shots/db-ui/fix01-04/`): "..." opens the
+  editor pre-filled; right-click "Edit Connection" too; edited OrderMySQL description
+  persisted with `HostName`/`Database`/`Port=3306` intact; new MySQL connection typed
+  a username then closed the driver combo with no `root` prefix, typed `3307` into the
+  focusable Port field, OK -> `Port=3307`, `User_Name=myuser` in the ini (test conn
+  then deleted); wrong password shows "Access denied for user 'bpsa'@'localhost'..."
+  with the selector still open, OrderMySQL selected, password cleared; correct login
+  (bpsa/bpsa, 127.0.0.1, dbdtest) -> status bar "Connected to Database bpsa@dbdtest";
+  Advanced grid shows the "Value" header. `DBConn.ini` restored byte-for-byte
+  (incl. `Password=bpsa`) and `WorkMode=1` afterwards.
+
+## Fix: db-ui #8-#9 - DataImporter layout/import, SimpleWebFront form size and connection pre-fill
+
+- **#8 tabs**: "Column Mapping"/"General Options" *do* switch when started from the
+  main app or directly (`./DBDplugin_DataImporter Examples/order.xml`); the catalog
+  observation was a lost first click (activate the window first). Nothing to fix there.
+- **#8 layout** (`Plugins/DataImporter/DBImportData.lfm`): the CLX design assumed an
+  8pt Tahoma; with the LCL's ~10pt Ubuntu every fixed `Width` clipped. Form is now
+  925x600, right column starts at x=336, `Label4`/`Label12` etc. lost their `Width`
+  (autosize), `PresetLU` 250 wide, `NewPresetBtn` 215 wide, both option group boxes 100
+  high (checkbox rows at 24/58), General Options group 100 high, `ModePageControl`
+  300 wide with the tab captions shortened to "From Text Files"/"From Database" (the
+  scroll arrows were GTK2 tab overflow, there were always two pages). "seperator"
+  -> "separator", the German leftovers of the fixed-length group are English
+  ("Column positions:", "Set", "Skip first line"). `SepOptionsGBox` is `Visible=True`
+  by default so the separator/delimiter row is shown before a file is checked
+  (`ShowTableOptions` still toggles it per mode). `DirEd.OnKeyDown=DirEdKeyDown` was
+  declared but never wired (Enter in the directory box now refreshes the list).
+  `DestDG.ColWidths` 115/210. Status label and `SubmitBtn.Hint` say why Execute is
+  disabled (GTK2 shows no hints on disabled speed buttons, so the status text matters).
+- **#8 password**: the plugin uses the same `TDBConnSelectForm` as the main app; the
+  password box is offered once a row is selected. What was missing is the pre-selection:
+  `src/Main.pas PluginMIClick` now writes `~/.DBDesigner4/DBConn_Current.ini`
+  (`[Current] DBConnName=<open connection or empty>`) before starting a plugin;
+  `GetDBConnSBtnClick` reads it (fallback: `RecentDestinationDBConn`) so the selector
+  opens with the main app's connection selected and the password box focused. Plugins
+  cannot use `SaveValueInSettingsIniFile` for this: `ProgName` is derived from the exe
+  name, so each plugin reads its own `DBDplugin_<X>_Settings.ini`.
+- **Import errors were swallowed** (`src/DBDM.pas TDMDB.ExecSQL`): the inner handler did
+  `EDatabaseError.Create(...)` without `raise`, so a failed INSERT (e.g. a wrong
+  destination table) produced "3 Lines of Data imported" and an empty table. `ExecSQL`
+  got a `RaiseOnError: Boolean = False` parameter; the DataImporter passes `True` and
+  `ImportBtnClick` shows "Data import failed after N lines" + the SQL. The sync callers
+  keep the old tolerant behaviour (original DBDesigner 4 semantics). Same no-`raise`
+  pattern fixed in `GetPresetsFromIniFile` (`EInOutError`).
+- **Unmapped columns**: `ImportBtnClick` inserted `''` for every destination column
+  without a mapping (auto-increment PKs, blobs, NOT NULL ints -> strict-mode errors);
+  the INSERT now lists only mapped columns (error if none).
+- **Progress.lfm**: `TLabel.BorderStyle = bsSingle` (CLX-only, 4 labels) raised
+  "Error reading Label1.BorderStyle" on Execute; removed. Audit: no other
+  `BorderStyle` on labels in `Plugins/*/*.lfm`.
+- **#9 form size** (`Plugins/SimpleWebFront/Main.lfm`): `Width/Height = 799/367` plus
+  `HorzScrollBar.Range=787`/`VertScrollBar.Range=332` made the LCL show a scrollbar
+  pair with a blank strip; now `ClientWidth/ClientHeight = 799/330`, ranges removed,
+  `PixelsPerInch 92 -> 96`. Grid Options page: `ViewComboBox` Top 36, "Columns visible
+  in Grid" label Top 66, list Top 84 (no overlap); the Views page `WhereClauseMemo`
+  lost its design-time `Line1..Line4`.
+- **#9 connection fields**: SWF keeps hostname/db/user/password in its own plugin data
+  inside the model; `plugin_tmp.xml` carries no connection (only `DefSaveDBConn`/
+  `DefSyncDBConn`/`DefQueryDBConn` names, none of them set by Database > Connect).
+  `PrefillConnectionFromDBDesigner` (Main.pas) reads `DBConn_Current.ini` and fills
+  only the still-empty fields from `DBConn.ini` (`HostName`, `Database`, `User_Name`,
+  `Password` if stored). Stored plugin data wins.
+- **View Editor OK did nothing** (`EditorView.pas GetOrderByClause`): with the LCL,
+  `Items.Clear` in `ShowColsInListBox` resets `OrderColumnsComboBox.ItemIndex` to -1;
+  `Items[-1]` hit `TGtkListStoreStringList.Get` "Out of bounds", which the LCL reports
+  via `RaiseGDBException` = a deliberate integer division by zero -> the mysterious
+  "Division by zero / Press OK to ignore" box, hidden *behind* the modal editor (found
+  with `gdb` `catch`/SIGFPE: `laztracer.pas:58`). Asserts are off in the build, so the
+  `assert(ItemIndex<>-1)` guards were no help. Now -1 = no order / ascending, and
+  `ShowColsInListBox` re-selects index 0. Editor layout widened to 500x615 (Order By
+  group 115 high, groups 466 wide, scroll ranges removed).
+- Gotchas: `pkill -f DBDplugin_X` kills the calling shell too (exit 144) - use
+  `pgrep -f "^\./DBDplugin_" | xargs kill`. `pgrep -x` can't see the plugin (name > 15
+  chars). Under XWayland `xdotool getwindowgeometry` adds the frame offset twice; use
+  `xwininfo -id` for absolute positions (`mousemove --window` itself lands correctly).
+  Combo popups are separate top-level windows of the same pid (find by size). A
+  "Press OK to ignore" LCL box can sit behind a modal form - list windows by pid when a
+  click seems ignored. `DBConn_Current.ini` is written on every plugin start; delete it
+  when restoring the settings directory.
+- Verified on DISPLAY=:0 (`<scratchpad>/shots/db-ui/fix08-09/`): DataImporter imported
+  `products.csv` (3 rows, `;` separated, header row) into `dbdtest.product_import`
+  (`CREATE TABLE ... LIKE product`, dropped afterwards) with Auto-Mapping, `pic` left
+  NULL; all three tabs, both option groups and the General Options page render
+  unclipped; from the main app the selector opens with OrderMySQL selected.
+  SimpleWebFront (from the main app, connected to OrderMySQL) shows 127.0.0.1/dbdtest/
+  bpsa; view "Products" on `product`, group "Catalog", Create Webpages wrote
+  `index.php`, `db_open.php` (host/user/db correct), `Catalog_Products_frame.php`,
+  `images/`, `incs/` into a scratch directory. `--selftest` 93/0. `DBConn.ini`
+  (incl. `Password=bpsa`) and `WorkMode=1` restored.
+
+
+## Fix: db-ui #6, #10 - sync log scrolling and spelling, export dialog overlap and per-target options
+
+- **#6 scrolling**: `EERMySQLSyncDB` (`src/DBEERDM.pas`) appends to `ProgressMemo.Lines` and
+  pumps messages after every step, but nothing ever moved the memo. The LCL fires
+  `TMemo.OnChange` for programmatic `Lines.Add` too (`TCustomEdit.TextChanged` -> `Change`,
+  driven by the GTK text-buffer signal), so `TEERSynchronisationForm.ProgressMemoChange`
+  (`src/EERSynchronisation.pas`, wired in the `.lfm`) sets `SelStart:=Length(Text)`,
+  `SelLength:=0` and the GTK2 text view scrolls the caret on screen. No extra
+  `ProcessMessages` needed. Verified: after Execute the memo shows `Synchronisation finished.
+  / 12 Tables compared. / 50 Columns compared.` without touching it
+  (`$S/shots/db-ui/fix06-10/sync2_exec.png`).
+- **#6 spelling**: the source strings ('Syncronisation started/finished.', the
+  `SyncStdInsertsCBox` caption, the `SyncImg` hint, the "no tables ... syncronised" message)
+  are only fallbacks - at run time `GetTranslatedMessage(msg, Nr)` returns
+  `MessageCaptions[Nr-1]` and `TranslateForm` looks up `<lang>_<Class>_<Name>` by component
+  name, both from `DBDesignerFork_Translations.txt` (`[Messages]` section keys
+  `en_Message_Nr0152_TDMDBEER=...`). So the fix is in the *values* of
+  `bin/Data/DBDesignerFork_Translations.txt` (13 lines: en/de/xx for Nr0152, Nr0164,
+  `TCheckBox_SyncStdInsertsCBox`, `TImage_SyncImg_Hint`, and the French hint which read
+  "Syncronisation de Base de donn..."), plus the sources for consistency. Keys and component
+  names (`DatabasesyncronisationMI`, referenced by `UITestRunner.pas`) are untouched. The
+  file is ISO-8859-1 with CRLF - edit with `sed` on ASCII patterns only, never re-save it
+  from an editor as UTF-8. The user copy `~/.DBDesigner4/DBDesignerFork_Translations.txt` is
+  a verbatim copy made at first start and does NOT get refreshed - it was patched the same
+  way here; other installations keep the typo until they delete/refresh that copy.
+- **#10 overlap**: in `src/EERExportSQLScript.lfm` `EdLastDeleteTriggerPrefix` spans
+  Top 125-146 while `CBLastChange` began at Top 145 (Height 31, but AutoSize wins) so the
+  edit painted over the caption. The "Last change" block moved down by 11-12 px
+  (`CBLastChange` 156, edits 184/209/234, labels +4; the group is 313 high so it fits).
+  `CBLastChange`/`CBLastDelete` captions used `&  trigger` (an accelerator on a blank, shown
+  as a gap); now `&&` = a literal ampersand.
+- **#10 disabled glyphs**: not the LCL. The controls are plain disabled `TCheckBox`es;
+  the desktop theme is Yaru, whose gtk-2.0 pixmap theme (`/usr/share/themes/Yaru/gtk-2.0/
+  main.rc`) maps `function=CHECK state=INSENSITIVE shadow=OUT` to
+  `assets/menu-checkbox-insensitive.png` (an empty menu-item asset) although it ships
+  `checkbox-unchecked-insensitive.png`; disabled *checked* boxes use the proper
+  `checkbox-checked-insensitive.png` = grey tick. Hence "no glyph" for My SQL (options
+  forced off) and "grey tick" for PostgreSQL (options forced on) - both are the theme's
+  rendering of a correct state. Under Adwaita gtk-2.0 all disabled boxes have a glyph
+  (`export_adwaita_xvfb.png`). `GTK2_RC_FILES` is ignored on the desktop because the
+  xsettings daemon re-applies Yaru; the comparison had to run under a bare `Xvfb :99`.
+  Left as-is: a gtkrc override at start-up would replace the theme's whole pixmap engine
+  for GtkCheckButton, and painting our own glyphs is exactly what was to be avoided.
+- **#10 per-target state** (the real inconsistency): `CBTargetDataBaseChange` is now
+  table-driven through a nested `SetOption(CB, Enabled, Checked)`. Values per target are
+  unchanged for FireBird/My SQL/Oracle/PostgreSQL/SQL Server, but SQLite used to disable
+  `CBAutoIncrement`/`CBLastDelete`/`CBLastChange` without resetting `Checked`, so the state
+  remembered in the ini from an Oracle/FireBird session (`AutoIncrementTriggers=1`,
+  `LastChangeTriggers=1`, ...) stayed on and `GetSQLScript` emitted `CREATE SEQUENCE` and
+  trigger tables into the SQLite script. Now every disabled box carries an explicit value.
+  `LbAutoIncrementSeqName` also falls back to 'Sequence name:' instead of keeping the last
+  caption. Copy Script to Clipboard (SQLite) verified via a GTK3 reader: 12 `CREATE TABLE`,
+  5 `AUTOINCREMENT`, 0 `SEQUENCE`/`TRIGGER`.
+- Driving gotchas: `xdotool search --name X | head -1` can return mutter's frame window
+  (`/usr/libexec/mutter-x11-frames`, same title) - filter by `getwindowpid`. Reading the
+  clipboard with a GTK3 python snippet needs `GDK_BACKEND=x11` (with `WAYLAND_DISPLAY` set
+  it reads the Wayland clipboard and sees nothing from the X11 app). `import -window <id>`
+  of a window that has just been destroyed blocks forever - wrap in `timeout`. `pkill -f`
+  and `kill $(pgrep -f "Xvfb :99")` match the calling shell's own command line (exit 144);
+  use `pgrep -x Xvfb` / `pgrep -x DBDesignerFork`. The connection selector's `FormDestroy`
+  rewrites `DBConn.ini` without `Password=` on the first use, so the second run had to type
+  the password (`ctrl+a BackSpace`, then `xdotool type`); restore the backup at the end.
+- `--selftest` under `xvfb-run -a`: 107 PASS / 0 FAIL. `DBConn.ini` (with `Password=bpsa`)
+  and `DBDesignerFork_Settings.ini` (`WorkMode=1`) restored from the backups.
+
+## Verification: round 4 (db-ui-bug-catalog #1-#13)
+
+### Self-test count (question a): 93 PASS / 78 SKIP is the baseline
+
+- Five variants on the same source all give **93 PASS / 0 FAIL** (`xvfb-run -a`): real
+  `~/.DBDesigner4`; `ShowPalettesDocked=0` (74 SKIP: the four palette menu items become
+  enabled and pass, and the four palette buttons of Phase 7b disappear because the
+  palettes are no longer visible forms); no `[RecentFiles]` + `ReopenLastFile=0` (77 SKIP,
+  117 instead of 118 menu items - `OpenRecent<N>MI` items are created per recent file);
+  an empty `HOME`; `cwd=bin`. `DBConn.ini` with or without `Password=` makes no difference
+  either. So ini state, recent files, `DBConn_Current.ini` and cwd do *not* explain the
+  "107 PASS" some fix agents reported.
+- What the count *does* depend on: Phase 7b tests the buttons of every form that is
+  `Visible` at that moment (`Form:` lines in the log). Baseline forms: PaletteModelFrom,
+  PaletteDataTypesForm, PaletteNavForm, PaletteToolsForm, EERForm (19 buttons). Per phase:
+  6 = 41, 7 = 28, 7b = 19, 8 = 5. A run that leaves one more editor open (e.g. the
+  Query-mode `EditorQueryForm`, 22 buttons, if `PaletteModelFrom.AddBtn` -> `SetTable` gets
+  a connection) adds its buttons as PASSes. The 107 runs could not be reproduced with the
+  current source; the only state-dependent branch on that path was the connection selector
+  (see b), which is now disabled in self-test mode, and two consecutive runs after the
+  change gave 93/78 both times. Treat **93 PASS / 0 FAIL / 78 SKIP** (docked palettes,
+  one recent file) as the baseline; any FAIL matters, a PASS delta means the set of
+  visible forms at Phase 7b changed - compare the `Form:` lines, not the total.
+- Skip breakdown at baseline: 29 "In unsafe/skip list", 24 "Separator", 16 "Submenu
+  parent", 9 "Disabled" (Copy/Paste/SelectAll/CopyselectedObjectsasImage/CenterModel and
+  the four palette items while docked).
+
+### Self-test and database connections (question b)
+
+- Phase 6 clicks `QueryModeMI` after `DesignModeMI`, so the app is in Query mode by Phase
+  7b. There `PaletteModelFrom.AddBtn` creates a table and sends `QEventType_EditTable`,
+  which in Query mode opens `TEditorQueryForm.SetTable` -> `DMDB.GetDBConnButtonClick(self,
+  DefQueryDBConn)` -> `GetUserSelectedDBConn` -> modal `DBConnSelectForm` (the log showed
+  `[AUTO-CLOSE] Closing modal: DBConnSelectForm` right after `AddBtn`). The auto-close
+  timer cancels it, but only if it is still armed; if it was consumed by an earlier modal,
+  the selector waits forever, and if anything returns `mrOK` with a bad password the
+  `while(1=1)` retry loop in `GetDBConnButtonClick` shows the error box and re-opens the
+  selector without end. That is the "modal loop when DBConn.ini had no Password=" report.
+- Fix (commit 1f3c5da, `src/DBDM.pas`): `GetUserSelectedDBConn` returns `nil` and
+  `GetDBConnButtonClick` returns at once when `SettingsReadOnly` (the `--selftest` flag
+  from `MainDM`) is set. Every selector/connect entry point in the app goes through one of
+  the two (Main `ConnecttoDatabaseMI`, EditorQuery, EditorTableData, Reverse Engineering,
+  Synchronisation, Store in Database), so the self-test can never reach a real database
+  now. The selector form itself is not exercised by the self-test (its menu items are on
+  the unsafe list anyway). `DBConn.ini` md5 unchanged after the runs, `WorkMode=1` kept.
+
+### What the verification found and fixed
+
+- **#14** (26282ba): the c9c00bc "drop the `mx<x2` bound" change never landed - the commit only
+  added a `writeln(stderr,'DBG Click ...')` line, so `...` worked in the main app by luck (the
+  click fell inside the 22 px params column) and not in the plugins. The plugin editor's
+  "List index (-1)" comes from `DMDB.DatabaseTypes` being empty: `LoadSettingsFromIniFile`
+  reads `[DatabaseTypes]` from `<ProgName>_Settings.ini` and a plugin's ini has none. Fallback
+  to `DBDesignerFork_Settings.ini`, then a built-in list. Lesson: when a fix note says "dropped
+  the bound", `git show` the commit - and grep binaries/sources for leftover `DBG` lines.
+- **#15** (1a872fe): `QEventType_EnableMainFormRefreshTmr` cleared `FActiveEERForm` after
+  `UnregisterEERForm` had already switched to the surviving model; now only cleared when the
+  list is empty, and the surviving form's `FormActivate(nil)` re-sends the palette refresh
+  events that the closing form's `FormClose` had cleared with `nil`.
+- Open: #16 (Table Editor doubles the first typed char in the new row), #17 (Drop/Optimize/
+  Repair dialog height), #18 (`TableScope` display), #19 (DataImporter fields list lag).
+- Round trips: `tests/sqlite-roundtrip.sh` and `tests/mysql-roundtrip.sh` (into `dbdtest3`,
+  dropped afterwards) clean on fresh exports; `TestSQLExprShim`, `TestSQLite`, `TestMySQLShim`
+  print SUCCESS; all four plugins rebuild. Demo/HTMLReport/SimpleWebFront compile only their
+  .lpr on a rebuild (they do not use DBDM/DBConnSelect); DataImporter does and relinks.
+- Driving: two fork agents shared DISPLAY=:0 (main app vs standalone plugins) - works if each
+  matches windows by its own pid and always types the password (`DBConn.ini` loses `Password=`
+  whenever any selector closes). `$!` after `cd bin && ./X &` is the subshell's pid, not the
+  app's - use `pgrep -x DBDesignerFork`. Dead windows of old instances keep showing up in
+  `xdotool search`; filter by a live pid. Menu popups sit 11 px above the main window's y.
+
+## Fix: db-ui #16-#19 - Table Editor doubled first character, Drop/Optimize/Repair dialog height, TableScope display, DataImporter fields list lag
+
+- **#16 doubled character** (`src/EditorTable.pas` `ColumnGridKeyDown`): the grid is a
+  `TDrawGrid`; a letter calls `EditCellStr(Chr(Key))`, which shows and focuses the separate
+  `EditorTableFieldEdit` (`src/EditorTableField.pas`) with the letter as its text. The handler
+  left `Key` untouched, so the LCL reported the key press as unhandled and GTK's toplevel
+  `gtk_window_key_press_event` re-dispatched it to the *current* focus widget - now the edit -
+  which inserted the letter a second time (`abc` -> `aabc`). Fix: `Key:=0` after starting an
+  editor (letters and Return). Same for the Tab/Right/Left branches that move `ColumnGrid.Col`:
+  with `goTabs` the grid's own handling moved a second time past the unselectable columns 4-6
+  (Tab from Column Name used to land on Default Value, Tab from Comments on the next row's
+  DataType). The `(Not DoCellEdit) and (a..z) or (A..Z)` condition is left as is - `Key` holds
+  uppercase VK codes, so the `DoCellEdit` half never mattered.
+- **#17 dialog height** (`src/EERExportSQLScript.pas` `SetModel`): for modes 1-3 both option
+  groups are hidden; `Panel1` (buttons) and the `TStatusBar` are `alBottom`, so
+  `Height:=Height-(Panel1.Top-(Settings.Top+Settings.Height+8))` (579 -> 150) is all that is
+  needed. Gotcha: `SetModel` runs before the handle exists and there `ClientHeight` of the form
+  reads 240 (stale), so `ClientHeight:=150` became `Height:=579-240+150=489`. Use `Height`
+  (bsDialog, no menu: equals the client height once shown). Debugging that needed
+  `writeln(stderr)` *plus* `Flush(stderr)` - without the flush nothing reached `stderr.log`.
+- **#18 TableScope** (`src/DBDM.pas`, `src/DBConnEditor.pas`): three formats existed -
+  `RefreshParams` displayed `tsTable, tsView, ` (trailing separator), `StoreDBConns` wrote
+  `[tsTable ,tsView]` for a non-empty set and `[tsTable, tsView]` for an empty one, and the
+  ini holds `[tsTable, tsView]`. New `TableScopeToStr` (interface of `DBDM`) yields
+  `[tsTable, tsView]` everywhere; the readers (`ReadDBConnFromIniFile`, `ParamStrGridDblClick`)
+  use `Pos` and accept any of them. Reminder: the selector's close rewrites `DBConn.ini` for
+  every connection (`TableScope=` appears for sections that had none, `Password=` disappears,
+  the editor adds `HostCaption=`), so diff the backup section by section, then restore it.
+- **#19 fields list** (`Plugins/DataImporter/DBImportData.pas/.lfm`): `DestTblLU` filled the
+  list from `OnCloseUp`. Under GTK2 the LCL fires `CloseUp` from the popup's hide signal while
+  `gtk_combo_box_get_active` still returns the old item, and a closed `csDropDownList` combo
+  moved with the arrow keys never closes up at all - hence one selection behind. `OnSelect` is
+  the right event: `GtkChangedCB` sends `LM_SELCHANGE` only when the active index really
+  changed, and `TGtk2WSCustomComboBox.SetItemIndex` raises `ChangeLock` so programmatic
+  `ItemIndex:=` (the `SetData`/preset paths, which call `DestTblLUCloseUp` themselves) does not
+  fire it. Rebuild with `lazbuild Plugins/DataImporter/DBDplugin_DataImporter.lpi`.
+- Found on the way, left open (pre-existing): after the datatype in-place editor is dismissed
+  with Escape (`TEditorTableFieldDatatypeInplaceEditor.HideEdit`: `ColumnGrid.SetFocus; Hide`),
+  every later key in the grid logs `GLib-GObject-CRITICAL ... no emission of signal
+  "key-press-event" to stop for instance 0x...` - same instance every time, also when the editor
+  was opened by double-click, so not caused by the new `Key:=0`. Keys still work.
+- Driving gotchas this round: `xdotool getwindowgeometry` reports the *frame* position
+  (y=106) while `import -window`/clicks need the client origin from `xwininfo -id` (y=69);
+  use `xwininfo` absolute coordinates. A double-click 37 px low opened the Region Editor.
+  The main window is not always maximized after start (600x426 once) -
+  `xdotool windowsize <id> 1878 886`. GTK submenus have no `_NET_WM_PID`, so open them with
+  the keyboard (hover the parent item, `Right`, `Down` x n, `Return`). The selector's
+  password field lost characters at `xdotool type --delay 100`; `--delay 300` and a
+  screenshot of the four dots before Connect. A lost Cancel click on the Table Editor let the
+  next `ctrl+a BackSpace bpsa` land in the editor - check the window list after every
+  close. `pkill -f`/`pgrep -f` match the calling shell (exit 144) - use `pgrep -x`.
+- `--selftest` under `xvfb-run -a` on 826a071: runner summary **93 PASS / 0 FAIL / 78 SKIP**
+  (baseline; phases 6/7/7b/8 = 41/28/19/5, Phase 7b forms unchanged). Note `grep -c
+  '\[PASS\]'` on the output says 105: the 12 Phase 1-5 lines (open file, tables, relations,
+  dialogs, export, save) are printed with the tag but not counted by the runner - read the
+  `TEST SUMMARY` block, not a grep. `DBConn.ini`/`DBDesignerFork_Settings.ini` restored
+  byte-for-byte from the backups (`Password=bpsa`, `WorkMode=1`), `DBConn_Current.ini`
+  (written by Plugins > DataImporter) removed.

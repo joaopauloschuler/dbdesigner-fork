@@ -106,7 +106,7 @@ type
     function GetDBTables(var tablelist: TStringList; theSQLConn: TSQLConnection = nil; theDBConn: TDBConn = nil): Boolean;
 
     //Execute a SQL Command
-    procedure ExecSQL(s: string);
+    procedure ExecSQL(s: string; RaiseOnError: Boolean = False);
 
     procedure LoadSettingsFromIniFile;
     procedure SaveSettingsToIniFile;
@@ -135,6 +135,8 @@ type
 
 // JP: better error messages when connecting
 function GetConnectErrorMessage(DriverName: string):string;
+//Formats a TableScope set the way DBConn.ini stores it: '[tsTable, tsView]'
+function TableScopeToStr(TableScope: TTableScopes): string;
 
 const
   QEventType_SetQueryStatusLbl = QEventType(Integer(QEventType_ClxUser) + 200);
@@ -321,21 +323,8 @@ begin
         theIni.WriteString(dbconnName, 'LibraryName'+ospostfix, theDBConn.LibraryName);
         theIni.WriteString(dbconnName, 'VendorLib'+ospostfix, theDBConn.VendorLib);
 
-        s:='';
         if(theDBConn.TableScope<>[])then
-        begin
-          s:='[';
-          if(tsTable in theDBConn.TableScope)then
-            s:=s + 'tsTable ,';
-          if(tsView in theDBConn.TableScope)then
-            s:=s + 'tsView ,';
-          if(tsSysTable in theDBConn.TableScope)then
-            s:=s + 'tsSysTable ,';
-          if(tsSynonym in theDBConn.TableScope)then
-            s:=s + 'tsSynonym ,';
-
-          s:=Copy(s, 1, length(s)-2)+']';
-        end
+          s:=TableScopeToStr(theDBConn.TableScope)
         else
           s:='[tsTable, tsView]';
 
@@ -450,6 +439,14 @@ var i, s: integer;
 begin
   GetUserSelectedDBConn:=nil;
 
+  //--selftest: never show the connection selector or try a real database
+  //connection. The Query-mode EditTable path (PaletteModel AddBtn ->
+  //EditorQuery.SetTable -> GetDBConnButtonClick) reaches this with no user
+  //to answer the selector; if the modal-close timer was already consumed the
+  //selector (or the failed-connect retry loop) blocks the self-test forever.
+  if(SettingsReadOnly)then
+    Exit;
+
   s:=-1;
   for i:=0 to DBConnections.Count-1 do
     if(TDBConn(DBConnections[i]).name=defDBConn)then
@@ -473,6 +470,25 @@ begin
   end;
 end;
 
+function TableScopeToStr(TableScope: TTableScopes): string;
+  procedure AddScope(ts: TTableScope; const name: string);
+  begin
+    if(ts in TableScope)then
+    begin
+      if(Result<>'')then
+        Result:=Result+', ';
+      Result:=Result+name;
+    end;
+  end;
+begin
+  Result:='';
+  AddScope(tsTable, 'tsTable');
+  AddScope(tsView, 'tsView');
+  AddScope(tsSysTable, 'tsSysTable');
+  AddScope(tsSynonym, 'tsSynonym');
+  Result:='['+Result+']';
+end;
+
 // JP: better error messages when connecting
 function GetConnectErrorMessage(DriverName: string):string;
 var
@@ -483,12 +499,12 @@ begin
 
   if DriverName = 'MySQL' then
   begin
-    ErrMsg := ErrMsg + 'Possible causes are:'+#13#10;
-    ErrMsg := ErrMsg + '* User has no grants to connect from this machine.'+#13#10;
-    ErrMsg := ErrMsg + '* DB Designer Fork does not connect to MySQL 5.* with password.'+#13#10;
-    ErrMsg := ErrMsg + '  You may try connecting with a user that does not require password.'+#13#10;
-    ErrMsg := ErrMsg + '  You may try connecting thru ODBC.'+#13#10;
-    ErrMsg := ErrMsg + '  When reverse engineering, MySQL specific functions are recommended.'+#13#10;
+    //Short, accurate hint only. The real reason (e.g. "Access denied for
+    //user ...") comes from the connector and is appended by the caller
+    //(db-ui-bug-catalog #4). The old fixed "does not connect to MySQL 5.*"
+    //text was stale and hid the server message.
+    ErrMsg := ErrMsg + 'Please check the host, port, user name and password.'+#13#10;
+    ErrMsg := ErrMsg + #13#10 + 'Server message:'+#13#10;
   end else
   if DriverName = 'SQLite' then
   begin
@@ -515,6 +531,10 @@ begin
   if(Sender.ClassNameIs('TSpeedButton'))then
     DMDB.DisconnectFromDB;
 
+  //--selftest: no real connections (see GetUserSelectedDBConn).
+  if(SettingsReadOnly)then
+    Exit;
+
   //do until a successful connection is established or the user selects abort
   while(1=1)do
   begin
@@ -536,8 +556,14 @@ begin
 
           ErrMsg := GetConnectErrorMessage(DriverName);
 
-          MessageDlg(ErrMsg+DMMain.GetTranslatedMessage('%s', 121,
-            x.Message), mtError, [mbOK], 0);
+          //Append the connector's real message (e.g. "Access denied for
+          //user ...") directly so the server text is always visible (db-ui #4).
+          MessageDlg(ErrMsg + x.Message, mtError, [mbOK], 0);
+
+          //Return to the selector with this connection still selected and its
+          //password cleared, instead of losing the choice (db-ui #4).
+          SelDBConn.Params.Values['Password'] := '';
+          defDBConn := SelDBConn.Name;
 
           continue;
         end;
@@ -672,7 +698,7 @@ begin
 
 end;
 
-procedure TDMDB.ExecSQL(s: string);
+procedure TDMDB.ExecSQL(s: string; RaiseOnError: Boolean = False);
 begin
   //Because of Delphi BUG!
   if(SQLConn.ActiveStatements<>0)then
@@ -692,8 +718,13 @@ begin
     except
       on x: Exception do
       begin
-        EDatabaseError.Create(DMMain.GetTranslatedMessage('SQL statement cannot be executed.'+#13#10+'%s', 144,
-          x.Message+#13#10+#13#10+s));
+        //The original code created this exception without raising it, so
+        //every error was swallowed. Callers that must know (DataImporter
+        //plugin, db-ui-bug-catalog #8) pass RaiseOnError; the sync keeps the
+        //old tolerant behaviour.
+        if(RaiseOnError)then
+          raise EDatabaseError.Create(DMMain.GetTranslatedMessage('SQL statement cannot be executed.'+#13#10+'%s', 144,
+            x.Message+#13#10+#13#10+s));
       end;
     end;
   end;
@@ -720,6 +751,24 @@ begin
   finally
     theIni.Free;
   end;
+
+  //Plugins read DBDplugin_<X>_Settings.ini (ProgName is the exe name), which
+  //has no [DatabaseTypes] section, so the Database Connection Editor indexed
+  //DatabaseTypes[-1] ("List index (-1) out of bounds", db-ui-bug-catalog #14).
+  //Fall back to the main program's ini, then to the built-in list.
+  if(DatabaseTypes.Count=0)then
+  begin
+    theIni:=TMemIniFile.Create(DMMain.SettingsPath+'DBDesignerFork_Settings.ini');
+    try
+      theIni.ReadSectionValues('DatabaseTypes', DatabaseTypes);
+      for i:=0 to DatabaseTypes.Count-1 do
+        DatabaseTypes[i]:=Copy(DatabaseTypes[i], Pos('=', DatabaseTypes[i])+1, Length(DatabaseTypes[i]));
+    finally
+      theIni.Free;
+    end;
+  end;
+  if(DatabaseTypes.Count=0)then
+    DatabaseTypes.Text:='MySQL'#10'Oracle'#10'ODBC'#10'SQLite'#10'MSSQL';
 end;
 
 procedure TDMDB.SaveSettingsToIniFile;

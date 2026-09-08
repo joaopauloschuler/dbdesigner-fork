@@ -4,13 +4,9 @@ object MainForm: TMainForm
 
   Top = 232
 
-  Width = 799
+  ClientWidth = 799
 
-  Height = 367
-
-  HorzScrollBar.Range = 787
-
-  VertScrollBar.Range = 332
+  ClientHeight = 330
 
   ActiveControl = Group2ComboBox
 
@@ -28,7 +24,7 @@ object MainForm: TMainForm
 
   OnDestroy = FormDestroy
 
-  PixelsPerInch = 92
+  PixelsPerInch = 96
 
   object CreateBtn: TSpeedButton
 
@@ -1242,16 +1238,6 @@ object MainForm: TMainForm
 
           Color = clWindow
 
-          Lines.Strings = (
-
-            'Line1'
-
-            'Line2'
-
-            'Line3'
-
-            'Line4')
-
           ReadOnly = True
 
           ScrollBars = ssVertical
@@ -2406,11 +2392,11 @@ object MainForm: TMainForm
 
         Left = 44
 
-        Top = 78
+        Top = 84
 
         Width = 181
 
-        Height = 135
+        Height = 129
 
         TabOrder = 2
 
@@ -2460,7 +2446,7 @@ object MainForm: TMainForm
 
         Left = 8
 
-        Top = 42
+        Top = 40
 
         Width = 30
 
@@ -2476,7 +2462,7 @@ object MainForm: TMainForm
 
         Left = 44
 
-        Top = 38
+        Top = 36
 
         Width = 181
 
@@ -2496,7 +2482,7 @@ object MainForm: TMainForm
 
         Left = 44
 
-        Top = 64
+        Top = 66
 
         Width = 138
 

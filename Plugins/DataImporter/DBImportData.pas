@@ -222,8 +222,10 @@ begin
   DefaultMapping:=TStringList.Create;
 
   DestDG.ColCount:=2;
-  DestDG.ColWidths[0]:=80;
-  DestDG.ColWidths[1]:=250;
+  //Wider name column: the LCL font is wider than the CLX design font
+  //(db-ui-bug-catalog #8)
+  DestDG.ColWidths[0]:=115;
+  DestDG.ColWidths[1]:=210;
 
   GetPresetList;
 
@@ -242,7 +244,11 @@ begin
   else
     Left:=(Screen.Width-Width) div 2;
 
-  StatusLbl.Caption:='Not connected to a Database. Version '+Version;
+  StatusLbl.Caption:='Not connected to a Database. Version '+Version+
+    '  -  select a Destination Database Connection (top left) to enable Execute.';
+  //Say why Execute is disabled (db-ui-bug-catalog #8)
+  SubmitBtn.Hint:='Select a Destination Database Connection first.';
+  SubmitBtn.ShowHint:=True;
 
   RefreshFileList;
 end;
@@ -1090,7 +1096,7 @@ begin
       s:=theIni.ReadString(name, 'Tablename', 'xxx');
 
       if(DestTblLU.Items.IndexOf(s)=-1)then
-        EInOutError.Create('The table '+s+' cannot be found '+
+        raise EInOutError.Create('The table '+s+' cannot be found '+
           'in the selected database. Please choose another database connection.');
 
       ActiveTableOptions.DelDestTableBeforInserts:=
@@ -1193,6 +1199,11 @@ begin
   end;
 end;
 
+//Wired to OnSelect (not OnCloseUp): under GTK2 CloseUp fires before the new
+//item is active and not at all when the closed combo is moved with the arrow
+//keys, so the fields list lagged one selection behind (db-ui-bug-catalog #19).
+//Programmatic ItemIndex changes do not fire OnSelect; the callers call this
+//directly after setting ItemIndex.
 procedure TDBImportDataForm.DestTblLUCloseUp(Sender: TObject);
 begin
   if(ActiveTableOptions<>nil)then
@@ -1384,6 +1395,7 @@ begin
   ProgressForm:=TProgressForm.Create(self);
   TablesDeleted:=TStringList.Create;
   try
+   try
     ProgressForm.Show;
 
     global_id:=0;
@@ -1395,7 +1407,7 @@ begin
       if(theTblOpt.DelDestTableBeforInserts)and
         (TablesDeleted.IndexOf(theTblOpt.DestTableName)=-1)then
       begin
-        DMDB.ExecSQL('delete from '+theTblOpt.DestTableName);
+        DMDB.ExecSQL('delete from '+theTblOpt.DestTableName, True);
         TablesDeleted.Add(theTblOpt.DestTableName);
       end;
 
@@ -1410,12 +1422,16 @@ begin
         begin
           SQLStr:='INSERT INTO '+theTblOpt.DestTableName+'(';
 
+          //Only the mapped destination columns are inserted; unmapped ones
+          //keep their default (auto-increment, NULL, ...) instead of ''
           for j:=0 to theTblOpt.DestColumns.Count-1 do
-          begin
-            SQLStr:=SQLStr+theTblOpt.DestColumns[j];
-            if(j<theTblOpt.DestColumns.Count-1)then
-              SQLStr:=SQLStr+', ';
-          end;
+            if(theTblOpt.DestColumnsValues[j]<>'')then
+              SQLStr:=SQLStr+theTblOpt.DestColumns[j]+', ';
+          if(Copy(SQLStr, Length(SQLStr)-1, 2)=', ')then
+            SQLStr:=Copy(SQLStr, 1, Length(SQLStr)-2)
+          else
+            raise EInOutError.Create('No column of '+theTblOpt.Tablename+
+              ' is mapped to a column of '+theTblOpt.DestTableName+'.');
 
           SQLStr:=SQLStr+')'+#13#10+'VALUES';
 
@@ -1438,6 +1454,9 @@ begin
             //Get the Values
             for j:=0 to theTblOpt.DestColumnsValues.Count-1 do
             begin
+              if(theTblOpt.DestColumnsValues[j]='')then
+                continue;
+
               v:='';
               MakeSubstring:=False;
               
@@ -1511,18 +1530,17 @@ begin
               if(theTblOpt.TrimColumns)then
                 v:=Trim(v);
 
-              SQLStr:=SQLStr+DMMain.FormatText4SQL(v);
-              if(j<theTblOpt.DestColumnsValues.Count-1)then
-                SQLStr:=SQLStr+', ';
+              SQLStr:=SQLStr+DMMain.FormatText4SQL(v)+', ';
             end;
 
-            SQLStr:=SQLStr+'),'+#13#10;
+            //Remove last ', '
+            SQLStr:=Copy(SQLStr, 1, Length(SQLStr)-2)+'),'+#13#10;
           end;
 
           //Remove last ,
           SQLStr:=Copy(SQLStr, 1, Length(SQLStr)-3);
 
-          DMDB.ExecSQL(SQLStr);
+          DMDB.ExecSQL(SQLStr, True);
 
           ProgressForm.SetCurrentLines(id);
           ProgressForm.SetTotalLines(global_id);
@@ -1536,6 +1554,16 @@ begin
 
       gesanz:=gesanz+id;
     end;
+   except
+    on x: Exception do
+    begin
+      //Errors used to be swallowed by DMDB.ExecSQL and the import reported
+      //success (db-ui-bug-catalog #8)
+      MessageDlg('Data import failed after '+IntToStr(gesanz)+' lines.'+#13#10#13#10+
+        x.Message, mtError, [mbOK], 0);
+      Exit;
+    end;
+   end;
   finally
     TablesDeleted.Free;
     ProgressForm.Free;
@@ -1643,15 +1671,31 @@ end;
 
 procedure TDBImportDataForm.GetDBConnSBtnClick(Sender: TObject);
 var SelDBConnName: string;
+  theIni: TMemIniFile;
 begin
-  SelDBConnName:=DMMain.LoadValueFromSettingsIniFile('RecentDBConns', 'RecentDestinationDBConn', '');
+  //Pre-select the connection DBDesigner is using (DBConn_Current.ini,
+  //written by the main app before it starts a plugin), else the last one
+  //used here
+  SelDBConnName:='';
+  if(FileExists(DMMain.SettingsPath+'DBConn_Current.ini'))then
+  begin
+    theIni:=TMemIniFile.Create(DMMain.SettingsPath+'DBConn_Current.ini');
+    try
+      SelDBConnName:=theIni.ReadString('Current', 'DBConnName', '');
+    finally
+      theIni.Free;
+    end;
+  end;
+  if(SelDBConnName='')then
+    SelDBConnName:=DMMain.LoadValueFromSettingsIniFile('RecentDBConns', 'RecentDestinationDBConn', '');
 
   DBConnEd.Text:='';
   DMDB.DisconnectFromDB;
 
-  StatusLbl.Caption:='Not connected to a Database';
+  StatusLbl.Caption:='Not connected to a Database  -  select a Destination Database Connection (top left) to enable Execute.';
   ConnectionSBtn.Enabled:=False;
   SubmitBtn.Enabled:=False;
+  SubmitBtn.Hint:='Select a Destination Database Connection first.';
 
   //do until a successful connection is established or the user selects abort
   while(1=1)do
@@ -1695,6 +1739,7 @@ begin
 
     ConnectionSBtn.Enabled:=True;
     SubmitBtn.Enabled:=True;
+    SubmitBtn.Hint:='Import the checked files into the mapped destination tables.';
     DBConnEd.Text:=DMDB.CurrentDBConn.Name;
     StatusLbl.Caption:='Connected to Database '+
       DMDB.CurrentDBConn.Params.Values['User_Name']+'@'+

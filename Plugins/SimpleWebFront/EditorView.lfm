@@ -4,13 +4,11 @@ object EditorViewForm: TEditorViewForm
 
   Top = 181
 
-  Width = 421
+  ClientWidth = 500
 
-  Height = 585
+  ClientHeight = 615
 
-  VertScrollBar.Range = 559
 
-  HorzScrollBar.Range = 399
 
   ActiveControl = NameEd
 
@@ -26,9 +24,9 @@ object EditorViewForm: TEditorViewForm
 
   object OKBtn: TSpeedButton
 
-    Left = 337
+    Left = 420
 
-    Top = 534
+    Top = 572
 
     Width = 29
 
@@ -118,9 +116,9 @@ object EditorViewForm: TEditorViewForm
 
   object CancelBtn: TSpeedButton
 
-    Left = 367
+    Left = 452
 
-    Top = 534
+    Top = 572
 
     Width = 31
 
@@ -236,11 +234,11 @@ object EditorViewForm: TEditorViewForm
 
     Left = 19
 
-    Top = 169
+    Top = 195
 
-    Width = 378
+    Width = 466
 
-    Height = 196
+    Height = 195
 
     Caption = 'Table Information'
 
@@ -262,11 +260,10 @@ object EditorViewForm: TEditorViewForm
 
     object Label1: TLabel
 
-      Left = 210
+      Left = 240
 
       Top = 21
 
-      Width = 115
 
       Height = 13
 
@@ -276,11 +273,10 @@ object EditorViewForm: TEditorViewForm
 
     object Label4: TLabel
 
-      Left = 210
+      Left = 240
 
       Top = 103
 
-      Width = 100
 
       Height = 13
 
@@ -290,11 +286,11 @@ object EditorViewForm: TEditorViewForm
 
     object JoinCheckListBox: TCheckListBox
 
-      Left = 210
+      Left = 240
 
       Top = 35
 
-      Width = 149
+      Width = 190
 
       Height = 56
 
@@ -306,11 +302,11 @@ object EditorViewForm: TEditorViewForm
 
     object NMTablesCheckListBox: TCheckListBox
 
-      Left = 210
+      Left = 240
 
       Top = 118
 
-      Width = 149
+      Width = 190
 
       Height = 61
 
@@ -326,7 +322,7 @@ object EditorViewForm: TEditorViewForm
 
       Top = 35
 
-      Width = 178
+      Width = 200
 
       Height = 144
 
@@ -342,11 +338,11 @@ object EditorViewForm: TEditorViewForm
 
     Left = 19
 
-    Top = 375
+    Top = 394
 
-    Width = 380
+    Width = 466
 
-    Height = 142
+    Height = 165
 
     Caption = 'Where-clause'
 
@@ -358,7 +354,6 @@ object EditorViewForm: TEditorViewForm
 
       Top = 19
 
-      Width = 218
 
       Height = 13
 
@@ -372,7 +367,7 @@ object EditorViewForm: TEditorViewForm
 
       Top = 34
 
-      Width = 347
+      Width = 430
 
       Height = 73
 
@@ -386,9 +381,8 @@ object EditorViewForm: TEditorViewForm
 
       Left = 18
 
-      Top = 120
+      Top = 122
 
-      Width = 344
 
       Height = 13
 
@@ -404,11 +398,11 @@ object EditorViewForm: TEditorViewForm
 
   object TablesComboBox: TComboBox
 
-    Left = 224
+    Left = 300
 
     Top = 33
 
-    Width = 169
+    Width = 185
 
     Height = 21
 
@@ -424,7 +418,7 @@ object EditorViewForm: TEditorViewForm
 
   object Label2: TLabel
 
-    Left = 224
+    Left = 300
 
     Top = 19
 
@@ -456,7 +450,6 @@ object EditorViewForm: TEditorViewForm
 
     Top = 84
 
-    Width = 103
 
     Height = 13
 
@@ -468,9 +461,7 @@ object EditorViewForm: TEditorViewForm
 
     Left = 96
 
-    Top = 121
-
-    Width = 105
+    Top = 124
 
     Height = 13
 
@@ -510,13 +501,13 @@ object EditorViewForm: TEditorViewForm
 
   object GroupBox1: TGroupBox
 
-    Left = 224
+    Left = 300
 
     Top = 76
 
-    Width = 173
+    Width = 185
 
-    Height = 85
+    Height = 115
 
     Caption = 'Order By'
 
@@ -544,7 +535,7 @@ object EditorViewForm: TEditorViewForm
 
       Left = 18
 
-      Top = 56
+      Top = 60
 
       Width = 140
 
@@ -574,9 +565,8 @@ object EditorViewForm: TEditorViewForm
 
     Left = 96
 
-    Top = 103
+    Top = 104
 
-    Width = 87
 
     Height = 13
 

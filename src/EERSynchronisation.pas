@@ -81,6 +81,7 @@ type
     procedure FormKeyDown(Sender: TObject; var Key: Word;
       Shift: TShiftState);
     procedure FormResize(Sender: TObject);
+    procedure ProgressMemoChange(Sender: TObject);
 
 
   private
@@ -240,6 +241,17 @@ procedure TEERSynchronisationForm.FormResize(Sender: TObject);
 begin
   ProgressMemo.Width:=ProgressGroupBox.Width-34;
   ProgressMemo.Height:=ProgressGroupBox.Height-37;
+end;
+
+//Keep the progress log scrolled to its newest line. EERMySQLSyncDB appends to
+//ProgressMemo.Lines and pumps messages after every step, but the memo stayed
+//wherever it was (db-ui-bug-catalog #6). The LCL fires OnChange for
+//programmatic Lines.Add too, so moving the caret behind the last line here
+//makes the text view scroll along.
+procedure TEERSynchronisationForm.ProgressMemoChange(Sender: TObject);
+begin
+  ProgressMemo.SelStart:=Length(ProgressMemo.Text);
+  ProgressMemo.SelLength:=0;
 end;
 
 end.

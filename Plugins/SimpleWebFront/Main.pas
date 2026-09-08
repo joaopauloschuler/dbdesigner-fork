@@ -362,6 +362,8 @@ type
 
     procedure PageControlChange(Sender: TObject);
 
+    procedure PrefillConnectionFromDBDesigner;
+
     procedure HostnameEdExit(Sender: TObject);
 
     procedure UsernameEdExit(Sender: TObject);
@@ -554,7 +556,7 @@ IMPLEMENTATION
 
 uses MainDM, EERDM,EditorString, Contnrs, EditorGroup, StringConstants,
 
-     Splash, DialogPopupSettings, SWF_XML_Binding, XMLIntf,DialogBugs;
+     Splash, DialogPopupSettings, SWF_XML_Binding, XMLIntf,DialogBugs, IniFiles;
 
 
 
@@ -661,6 +663,14 @@ begin
   end;
 
 
+
+
+
+  //Empty connection fields: take the connection DBDesigner is using
+
+  //(db-ui-bug-catalog #9)
+
+  PrefillConnectionFromDBDesigner;
 
 
 
@@ -1083,6 +1093,88 @@ end;
 //**********Exit/Change-Events*************
 
 //*****************************************
+
+
+
+//DBDesigner writes the name of its current database connection into
+
+//DBConn_Current.ini ([Current] DBConnName) before it starts a plugin; the
+
+//connection parameters are in DBConn.ini next to it. Only fields that are
+
+//still empty are filled, stored plugin data wins.
+
+procedure TMainForm.PrefillConnectionFromDBDesigner;
+
+var theIni: TMemIniFile;
+
+  connName: string;
+
+begin
+
+  connName := '';
+
+  if (FileExists(DMMain.SettingsPath + 'DBConn_Current.ini')) then
+
+  begin
+
+    theIni := TMemIniFile.Create(DMMain.SettingsPath + 'DBConn_Current.ini');
+
+    try
+
+      connName := theIni.ReadString('Current', 'DBConnName', '');
+
+    finally
+
+      theIni.Free;
+
+    end;
+
+  end;
+
+  if (connName = '') or (not FileExists(DMMain.SettingsPath + 'DBConn.ini')) then
+
+    Exit;
+
+
+
+  theIni := TMemIniFile.Create(DMMain.SettingsPath + 'DBConn.ini');
+
+  try
+
+    if (not theIni.SectionExists(connName)) then
+
+      Exit;
+
+
+
+    if (Output.Hostname = '') then
+
+      Output.Hostname := theIni.ReadString(connName, 'HostName', '');
+
+    if (Output.Databasename = '') then
+
+      Output.Databasename := theIni.ReadString(connName, 'Database', '');
+
+    if (Output.Username = '') then
+
+      Output.Username := theIni.ReadString(connName, 'User_Name', '');
+
+    if (Output.Password = '') then
+
+      Output.Password := theIni.ReadString(connName, 'Password', '');
+
+  finally
+
+    theIni.Free;
+
+  end;
+
+
+
+  UpdateTabFromOutputObject;
+
+end;
 
 
 

@@ -75,6 +75,7 @@ type
     procedure BuildTableFromCreateStatement(theTable: TEERTable; theCreateStatement: string; Syntax: CreateTableSyntax);
 
     procedure EERReverseEngineerMakeRelations(theModel: Pointer; theTables: TList; BuildRelUsingPrimKey: Boolean; SkipExisting: Boolean = False);
+    procedure EERReverseEngineerPlaceTables(theModel: Pointer; theTables: TList; XCount: integer);
     procedure EERReverseEngineerCreateStdInserts(theModel: Pointer; theTables: TList; limit: integer;
       StatusLbl: TLabel = nil; ImportSchema: Boolean = False);
 
@@ -120,25 +121,18 @@ end;
 
 procedure TDMDBEER.EERReverseEngineer(theModel: Pointer; DBConn: Pointer; theTables: TStringList; XCount: integer; BuildRelations: Boolean; BuildRelUsingPrimKey: Boolean; DatatypeSubst: TStringList; StatusLbl: TLabel = nil; CreateStdInserts: Boolean = False; limitStdIns: integer = 0);
 var DbTables: TList;
-  i, j, xpos, ypos, xanz, defwidth, defheight, iddatatype: integer;
+  i, iddatatype: integer;
   DatatypeName, prevIndex, tablename, indexname: string;
   EERModel: TEERModel;
-  theTable, tmpTbl: TEERTable;
+  theTable: TEERTable;
   theColumn: TEERColumn;
   theIndex: TEERIndex;
-  tblAtPos: Boolean;
   fldColumnName :TField; // Addition by Vadim
   //s: string;
   index11: string;
   theQuoteChar: String;
 begin
   EERModel:=theModel;
-
-  defwidth:=220;
-  defheight:=160;
-  xanz:=XCount;
-  xpos:=0;
-  ypos:=0;
 
   //GetTables
   //Col 0: RECNO
@@ -395,67 +389,18 @@ begin
         TEERTable(DbTables[i]).RefreshObj;
       end;
 
-    //Order table positions
-    for j:=0 to EERModel.ComponentCount-1 do
+    //Remove quotations and table prefixes from the new tables
+    for i:=0 to DbTables.Count-1 do
     begin
-      if(EERModel.Components[j].ClassNameIs('TEERTable'))then
-      begin
-        theTable:=TEERTable(EERModel.Components[j]);
-
-        theTable.Obj_X:=80+xpos*defwidth;
-        theTable.Obj_Y:=40+ypos*defheight;
-
-        //Remove quotations
-        theTable.ObjName:=DMMain.ReplaceText(theTable.ObjName, theQuoteChar, '');
-        {theTable.ObjName:=DMMain.ReplaceText(theTable.ObjName, '"', '');
-        theTable.ObjName:=DMMain.ReplaceText(theTable.ObjName, '''', '');
-        theTable.ObjName:=DMMain.ReplaceText(theTable.ObjName, '`', '');
-        theTable.ObjName:=DMMain.ReplaceText(theTable.ObjName, '´', '');}
-
-        //Simply remove table prefix, scott.test
-        if(Pos('.', theTable.ObjName)>0)then
-          theTable.ObjName:=Copy(theTable.ObjName, Pos('.', theTable.ObjName)+1, Length(theTable.ObjName));
-
-        theTable.RefreshObj;
-
-        //Check, if there is already a table at this position
-        tblAtPos:=True;
-        while(tblAtPos)do
-        begin
-          tblAtPos:=False;
-          for i:=0 to EERModel.ComponentCount-1 do
-          begin
-            if(EERModel.Components[i].ClassNameIs('TEERTable'))and
-              (EERModel.Components[i]<>EERModel.Components[j])then
-            begin
-              tmpTbl:=TEERTable(EERModel.Components[i]);
-
-              if((theTable.Obj_X>=tmpTbl.Obj_X)and
-                (theTable.Obj_X<=tmpTbl.Obj_X+tmpTbl.Obj_W))and
-                ((theTable.Obj_Y>=tmpTbl.Obj_Y)and
-                (theTable.Obj_Y<=tmpTbl.Obj_Y+tmpTbl.Obj_H))then
-              begin
-                inc(xpos);
-                if(xpos>=xanz)then
-                begin
-                  xpos:=0;
-                  inc(ypos);
-                end;
-
-                //get next free pos
-                theTable.Obj_X:=80+xpos*defwidth;
-                theTable.Obj_Y:=40+ypos*defheight;
-
-                theTable.RefreshObj;
-
-                tblAtPos:=True;
-                break;
-              end;
-            end;
-          end;
-        end;
-      end;
+      theTable:=TEERTable(DbTables[i]);
+      theTable.ObjName:=DMMain.ReplaceText(theTable.ObjName, theQuoteChar, '');
+      //Simply remove table prefix, scott.test
+      if(Pos('.', theTable.ObjName)>0)then
+        theTable.ObjName:=Copy(theTable.ObjName, Pos('.', theTable.ObjName)+1, Length(theTable.ObjName));
     end;
+
+    //Order table positions (only the new tables, db-ui-bug-catalog #5)
+    EERReverseEngineerPlaceTables(EERModel, DbTables, XCount);
 
     if(StatusLbl<>nil)then
     begin
@@ -483,14 +428,13 @@ end;
 
 procedure TDMDBEER.EERMySQLReverseEngineer(theModel: Pointer; DBConn: Pointer; theTables: TStringList; XCount: integer; BuildRelations: Boolean; BuildRelUsingPrimKey: Boolean; DatatypeSubst: TStringList; StatusLbl: TLabel = nil; CreateStdInserts: Boolean = False; limitStdIns: integer = 0);
 var EERModel: TEERModel;
-  i, j, xpos, ypos, xanz, defwidth, defheight: integer;
+  i, j: integer;
   DbTables: TList;
-  theTable, tmpTbl: TEERTable;
+  theTable: TEERTable;
   theColumn: TEERColumn;
   theIndex: TEERIndex;
   theDatatype: TEERDatatype;
   DatatypeName, DatatypeParams, prevIndex: string;
-  tblAtPos: Boolean;
   parentTbl: TEERTable;
   theRel: TEERRel;
   fkName, fkColName, pkColName: string;
@@ -498,11 +442,6 @@ var EERModel: TEERModel;
 begin
   EERModel:=theModel;
 
-  defwidth:=250;
-  defheight:=160;
-  xanz:=XCount;
-  xpos:=0;
-  ypos:=0;
 
   if(StatusLbl<>nil)then
   begin
@@ -678,56 +617,8 @@ begin
       TEERTable(DbTables[i]).RefreshObj;
     end;
 
-    //Order table positions
-    for j:=0 to EERModel.ComponentCount-1 do
-    begin
-      if(EERModel.Components[j].ClassNameIs('TEERTable'))then
-      begin
-        theTable:=TEERTable(EERModel.Components[j]);
-
-        theTable.Obj_X:=80+xpos*defwidth;
-        theTable.Obj_Y:=40+ypos*defheight;
-
-        theTable.RefreshObj;
-
-        //Check, if there is already a table at this position
-        tblAtPos:=True;
-        while(tblAtPos)do
-        begin
-          tblAtPos:=False;
-          for i:=0 to EERModel.ComponentCount-1 do
-          begin
-            if(EERModel.Components[i].ClassNameIs('TEERTable'))and
-              (EERModel.Components[i]<>EERModel.Components[j])then
-            begin
-              tmpTbl:=TEERTable(EERModel.Components[i]);
-
-              if((theTable.Obj_X>=tmpTbl.Obj_X)and
-                (theTable.Obj_X<=tmpTbl.Obj_X+tmpTbl.Obj_W))and
-                ((theTable.Obj_Y>=tmpTbl.Obj_Y)and
-                (theTable.Obj_Y<=tmpTbl.Obj_Y+tmpTbl.Obj_H))then
-              begin
-                inc(xpos);
-                if(xpos>=xanz)then
-                begin
-                  xpos:=0;
-                  inc(ypos);
-                end;
-
-                //get next free pos
-                theTable.Obj_X:=80+xpos*defwidth;
-                theTable.Obj_Y:=40+ypos*defheight;
-
-                theTable.RefreshObj;
-
-                tblAtPos:=True;
-                break;
-              end;
-            end;
-          end;
-        end;
-      end;
-    end;
+    //Order table positions (only the new tables, db-ui-bug-catalog #5)
+    EERReverseEngineerPlaceTables(EERModel, DbTables, XCount);
 
     if(StatusLbl<>nil)then
     begin
@@ -863,7 +754,7 @@ procedure TDMDBEER.EERORCLReverseEngineer(theModel: Pointer; DBConn: Pointer;
   limitStdIns: integer = 0; ImportSchema: Boolean = False;
   PutDefaultValuesInQuotes: Boolean = False);
 var EERModel: TEERModel;
-  i, j, xpos, ypos, xanz, defwidth, defheight: integer;
+  i, j: integer;
   DbTables: TList;
   theTable, tmpTbl: TEERTable;
   theColumn: TEERColumn;
@@ -871,18 +762,12 @@ var EERModel: TEERModel;
   theDatatype: TEERDatatype;
   theRel: TEERRel;
   DatatypeName, DatatypeParams, prevIndex: string;
-  tblAtPos: Boolean;
   NewRelCounter: integer;
   fkname: string;
   theQuoteChar: string;
 begin
   EERModel:=theModel;
 
-  defwidth:=250;
-  defheight:=160;
-  xanz:=XCount;
-  xpos:=0;
-  ypos:=0;
 
   if(StatusLbl<>nil)then
   begin
@@ -1174,56 +1059,8 @@ begin
       DMDB.SchemaSQLQuery.Close;
     end;
 
-    //Order table positions
-    for j:=0 to EERModel.ComponentCount-1 do
-    begin
-      if(EERModel.Components[j].ClassNameIs('TEERTable'))then
-      begin
-        theTable:=TEERTable(EERModel.Components[j]);
-
-        theTable.Obj_X:=80+xpos*defwidth;
-        theTable.Obj_Y:=40+ypos*defheight;
-
-        theTable.RefreshObj;
-
-        //Check, if there is already a table at this position
-        tblAtPos:=True;
-        while(tblAtPos)do
-        begin
-          tblAtPos:=False;
-          for i:=0 to EERModel.ComponentCount-1 do
-          begin
-            if(EERModel.Components[i].ClassNameIs('TEERTable'))and
-              (EERModel.Components[i]<>EERModel.Components[j])then
-            begin
-              tmpTbl:=TEERTable(EERModel.Components[i]);
-
-              if((theTable.Obj_X>=tmpTbl.Obj_X)and
-                (theTable.Obj_X<=tmpTbl.Obj_X+tmpTbl.Obj_W))and
-                ((theTable.Obj_Y>=tmpTbl.Obj_Y)and
-                (theTable.Obj_Y<=tmpTbl.Obj_Y+tmpTbl.Obj_H))then
-              begin
-                inc(xpos);
-                if(xpos>=xanz)then
-                begin
-                  xpos:=0;
-                  inc(ypos);
-                end;
-
-                //get next free pos
-                theTable.Obj_X:=80+xpos*defwidth;
-                theTable.Obj_Y:=40+ypos*defheight;
-
-                theTable.RefreshObj;
-
-                tblAtPos:=True;
-                break;
-              end;
-            end;
-          end;
-        end;
-      end;
-    end;
+    //Order table positions (only the new tables, db-ui-bug-catalog #5)
+    EERReverseEngineerPlaceTables(EERModel, DbTables, XCount);
 
     if(StatusLbl<>nil)then
     begin
@@ -1353,10 +1190,10 @@ end;
 
 procedure TDMDBEER.EERSQLiteReverseEngineer(theModel: Pointer; DBConn: Pointer; theTables: TStringList; XCount: integer; BuildRelations: Boolean; BuildRelUsingPrimKey: Boolean; DatatypeSubst: TStringList; StatusLbl: TLabel = nil; CreateStdInserts: Boolean = False; limitStdIns: integer = 0);
 var EERModel: TEERModel;
-  i, j, xpos, ypos, xanz, defwidth, defheight: integer;
-  tblAtPos, AllFKColsArePK, HasAutoInc: Boolean;
+  i, j: integer;
+  AllFKColsArePK, HasAutoInc: Boolean;
   DbTables: TList;
-  theTable, tmpTbl, parentTbl: TEERTable;
+  theTable, parentTbl: TEERTable;
   theColumn: TEERColumn;
   theIndex: TEERIndex;
   theDatatype: TEERDatatype;
@@ -1367,11 +1204,6 @@ var EERModel: TEERModel;
 begin
   EERModel:=theModel;
 
-  defwidth:=250;
-  defheight:=160;
-  xanz:=XCount;
-  xpos:=0;
-  ypos:=0;
 
   if(StatusLbl<>nil)then
   begin
@@ -1547,56 +1379,8 @@ begin
     end;
 
 
-    //Order table positions
-    for j:=0 to EERModel.ComponentCount-1 do
-    begin
-      if(EERModel.Components[j].ClassNameIs('TEERTable'))then
-      begin
-        theTable:=TEERTable(EERModel.Components[j]);
-
-        theTable.Obj_X:=80+xpos*defwidth;
-        theTable.Obj_Y:=40+ypos*defheight;
-
-        theTable.RefreshObj;
-
-        //Check, if there is already a table at this position
-        tblAtPos:=True;
-        while(tblAtPos)do
-        begin
-          tblAtPos:=False;
-          for i:=0 to EERModel.ComponentCount-1 do
-          begin
-            if(EERModel.Components[i].ClassNameIs('TEERTable'))and
-              (EERModel.Components[i]<>EERModel.Components[j])then
-            begin
-              tmpTbl:=TEERTable(EERModel.Components[i]);
-
-              if((theTable.Obj_X>=tmpTbl.Obj_X)and
-                (theTable.Obj_X<=tmpTbl.Obj_X+tmpTbl.Obj_W))and
-                ((theTable.Obj_Y>=tmpTbl.Obj_Y)and
-                (theTable.Obj_Y<=tmpTbl.Obj_Y+tmpTbl.Obj_H))then
-              begin
-                inc(xpos);
-                if(xpos>=xanz)then
-                begin
-                  xpos:=0;
-                  inc(ypos);
-                end;
-
-                //get next free pos
-                theTable.Obj_X:=80+xpos*defwidth;
-                theTable.Obj_Y:=40+ypos*defheight;
-
-                theTable.RefreshObj;
-
-                tblAtPos:=True;
-                break;
-              end;
-            end;
-          end;
-        end;
-      end;
-    end;
+    //Order table positions (only the new tables, db-ui-bug-catalog #5)
+    EERReverseEngineerPlaceTables(EERModel, DbTables, XCount);
 
 
     if(StatusLbl<>nil)then
@@ -1799,25 +1583,19 @@ end;
 
 procedure TDMDBEER.EERMSSQLReverseEngineer(theModel: Pointer; DBConn: Pointer; theTables: TStringList; XCount: integer; BuildRelations: Boolean; BuildRelUsingPrimKey: Boolean; DatatypeSubst: TStringList; StatusLbl: TLabel = nil; CreateStdInserts: Boolean = False; limitStdIns: integer = 0; CollapseTables: Boolean = False);
 var EERModel: TEERModel;
-  i, j, xpos, ypos, xanz, defwidth, defheight: integer;
+  i, j: integer;
   DbTables: TList;
-  theTable, tmpTbl: TEERTable;
+  theTable: TEERTable;
   theColumn: TEERColumn;
   theIndex: TEERIndex;
   theDatatype: TEERDatatype;
   theRel: TEERRel;
   DatatypeName, DatatypeParams, prevIndex: string;
-  tblAtPos: Boolean;
   fkname: string;
   theQuoteChar: string;
 begin
   EERModel:=theModel;
 
-  defwidth:=250;
-  defheight:=160;
-  xanz:=XCount;
-  xpos:=0;
-  ypos:=0;
 
   if(StatusLbl<>nil)then
   begin
@@ -2037,56 +1815,8 @@ begin
       DMDB.SchemaSQLQuery.Close;}
     end;
 
-    //Order table positions
-    for j:=0 to EERModel.ComponentCount-1 do
-    begin
-      if(EERModel.Components[j].ClassNameIs('TEERTable'))then
-      begin
-        theTable:=TEERTable(EERModel.Components[j]);
-
-        theTable.Obj_X:=80+xpos*defwidth;
-        theTable.Obj_Y:=40+ypos*defheight;
-
-        theTable.RefreshObj;
-
-        //Check, if there is already a table at this position
-        tblAtPos:=True;
-        while(tblAtPos)do
-        begin
-          tblAtPos:=False;
-          for i:=0 to EERModel.ComponentCount-1 do
-          begin
-            if(EERModel.Components[i].ClassNameIs('TEERTable'))and
-              (EERModel.Components[i]<>EERModel.Components[j])then
-            begin
-              tmpTbl:=TEERTable(EERModel.Components[i]);
-
-              if((theTable.Obj_X>=tmpTbl.Obj_X)and
-                (theTable.Obj_X<=tmpTbl.Obj_X+tmpTbl.Obj_W))and
-                ((theTable.Obj_Y>=tmpTbl.Obj_Y)and
-                (theTable.Obj_Y<=tmpTbl.Obj_Y+tmpTbl.Obj_H))then
-              begin
-                inc(xpos);
-                if(xpos>=xanz)then
-                begin
-                  xpos:=0;
-                  inc(ypos);
-                end;
-
-                //get next free pos
-                theTable.Obj_X:=80+xpos*defwidth;
-                theTable.Obj_Y:=40+ypos*defheight;
-
-                theTable.RefreshObj;
-
-                tblAtPos:=True;
-                break;
-              end;
-            end;
-          end;
-        end;
-      end;
-    end;
+    //Order table positions (only the new tables, db-ui-bug-catalog #5)
+    EERReverseEngineerPlaceTables(EERModel, DbTables, XCount);
 
     if(StatusLbl<>nil)then
     begin
@@ -2173,6 +1903,74 @@ begin
   end;
 end;
 
+
+//Lay out the newly created tables of a reverse engineering run in a grid
+//of XCount columns, skipping cells already occupied by any table of the
+//model. Only theTables are moved - tables that were already in the model
+//("skipped" ones) keep their position (db-ui-bug-catalog #5).
+procedure TDMDBEER.EERReverseEngineerPlaceTables(theModel: Pointer; theTables: TList; XCount: integer);
+var EERModel: TEERModel;
+  i, j, xpos, ypos, xanz, defwidth, defheight: integer;
+  theTable, tmpTbl: TEERTable;
+  tblAtPos: Boolean;
+begin
+  EERModel:=theModel;
+
+  defwidth:=250;
+  defheight:=160;
+  xanz:=XCount;
+  if(xanz<1)then
+    xanz:=1;
+  xpos:=0;
+  ypos:=0;
+
+  for j:=0 to theTables.Count-1 do
+  begin
+    theTable:=TEERTable(theTables[j]);
+
+    theTable.Obj_X:=80+xpos*defwidth;
+    theTable.Obj_Y:=40+ypos*defheight;
+
+    theTable.RefreshObj;
+
+    //Check, if there is already a table at this position
+    tblAtPos:=True;
+    while(tblAtPos)do
+    begin
+      tblAtPos:=False;
+      for i:=0 to EERModel.ComponentCount-1 do
+      begin
+        if(EERModel.Components[i].ClassNameIs('TEERTable'))and
+          (EERModel.Components[i]<>theTable)then
+        begin
+          tmpTbl:=TEERTable(EERModel.Components[i]);
+
+          if((theTable.Obj_X>=tmpTbl.Obj_X)and
+            (theTable.Obj_X<=tmpTbl.Obj_X+tmpTbl.Obj_W))and
+            ((theTable.Obj_Y>=tmpTbl.Obj_Y)and
+            (theTable.Obj_Y<=tmpTbl.Obj_Y+tmpTbl.Obj_H))then
+          begin
+            inc(xpos);
+            if(xpos>=xanz)then
+            begin
+              xpos:=0;
+              inc(ypos);
+            end;
+
+            //get next free pos
+            theTable.Obj_X:=80+xpos*defwidth;
+            theTable.Obj_Y:=40+ypos*defheight;
+
+            theTable.RefreshObj;
+
+            tblAtPos:=True;
+            break;
+          end;
+        end;
+      end;
+    end;
+  end;
+end;
 
 procedure TDMDBEER.EERReverseEngineerMakeRelations(theModel: Pointer; theTables: TList; BuildRelUsingPrimKey: Boolean; SkipExisting: Boolean = False);
 var i, j, k, l: integer;
@@ -2378,7 +2176,7 @@ var EERModel: TEERModel;
 begin
   EERModel:=theModel;
 
-  Log.Add(DMMain.GetTranslatedMessage('Syncronisation started.', 152));
+  Log.Add(DMMain.GetTranslatedMessage('Synchronisation started.', 152));
 
   ColumnCompCounter:=0;
   ColumnModCounter:=0;
@@ -3184,7 +2982,7 @@ begin
     end;
 
 
-    Log.Add(DMMain.GetTranslatedMessage('Syncronisation finished.', 164)+#13#10+
+    Log.Add(DMMain.GetTranslatedMessage('Synchronisation finished.', 164)+#13#10+
       '-------------------------------------');
 
     if(ModelTables.Count>1)then

@@ -255,6 +255,7 @@ object EERSynchronisationForm: TEERSynchronisationForm
       Height = 157
       ScrollBars = ssVertical
       TabOrder = 0
+      OnChange = ProgressMemoChange
     end
   end
   object TopPnl: TPanel
@@ -401,7 +402,7 @@ object EERSynchronisationForm: TEERSynchronisationForm
         Top = 114
         Width = 295
         Height = 19
-        Caption = 'Syncronise Standard Inserts'
+        Caption = 'Synchronise Standard Inserts'
         TabOrder = 4
       end
     end

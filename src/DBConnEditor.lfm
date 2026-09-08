@@ -232,9 +232,9 @@ object DBConnEditorForm: TDBConnEditorForm
           Caption = 'Password:'
         end
         object PortLbl: TLabel
-          Left = 266
+          Left = 276
           Top = 30
-          Width = 41
+          Width = 37
           Alignment = taRightJustify
           Caption = 'Port:'
           Enabled = False
