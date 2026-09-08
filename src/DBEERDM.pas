@@ -491,6 +491,10 @@ var EERModel: TEERModel;
   theDatatype: TEERDatatype;
   DatatypeName, DatatypeParams, prevIndex: string;
   tblAtPos: Boolean;
+  parentTbl: TEERTable;
+  theRel: TEERRel;
+  fkName, fkColName, pkColName: string;
+  AllFKColsArePK: Boolean;
 begin
   EERModel:=theModel;
 
@@ -550,6 +554,9 @@ begin
         Application.ProcessMessages;
       end;
 
+      //SHOW FIELDS: Field, Type, Null, Key, Default, Extra (MySQL 4 .. 8).
+      //Read by name: NULL-typed columns can vanish from the field list
+      //(mysql-bug-catalog #2), which would shift positional reads.
       DMDB.SchemaSQLQuery.SQL.Text:='show fields from '+TEERTable(DbTables[i]).GetSQLTableName;
       DMDB.SchemaSQLQuery.Open;
       while(Not(DMDB.SchemaSQLQuery.EOF))do
@@ -558,33 +565,35 @@ begin
         theColumn:=TEERColumn.Create(TEERTable(DbTables[i]));
         TEERTable(DbTables[i]).Columns.Add(theColumn);
 
-        theColumn.ColName:=DMDB.SchemaSQLQuery.Fields[0].AsString;
+        theColumn.ColName:=DMDB.SchemaSQLQuery.FieldByName('Field').AsString;
         theColumn.Obj_id:=DMMain.GetNextGlobalID;
         theColumn.Pos:=TEERTable(DbTables[i]).Columns.Count;
         //theColumn.idDatatype:=-1;
         theColumn.DatatypeParams:='';
         {theColumn.Width:=SchemaSQLQuery.Fields[10].AsInteger;
         theColumn.Prec:=SchemaSQLQuery.Fields[11].AsInteger;}
-        theColumn.PrimaryKey:=(DMDB.SchemaSQLQuery.Fields[3].AsString='PRI');
+        theColumn.PrimaryKey:=(DMDB.SchemaSQLQuery.FieldByName('Key').AsString='PRI');
         theColumn.NotNull:=
-          (DMDB.SchemaSQLQuery.Fields[2].AsString<>'Y') and
-          (DMDB.SchemaSQLQuery.Fields[2].AsString<>'YES');
-        theColumn.AutoInc:=False;
+          (DMDB.SchemaSQLQuery.FieldByName('Null').AsString<>'Y') and
+          (DMDB.SchemaSQLQuery.FieldByName('Null').AsString<>'YES');
+        //Extra = 'auto_increment' (mysql-bug-catalog #4)
+        theColumn.AutoInc:=(Pos('auto_increment',
+          LowerCase(DMDB.SchemaSQLQuery.FieldByName('Extra').AsString))>0);
         theColumn.IsForeignKey:=False;
-        if(DMDB.SchemaSQLQuery.Fields[4].AsString<>'0')then
-          theColumn.DefaultValue:=DMDB.SchemaSQLQuery.Fields[4].AsString;
+        if(DMDB.SchemaSQLQuery.FieldByName('Default').AsString<>'0')then
+          theColumn.DefaultValue:=DMDB.SchemaSQLQuery.FieldByName('Default').AsString;
 
 
         //Get Datatype
-        DatatypeName:=DMDB.SchemaSQLQuery.Fields[1].AsString;
+        DatatypeName:=DMDB.SchemaSQLQuery.FieldByName('Type').AsString;
 
         DatatypeParams:='';
         if(Pos('(', datatypename)>0)then
         begin
           DatatypeName:=Copy(DatatypeName, 1, Pos('(', DatatypeName)-1);
-          DatatypeParams:=Copy(DMDB.SchemaSQLQuery.Fields[1].AsString,
-            Pos('(', DMDB.SchemaSQLQuery.Fields[1].AsString),
-            Pos(')', DMDB.SchemaSQLQuery.Fields[1].AsString)-Pos('(', DMDB.SchemaSQLQuery.Fields[1].AsString)+1);
+          DatatypeParams:=Copy(DMDB.SchemaSQLQuery.FieldByName('Type').AsString,
+            Pos('(', DMDB.SchemaSQLQuery.FieldByName('Type').AsString),
+            Pos(')', DMDB.SchemaSQLQuery.FieldByName('Type').AsString)-Pos('(', DMDB.SchemaSQLQuery.FieldByName('Type').AsString)+1);
         end;
         //int unsigned -> just get int
         if(Pos(' ', datatypename)>0)then
@@ -597,7 +606,7 @@ begin
         if(Assigned(theDatatype))then
           for j:=0 to theDatatype.OptionCount-1 do
             if(Pos(UpperCase(theDatatype.Options[j]),
-              UpperCase(DMDB.SchemaSQLQuery.Fields[1].AsString))>0)then
+              UpperCase(DMDB.SchemaSQLQuery.FieldByName('Type').AsString))>0)then
               theColumn.OptionSelected[j]:=True
             else
               theColumn.OptionSelected[j]:=False;
@@ -612,6 +621,11 @@ begin
 
 
       //Indices
+      //SHOW KEYS: Table, Non_unique, Key_name, Seq_in_index, Column_name,
+      //Collation, Cardinality, Sub_part, Packed, Null, Index_type, Comment
+      //(MySQL 4); MySQL 8 adds Index_comment, Visible, Expression and its
+      //Packed is NULL-typed, so it is missing from the field list (#2):
+      //read by name. One row per index column, ordered by index and Seq.
 
       prevIndex:='';
 
@@ -623,14 +637,17 @@ begin
       while(Not(DMDB.SchemaSQLQuery.EOF))do
       begin
         //Don't add the same Index a second time
-        if(prevIndex<>DMDB.SchemaSQLQuery.Fields[2].AsString)then
+        if(prevIndex<>DMDB.SchemaSQLQuery.FieldByName('Key_name').AsString)then
         begin
           //new(theIndex);
           theIndex:=TEERIndex.Create(TEERTable(DbTables[i]));
           theIndex.Obj_id:=DMMain.GetNextGlobalID;
-          theIndex.IndexName:=DMDB.SchemaSQLQuery.Fields[2].AsString;
-          if(CompareText(DMDB.SchemaSQLQuery.Fields[2].AsString, 'PRIMARY')=0)then
+          theIndex.IndexName:=DMDB.SchemaSQLQuery.FieldByName('Key_name').AsString;
+          if(CompareText(theIndex.IndexName, 'PRIMARY')=0)then
             theIndex.IndexKind:=ik_PRIMARY
+          //Non_unique = 0: UNIQUE index (mysql-bug-catalog #5)
+          else if(DMDB.SchemaSQLQuery.FieldByName('Non_unique').AsString='0')then
+            theIndex.IndexKind:=ik_UNIQUE_INDEX
           else
             theIndex.IndexKind:=ik_INDEX;
           TEERTable(DbTables[i]).Indices.Add(theIndex);
@@ -638,10 +655,22 @@ begin
 
         end;
 
-        theIndex.Columns.Add(IntToStr(
-          TEERColumn(TEERTable(DbTables[i]).GetColumnByName(DMDB.SchemaSQLQuery.Fields[4].AsString)).Obj_id));
+        //Functional key parts (MySQL 8) have no column name
+        theColumn:=nil;
+        if(Not(DMDB.SchemaSQLQuery.FieldByName('Column_name').IsNull))then
+          theColumn:=TEERColumn(TEERTable(DbTables[i]).GetColumnByName(
+            DMDB.SchemaSQLQuery.FieldByName('Column_name').AsString));
+        if(theColumn<>nil)then
+        begin
+          theIndex.Columns.Add(IntToStr(theColumn.Obj_id));
+          //Sub_part: index prefix length, e.g. info(100) (#5)
+          if(Not(DMDB.SchemaSQLQuery.FieldByName('Sub_part').IsNull))and
+            (DMDB.SchemaSQLQuery.FieldByName('Sub_part').AsString<>'')then
+            theIndex.ColumnParams.Values[IntToStr(theColumn.Obj_id)]:=
+              DMDB.SchemaSQLQuery.FieldByName('Sub_part').AsString;
+        end;
 
-        prevIndex:=DMDB.SchemaSQLQuery.Fields[2].AsString;
+        prevIndex:=DMDB.SchemaSQLQuery.FieldByName('Key_name').AsString;
         DMDB.SchemaSQLQuery.Next;
       end;
       DMDB.SchemaSQLQuery.Close;
@@ -707,7 +736,108 @@ begin
       Application.ProcessMessages;
     end;
     if(BuildRelations)then
-      EERReverseEngineerMakeRelations(EERModel, DbTables, BuildRelUsingPrimKey);
+    begin
+      //1. Native relations from the FOREIGN KEY constraints
+      //   (mysql-bug-catalog #7): information_schema.KEY_COLUMN_USAGE gives
+      //   the column pairs, REFERENTIAL_CONSTRAINTS the ON UPDATE/DELETE
+      //   rules. One row per column pair, grouped by table + constraint.
+      //   MySQL < 5.0 has no information_schema: the query fails and only
+      //   the name/PK heuristic below runs (as before).
+      try
+        DMDB.SchemaSQLQuery.SQL.Text:=
+          'SELECT k.TABLE_NAME AS tblname, k.CONSTRAINT_NAME AS fkname, '+
+          'k.ORDINAL_POSITION AS fkseq, k.COLUMN_NAME AS fkcol, '+
+          'k.REFERENCED_TABLE_NAME AS reftable, k.REFERENCED_COLUMN_NAME AS refcol, '+
+          'r.UPDATE_RULE AS on_update, r.DELETE_RULE AS on_delete '+
+          'FROM information_schema.KEY_COLUMN_USAGE k '+
+          'JOIN information_schema.REFERENTIAL_CONSTRAINTS r '+
+          'ON r.CONSTRAINT_SCHEMA=k.CONSTRAINT_SCHEMA '+
+          'AND r.CONSTRAINT_NAME=k.CONSTRAINT_NAME AND r.TABLE_NAME=k.TABLE_NAME '+
+          'WHERE k.TABLE_SCHEMA=DATABASE() AND k.REFERENCED_TABLE_NAME IS NOT NULL '+
+          'ORDER BY k.TABLE_NAME, k.CONSTRAINT_NAME, k.ORDINAL_POSITION';
+        DMDB.SchemaSQLQuery.Open;
+      except
+        DMDB.SchemaSQLQuery.Close;
+      end;
+      if(DMDB.SchemaSQLQuery.Active)then
+      begin
+        while(Not(DMDB.SchemaSQLQuery.EOF))do
+        begin
+          fkName:=DMDB.SchemaSQLQuery.FieldByName('tblname').AsString+'.'+
+            DMDB.SchemaSQLQuery.FieldByName('fkname').AsString;
+
+          //Child = the table holding the FK (one of the new tables),
+          //parent = the referenced table (anywhere in the model)
+          theTable:=nil;
+          for i:=0 to DbTables.Count-1 do
+            if(CompareText(TEERTable(DbTables[i]).ObjName,
+              DMDB.SchemaSQLQuery.FieldByName('tblname').AsString)=0)then
+            begin
+              theTable:=TEERTable(DbTables[i]);
+              break;
+            end;
+          parentTbl:=TEERTable(EERModel.GetEERObjectByName(EERTable,
+            DMDB.SchemaSQLQuery.FieldByName('reftable').AsString));
+          if(theTable=nil)or(parentTbl=nil)then
+          begin
+            while(Not(DMDB.SchemaSQLQuery.EOF))and
+              (DMDB.SchemaSQLQuery.FieldByName('tblname').AsString+'.'+
+              DMDB.SchemaSQLQuery.FieldByName('fkname').AsString=fkName)do
+              DMDB.SchemaSQLQuery.Next;
+            continue;
+          end;
+
+          //Self references (forumpost.idforumpost_parent -> forumpost) are
+          //ordinary relations for the model
+          theRel:=TEERRel(EERModel.NewRelation(rk_1nNonId, parentTbl, theTable, False));
+          theRel.FKFields.Clear;
+          theRel.FKFieldsComments.Clear;
+          theRel.CreateRefDef:=True;
+          //MySQL uses the same rule names as SQLite
+          theRel.RefDef.Values['OnDelete']:=
+            SQLiteRefActionCode(DMDB.SchemaSQLQuery.FieldByName('on_delete').AsString);
+          theRel.RefDef.Values['OnUpdate']:=
+            SQLiteRefActionCode(DMDB.SchemaSQLQuery.FieldByName('on_update').AsString);
+
+          //Build PK - FK Mapping
+          AllFKColsArePK:=True;
+          while(Not(DMDB.SchemaSQLQuery.EOF))and
+            (DMDB.SchemaSQLQuery.FieldByName('tblname').AsString+'.'+
+            DMDB.SchemaSQLQuery.FieldByName('fkname').AsString=fkName)do
+          begin
+            fkColName:=DMDB.SchemaSQLQuery.FieldByName('fkcol').AsString;
+            pkColName:=DMDB.SchemaSQLQuery.FieldByName('refcol').AsString;
+
+            theRel.FKFields.Add(pkColName+'='+fkColName);
+            theRel.FKFieldsComments.Add('');
+
+            theColumn:=TEERColumn(theTable.GetColumnByName(fkColName));
+            if(theColumn<>nil)then
+            begin
+              theColumn.IsForeignKey:=True;
+              if(Not(theColumn.PrimaryKey))then
+                AllFKColsArePK:=False;
+            end
+            else
+              AllFKColsArePK:=False;
+
+            DMDB.SchemaSQLQuery.Next;
+          end;
+
+          //FK columns that are all part of the child's PK: identifying relation
+          if(AllFKColsArePK)then
+            theRel.RelKind:=rk_1n;
+
+          theRel.SrcTbl.RefreshRelations;
+          theRel.DestTbl.RefreshRelations;
+        end;
+        DMDB.SchemaSQLQuery.Close;
+      end;
+
+      //2. Guess the remaining ones by name / primary key like the other
+      //   drivers do, without duplicating the native ones
+      EERReverseEngineerMakeRelations(EERModel, DbTables, BuildRelUsingPrimKey, True);
+    end;
 
     if(StatusLbl<>nil)then
     begin

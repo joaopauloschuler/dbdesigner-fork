@@ -1,7 +1,7 @@
 program TestMySQLShim;
 
 // Standalone check of the sqlexpr.pas shim against a MySQL 8 server
-// (mysql-bug-catalog #1 and #2). Expects the server used by the catalog:
+// (mysql-bug-catalog #1, #2, #4, #5, #7). Expects the server used by the catalog:
 // 127.0.0.1:3306, user bpsa / password bpsa, scratch database dbdtest.
 // Override with MYSQL_HOST / MYSQL_PORT / MYSQL_USER / MYSQL_PASSWORD /
 // MYSQL_DATABASE. Prints SUCCESS, or SKIP when the server is unreachable.
@@ -189,7 +189,87 @@ begin
       ', Column_name=', DS.FieldByName('Column_name').AsString, ')');
     if (DS.Fields[2].AsString <> 'PRIMARY') or (DS.Fields[4].AsString <> 'id') then
       Fail('SHOW KEYS: Fields[2]/Fields[4] are not Key_name/Column_name');
+    // The reverse engineering reads SHOW KEYS by name (mysql-bug-catalog #5):
+    // PRIMARY, shimtest_email (unique), shimtest_name (prefix 10)
+    if DS.FieldByName('Non_unique').AsString <> '0' then
+      Fail('SHOW KEYS: PRIMARY has Non_unique=' + DS.FieldByName('Non_unique').AsString);
+    DS.Next;
+    if (DS.FieldByName('Key_name').AsString <> 'shimtest_email') or
+       (DS.FieldByName('Non_unique').AsString <> '0') or
+       (not DS.FieldByName('Sub_part').IsNull) then
+      Fail('SHOW KEYS: shimtest_email row: Key_name/Non_unique/Sub_part = ' +
+        DS.FieldByName('Key_name').AsString + '/' + DS.FieldByName('Non_unique').AsString +
+        '/' + DS.FieldByName('Sub_part').AsString);
+    DS.Next;
+    if (DS.FieldByName('Key_name').AsString <> 'shimtest_name') or
+       (DS.FieldByName('Non_unique').AsString <> '1') or
+       (DS.FieldByName('Sub_part').AsString <> '10') then
+      Fail('SHOW KEYS: shimtest_name row: Key_name/Non_unique/Sub_part = ' +
+        DS.FieldByName('Key_name').AsString + '/' + DS.FieldByName('Non_unique').AsString +
+        '/' + DS.FieldByName('Sub_part').AsString);
     DS.Close;
+
+    // SHOW FIELDS by name: Extra carries auto_increment (mysql-bug-catalog #4)
+    DS.SQL.Text := 'SHOW FIELDS FROM shimtest_customers';
+    DS.Open;
+    WriteLn('  SHOW FIELDS: ', DS.FieldCount, ' fields (Field=', DS.FieldByName('Field').AsString,
+      ', Extra=', DS.FieldByName('Extra').AsString, ')');
+    if (DS.FieldByName('Field').AsString <> 'id') or (DS.FieldByName('Key').AsString <> 'PRI') or
+       (DS.FieldByName('Null').AsString <> 'NO') or
+       (Pos('auto_increment', LowerCase(DS.FieldByName('Extra').AsString)) = 0) then
+      Fail('SHOW FIELDS: id row: Field/Key/Null/Extra = ' + DS.FieldByName('Field').AsString +
+        '/' + DS.FieldByName('Key').AsString + '/' + DS.FieldByName('Null').AsString + '/' +
+        DS.FieldByName('Extra').AsString);
+    DS.Close;
+
+    // FOREIGN KEY metadata the reverse engineering uses (mysql-bug-catalog #7)
+    Conn.ExecuteDirect('DROP TABLE IF EXISTS shimtest_orders');
+    Conn.ExecuteDirect('CREATE TABLE shimtest_orders (' +
+      'id INTEGER NOT NULL AUTO_INCREMENT, customer_id INTEGER NOT NULL, ' +
+      'parent_id INTEGER NULL, PRIMARY KEY (id), ' +
+      'CONSTRAINT shimtest_fk_customer FOREIGN KEY (customer_id) ' +
+      'REFERENCES shimtest_customers (id) ON DELETE CASCADE ON UPDATE RESTRICT, ' +
+      'CONSTRAINT shimtest_fk_parent FOREIGN KEY (parent_id) ' +
+      'REFERENCES shimtest_orders (id)) ENGINE=InnoDB');
+    DS.SQL.Text := 'SELECT k.TABLE_NAME AS tblname, k.CONSTRAINT_NAME AS fkname, ' +
+      'k.ORDINAL_POSITION AS fkseq, k.COLUMN_NAME AS fkcol, ' +
+      'k.REFERENCED_TABLE_NAME AS reftable, k.REFERENCED_COLUMN_NAME AS refcol, ' +
+      'r.UPDATE_RULE AS on_update, r.DELETE_RULE AS on_delete ' +
+      'FROM information_schema.KEY_COLUMN_USAGE k ' +
+      'JOIN information_schema.REFERENTIAL_CONSTRAINTS r ' +
+      'ON r.CONSTRAINT_SCHEMA=k.CONSTRAINT_SCHEMA ' +
+      'AND r.CONSTRAINT_NAME=k.CONSTRAINT_NAME AND r.TABLE_NAME=k.TABLE_NAME ' +
+      'WHERE k.TABLE_SCHEMA=DATABASE() AND k.TABLE_NAME=''shimtest_orders'' ' +
+      'AND k.REFERENCED_TABLE_NAME IS NOT NULL ' +
+      'ORDER BY k.TABLE_NAME, k.CONSTRAINT_NAME, k.ORDINAL_POSITION';
+    DS.Open;
+    n := 0;
+    while not DS.EOF do
+    begin
+      WriteLn('  FK: ', DS.FieldByName('tblname').AsString, '.', DS.FieldByName('fkname').AsString,
+        ' ', DS.FieldByName('fkcol').AsString, ' -> ', DS.FieldByName('reftable').AsString, '.',
+        DS.FieldByName('refcol').AsString, ' ON UPDATE ', DS.FieldByName('on_update').AsString,
+        ' ON DELETE ', DS.FieldByName('on_delete').AsString);
+      Inc(n);
+      DS.Next;
+    end;
+    if n <> 2 then
+      Fail('information_schema FK query returned ' + IntToStr(n) + ' rows, expected 2');
+    DS.First;
+    if (DS.FieldByName('fkname').AsString <> 'shimtest_fk_customer') or
+       (DS.FieldByName('fkcol').AsString <> 'customer_id') or
+       (DS.FieldByName('reftable').AsString <> 'shimtest_customers') or
+       (DS.FieldByName('refcol').AsString <> 'id') or
+       (DS.FieldByName('on_update').AsString <> 'RESTRICT') or
+       (DS.FieldByName('on_delete').AsString <> 'CASCADE') then
+      Fail('information_schema FK query: shimtest_fk_customer row is wrong');
+    DS.Next;
+    if (DS.FieldByName('fkname').AsString <> 'shimtest_fk_parent') or
+       (DS.FieldByName('reftable').AsString <> 'shimtest_orders') or
+       (DS.FieldByName('on_delete').AsString <> 'NO ACTION') then
+      Fail('information_schema FK query: self-referencing shimtest_fk_parent row is wrong');
+    DS.Close;
+    Conn.ExecuteDirect('DROP TABLE shimtest_orders');
 
     Conn.ExecuteDirect('DROP TABLE shimtest_customers');
     Conn.Close;

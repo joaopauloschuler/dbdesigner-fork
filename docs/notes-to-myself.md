@@ -983,3 +983,58 @@ navigation (`Down`x4 `Right` for File > Open Recent). Shots: `fix13-*`.
   Driving gotcha: the GTK save dialog opens in "Recently Used" and ignores a typed
   absolute path + Return there - double-click a folder in the list first, then type the
   file name and click Save. `dbdtest` was left loaded with the 12 tables; `dbdtest2` dropped.
+
+## Fix: MySQL reverse engineering - AutoInc, UNIQUE/prefix indexes, native FK relations (mysql-bug-catalog #4, #5, #7)
+
+- All in `TDMDBEER.EERMySQLReverseEngineer` (`src/DBEERDM.pas`; `EERMySQLReverseEngineer2`
+  is dead code, nothing calls it). Every read of `SHOW FIELDS` / `SHOW KEYS` is now
+  `FieldByName` instead of `Fields[n]`: MySQL 8's `SHOW KEYS` has 15 columns (`Table,
+  Non_unique, Key_name, Seq_in_index, Column_name, Collation, Cardinality, Sub_part,
+  Packed, Null, Index_type, Comment, Index_comment, Visible, Expression`) of which the
+  NULL-typed `Packed` is dropped by the connector (14 fields, catalog #2), so positions
+  after it are not what MySQL 4 had. `SHOW FIELDS` is `Field, Type, Null, Key, Default,
+  Extra` on both.
+  - **#4**: `AutoInc := Pos('auto_increment', LowerCase(Extra)) > 0` (was hard-coded False).
+  - **#5**: `Non_unique = '0'` (and not PRIMARY) -> `ik_UNIQUE_INDEX`; `Sub_part` goes into
+    `TEERIndex.ColumnParams.Values[<column obj_id>]`, which is what the XML `LengthParam`
+    and the create script's `info(100)` come from. A NULL `Column_name` (MySQL 8 functional
+    key part) or an unknown column is skipped instead of dereferencing nil.
+  - **#7**: when "Build Relations" is on, one query over
+    `information_schema.KEY_COLUMN_USAGE k JOIN REFERENTIAL_CONSTRAINTS r` (on schema +
+    constraint name + table name, `k.TABLE_SCHEMA = DATABASE()`, `REFERENCED_TABLE_NAME IS
+    NOT NULL`, ordered by table, constraint, `ORDINAL_POSITION`) gives one row per FK column
+    pair with `UPDATE_RULE`/`DELETE_RULE`. Child = the reverse-engineered table that owns the
+    constraint, parent = `REFERENCED_TABLE_NAME` looked up in the whole model (like SQLite);
+    FKs whose parent is not in the model are skipped. Each constraint becomes
+    `NewRelation(rk_1nNonId, parent, child)` with `FKFields` `refcol=fkcol`, `IsForeignKey`
+    on the child columns, `CreateRefDef=True`, `RefDef OnDelete/OnUpdate` via the existing
+    `SQLiteRefActionCode` (MySQL uses the same rule names: RESTRICT 0, CASCADE 1, SET NULL 2,
+    NO ACTION 3, SET DEFAULT 4), `rk_1n` when all FK columns are in the child's PK.
+    Self-references are allowed (the SQLite path skips them; the model handles them fine,
+    `Examples/order.xml` has one). Then `EERReverseEngineerMakeRelations(..., SkipExisting
+    = True)` (commit e26d472) adds the name/PK guesses only between table pairs that have no
+    relation yet. The query is wrapped in try/except so a server without
+    `information_schema` (MySQL < 5.0) just falls back to the heuristic as before.
+- `tests/TestMySQLShim.pas` now also asserts `SHOW KEYS` `Non_unique`/`Sub_part` and
+  `SHOW FIELDS` `Extra` by name, and the information_schema FK query (including a
+  self-referencing FK) on a second scratch table `shimtest_orders`. Still SUCCESS.
+- Verified on DISPLAY=:0 (`$S/fix04-*`): `dbdtest` (the 12 tables loaded from
+  `$S/fix01-order_mysql.sql`) only had 2 FOREIGN KEYs, because the export writes FKs only
+  for relations with `CreateRefDef=1`; the other 9 (including `forumpost.idforumpost_parent
+  -> forumpost`) were added by hand with `ALTER TABLE` (`$S/fix04-addfks.sql`, rules as in
+  the model's RefDef; `dbdtest` is left in that state). File > New, Database > Reverse
+  Engineering, OrderMySQL, Execute, Save As `$S/fix04-reveng.xml`; `compare_models.py`
+  against `Examples/order.xml` (`$S/fix04-compare.txt`): 12 tables, all columns OK incl.
+  the 5 AutoInc PKs, `product_ean` IndexKind 2 (UNIQUE), `product_name` with
+  `LengthParam="100"` on `info`, 11 of 11 relations with the right endpoints, FK mapping
+  and OnDelete/OnUpdate (RESTRICT/CASCADE/NO ACTION as in the DB), the self-relation
+  included. Differences left: InnoDB creates an index per FK column that is not already
+  the leftmost column of an index (`fk_product_productgroup(idproductgroup)` etc.) - they
+  are real indexes in the DB and come back as plain INDEX entries the original model
+  never had (a re-export creates them explicitly, harmless); the self-relation is `rk_1nNonId`
+  (2) instead of the original's `rk_11NonId` (5) - not decidable from FK metadata; `Matching`
+  is always 0 (MySQL parses but ignores MATCH); every recovered relation has
+  `CreateRefDef=1` where the original had 0 - by definition, since these came from FKs.
+- Driving: the GTK Save dialog opened directly in the last used folder (`$S`) this time,
+  so typing the name into "Name" and clicking Save (785,600 in the 840x630 dialog) was
+  enough. The Reverse Engineering dialog is 573x627 at +694+254 with Execute at (425,573).
