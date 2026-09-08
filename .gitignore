@@ -37,3 +37,8 @@ bin/DBDplugin_SimpleWebFront
 *.sqlite
 *.sqlite3
 *.db
+tests/TestMySQLShim
+tests/TestSQLExprShim
+tests/TestSQLite
+tests/TestModelLoad
+tests/TestSQLExport
