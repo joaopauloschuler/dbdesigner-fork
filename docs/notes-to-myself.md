@@ -1563,3 +1563,61 @@ navigation (`Down`x4 `Right` for File > Open Recent). Shots: `fix13-*`.
   `TEST SUMMARY` block, not a grep. `DBConn.ini`/`DBDesignerFork_Settings.ini` restored
   byte-for-byte from the backups (`Password=bpsa`, `WorkMode=1`), `DBConn_Current.ini`
   (written by Plugins > DataImporter) removed.
+
+## Fix: model-edit #5 - z-order of objects created in the session (SendRegionsToBack was a no-op)
+
+- What the catalog reported: tables from the Table tool and relations from the
+  relation tools could not be selected, double-clicked or deleted with the mouse;
+  the clicks "fell through" to the region or canvas underneath.
+- What I found on DISPLAY=:0 with temporary `writeln(StdErr)` probes in
+  `TEERModel.DoMouseDown` (dumping `Controls[i]` order), `TEERObj.DoMouseDown/
+  DoMouseUp/DoDblClick` and `SetSelected`: every creation path already produced a
+  control at the *top* of `Parent.Controls`, and the clicks reached it. With the
+  clicks placed on the objects, a session-created table (inside the `OnlineStore`
+  region and outside any region), a session-created 1:n relation (line and label),
+  a delete via Ctrl+Del (relation + `FKidNewsCol` removed), Save-free reopen, and
+  the same on a File > New model all worked *before* the code change. The catalog's
+  symptoms match clicks that landed next to the very small targets instead: the
+  relation line between `News` and `Employee` is ~13 px long and the drawn line is
+  1 px inside a 14-px-wide control, the label is 16 px high; a click on the region
+  background deselects everything (so Ctrl+Del lists nothing = catalog #7) and a
+  double-click there opens the Region Editor - exactly what #5 describes. The
+  "first click after windowactivate is lost" effect adds to it.
+- Real defect found on the way: `TEERModel.SendRegionsToBack` (called by
+  `NewTable`, `NewRelation`, `NewNote`, `PopupMenuSelectRegion`) still used the
+  CLX approach - it set `ComponentIndex` of the regions and the `GridPaintBox`.
+  Under the LCL that only reorders the owner's component list; painting and
+  mouse hit-testing use the parent's `Controls` order (`TWinControl.ControlAtPos`
+  walks `FControls` from the end), so the call did nothing. Nobody noticed because
+  `NewRegion` (also used by the XML loader) does a real `SendToBack` and the
+  loader parses `REGIONS` before the other sections.
+- Change (src/EERModel.pas): `SendRegionsToBack` now collects the `TEERRegion`
+  controls and calls `SendToBack` on them in reverse order (relative order kept),
+  then sends `GridPaintBox` to the back. `LoadFromFile2` and the duplicated tail
+  in `LoadFromFile` call it after the tables' `BringToFront` loop, so regions that
+  arrive in a model that already has objects (paste, undo of a delete, plugin
+  import, appended model, XML with `REGIONS` after `RELATIONS`) can never cover
+  relation parts, notes or images.
+- Verified on DISPLAY=:0 with the fixed build (`$S/shots/model-edit/fix05/50-65`):
+  `Table_15` inside `OnlineStore` and `Table_16` outside select (dotted frame) and
+  open their Table Editor; 1:n (Non-Identifying, palette y=315) `News` ->
+  `Employee`: click on the line selects the relation, click on the label selects
+  it, double-click opens the Relation Editor (`Rel_12`, `idNews`/`FKidNewsCol`),
+  Ctrl+Del lists `Rel_12` and removes it plus the FK column; File > New with two
+  tables and a relation behaves the same. `xvfb-run -a ./bin/DBDesignerFork
+  --selftest`: 93 PASS / 0 FAIL / 78 SKIP; `WorkMode=1` and `DBConn.ini` md5
+  unchanged.
+- Gotchas for driving the model editor with xdotool: the palette buttons at
+  client y=270/293/315/338/360 are Region / Table / 1:n Non-Identifying / 1:1
+  Non-Identifying / n:m (the catalog's "12th button" is the 1:n Non-Identifying
+  one); always confirm with the status bar (`crop 700x20+0+868`). A region is
+  selected by clicking its caption (top-left), a click on its background starts a
+  rubber band and deselects everything. Table Editor Cancel is at client
+  (669,466) of the 702x491 dialog, Relation Editor Cancel at (383,447) of 414x472;
+  loop `xwininfo -id <xid> | grep IsViewable` until the modal dialog is gone
+  before sending anything else, otherwise the following clicks are swallowed.
+  Redirected `StdErr` is buffered by FPC in 256-byte chunks - `Flush(StdErr)`
+  after each debug `writeln`, and never `echo >>` into the same log file (the
+  app's own file offset overwrites it). `pkill -x DBDesignerFork` kills all
+  instances; mutter's frame process owns look-alike windows with the same title,
+  filter `xdotool search --name` results by `getwindowpid`.

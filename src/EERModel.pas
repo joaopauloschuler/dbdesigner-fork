@@ -2881,15 +2881,28 @@ end;
 
 procedure TEERModel.SendRegionsToBack;
 var i: integer;
+  theRegions: TList;
 begin
-  //Set TEERRegion Component-Indices to max
-  for i:=ComponentCount-2 downto 0 do
-    if(Components[I].Classname='TEERRegion')then
-      Components[I].ComponentIndex:=
-        ComponentCount-2;
+  //Under the LCL the z-order (painting and mouse hit-testing) of the
+  //EER objects is the order of Parent.Controls, index 0 being the
+  //bottom-most control. The CLX-era code changed ComponentIndex, which
+  //only reorders the owner's component list and has no effect on the
+  //z-order at all. Move every region below all other objects, keeping the
+  //relative order of the regions, and put the GridPaintBox underneath.
+  theRegions:=TList.Create;
+  try
+    for i:=0 to ControlCount-1 do
+      if(Controls[i] is TEERRegion)then
+        theRegions.Add(Controls[i]);
+
+    for i:=theRegions.Count-1 downto 0 do
+      TControl(theRegions[i]).SendToBack;
+  finally
+    theRegions.Free;
+  end;
 
   //send GridPaintBox to background
-  GridPaintBox.ComponentIndex:=ComponentCount-1;
+  GridPaintBox.SendToBack;
 end;
 
 
@@ -4395,6 +4408,12 @@ begin
           TEERTable(Components[i]).BringToFront;
         end;
       end;
+
+    //Regions loaded into a model that already has objects (paste, undo,
+    //plugin import, appended model) or listed after the other sections
+    //in the file must not cover the relations, notes and images
+    SendRegionsToBack;
+
     //Check PluginData
     for i:=0 to PluginData.Count-1 do
       if(TEERPluginData(PluginData[i]).Obj_id>=maxid)then
@@ -5072,6 +5091,12 @@ begin
           TEERTable(Components[i]).BringToFront;
         end;
       end;
+
+    //Regions loaded into a model that already has objects (paste, undo,
+    //plugin import, appended model) or listed after the other sections
+    //in the file must not cover the relations, notes and images
+    SendRegionsToBack;
+
     //Check PluginData
     for i:=0 to PluginData.Count-1 do
       if(TEERPluginData(PluginData[i]).Obj_id>=maxid)then
