@@ -96,3 +96,57 @@ Exercised (real display, `<scratchpad>/shots/model-edit/`): opening order.xml; T
 Not reached in the 30-minute limit (part of the budget was lost to a mis-routed click that switched the main window into Query mode and to stuck File-menu popups): in-place rename, move/resize, copy/paste/delete/undo, table options pages (Table Options, Advanced, Standard Inserts, Comments), prefixes/colours, collapse/expand; datatype palette drag, ENUM parameters, NN/AI/PK toggles, default values, reordering, deleting columns that take part in relations/indices, Column Parameters dialog, creating/deleting indices; non-identifying / n:m / 1:1 / self relations, changing relation kind, FK propagation on PK changes (blocked by #8), deleting relations and tables with relations, line dragging; Save/Save As/reload persistence; SQL Create Script export (MySQL/SQLite); Navigator/zoom/context menus.
 
 Recommended next round: start the app, immediately do File > Save As with the mouse (File menu popup is at +42+95, 212x399; "Save As ..." is the 9th row including separators) and never use keyboard menu navigation; the main-window client origin is +42+69 when the window is moved to 0,0 (the mode-toggle button sits at client (18,49), any click there flips to Query mode).
+
+## Pass 2 entries
+
+Date: 2026-09-08, second 30-minute pass (real display). Screenshots: `<scratchpad>/shots/model-edit/pass2/`. Model: order.xml saved as `<scratchpad>/p2.xml` right after opening.
+
+### 9. Edit menu: Copy / Cut / Paste / Select All Objects / Center Model are permanently disabled; Ctrl+C / Ctrl+V do nothing
+
+Severity: functional (copy/paste of tables is impossible; "Select All" and "Center Model" unreachable).
+Steps: open order.xml; click the `productgroup` header (selected, dashed frame); Edit menu.
+Observed: `Copy selected Object(s)`, `Copy ... as Image`, `Cut`, `Paste`, `Select All Objects`, `Center Model` are greyed with a table selected (`16-editmenu-sel.png`) and without (`13-editmenu.png`); only Undo/Redo/Delete are enabled. Ctrl+C then Ctrl+V with `productgroup` selected changes nothing on the canvas (`15-paste.png`). Undo via Ctrl+Z and Redo via the menu work for a table move (`10-12-comb.png`, `14-redo-menu.png`).
+Expected: the items enabled while a model is active (Copy/Cut with a selection, Paste with clipboard content), as in DBDesigner 4 where the Edit menu is refreshed on open.
+Suspected cause: `src/Main.lfm:3203-3253` declare the items with `Enabled = False` and nothing in `src/` ever sets `CopyMI/CutMI/PasteMI/SelectAllMI/CenterModelMI.Enabled` (grep `\.(Enabled|Visible)` over `src/` has no hit for them); the Delphi original enabled them in an `OnClick` of the top-level `EditMI` (the LCL `EditMI` has no handler, `src/Main.lfm:3183`). The handlers `CopyMIClick`/`PasteMIClick` exist (`src/Main.pas:1298`, `:1340`-ish). No shortcuts are declared for Copy/Paste/Undo/Redo either (`ShortCut` only on DeleteMI 16430 = Ctrl+Del and one more), so Ctrl+C/V go nowhere; Ctrl+Z is handled elsewhere (works).
+Suggested fix scope: small - add an `EditMI.OnClick` (or `OnMenuShow`-like refresh in `DeleteMIShow`'s place) that enables the items from `GetSelectedObjsCount>0` / clipboard state / `FActiveEERForm<>nil`, and give Copy/Cut/Paste/Undo/Redo their standard shortcuts.
+
+### 10. Table Editor OK after adding a second PK column: the table's bottom row is clipped on the canvas (height not recomputed)
+
+Severity: cosmetic.
+Steps: double-click `product`; click the key cell of `name` (becomes PK, NN, AI toggled via the flag cells); Comments page; OK.
+Observed: `name` moves under `idproduct` and the children get `FKnameCol (FK)` (correct, `29-after-ok.png`), but the `product` table is now cut off at the bottom: `pic` is half visible and the bottom border is gone (compare `01-main.png`). The PK separator line is drawn below the two key columns.
+Expected: the table control grows to hold all rows.
+Suspected cause: `TEERTable.RefreshObj`/`PaintObj` height calculation in `src/EERModel.pas` does not add the extra pixels for the PK/non-PK separator when the PK count changes, or the control's `Height` is set before the columns are re-sorted (`ApplyChanges` in `src/EditorTable.pas` sorts PK columns first after the size was computed). Fix scope: small.
+
+### 11. n:m relation tool: the generated join table is dropped on top of existing tables
+
+Severity: cosmetic (minor).
+Steps: n:m tool (palette centre y=360); click `productgroup`, click `creditcard`.
+Observed: `productgroup_has_creditcard` with `FKidproductgroupCol (FK)` / `FKidcreditcardCol (FK)` and `Rel_13`/`Rel_14` are created correctly, but the table is placed at the midpoint of the two parents, over `carthasproduct` and the "Stores all products..." note (`54-nm.png`). Its columns are not marked as PK (no key icon) although an n:m join table normally gets a composite PK of the two FKs.
+Expected: a free spot near the midpoint, FK columns as PK (check `TEERModel.NewRelation`/`nmTable` creation in `src/EERModel.pas`, search `_has_`).
+Suggested fix scope: small (position search); the PK question needs comparison with DBDesigner 4 semantics.
+
+### 12. Table Editor, Table Options page: the "Row format" combo is too narrow ("defau" clipped)
+
+Severity: cosmetic (minor).
+Steps: Table Editor of `product`; tree node Table Options.
+Observed: the combo at the bottom right of "How Settings" shows `defau` (`25-tableopts.png`); the Password field shows the password in clear text (`theproducts...`). All other fields readable.
+Expected: combo wide enough for "default"/"dynamic"/"fixed"/"compressed".
+Suspected cause: fixed `Width` in `src/EditorTable.lfm` (`RowFormatCBox` or similar) sized for the Windows font. Fix scope: trivial.
+
+## Pass 2 not bugs / verified OK
+
+- Table move by dragging the header, Ctrl+Z undo and Redo (menu) restore the position (`10-12-comb.png`, `14-redo-menu.png`).
+- Deleting a table with a relation (`productgroup`): confirmation lists `productgroup, ProductgroupRel`, the relation and the child FK column `product.idproductgroup (FK)` are removed and the DB Model tree is refreshed (`20-21.png`); Ctrl+Z restores table, relation and FK column (`22-undo-del.png`).
+- Table Editor flag cells: clicking NN / AI / the key cell of `name` toggles them (`24-27.png`); OK propagates the new second PK column to both children (`carthasproduct.FKnameCol`, `onlineorderhasproduct.FKnameCol`, `29-after-ok.png`) and the columns persist in the saved XML (`PrimaryKey="1" NotNull="1" AutoInc="1"`, two `FKnameCol`).
+- Table Options / Advanced / Standard Inserts / Comments pages display the stored values (Next Auto-Increment 100, Checksum, Chunks 2/64 kB). Typing into the Comments memo works when the memo is really clicked (client y~380 of the 491-px dialog) and the comment is saved (`Comments="cmt p2"` in p2.xml after File > Save).
+- Double-click on an already selected table opens its Table Editor.
+- Ctrl+Del on a selected table opens the confirmation (needs the window to be activated first; the first click after activation is lost - driver issue).
+- No exceptions or GLib criticals on stderr in the whole session (`stderr.log`: only the canberra message).
+- Driving note (not an app bug): a Table Editor whose Cancel click was lost stays open as a modal and silently swallows all clicks on the palette and canvas for the rest of the session - always `waitgone` the dialog and re-check `xdotool search --name "Table Editor"` before reporting "tool does not respond". Palette centres: Table y=293, 1:n identifying 315, 1:1 non-id 338, n:m 360, 1:1 390, 1:n 413... (lower group 390/413/435), Pointer 80; File > Save is the 7th popup row (screen 92,243 with the window at 0,0).
+
+## Pass 2 coverage
+
+Exercised (`shots/model-edit/pass2/`): Save As into the scratchpad; table drag/undo/redo; Edit menu state with and without selection (#9); Ctrl+C/V; delete table with relation + undo; Table Editor of `product`/`productgroup`: NN/AI/PK toggles, second PK column propagation (#10), Table Options/Advanced/Comments pages (#12), comment persistence via File > Save; n:m relation creation (#11).
+
+Not reached in 30 minutes (about 8 minutes were lost to a Table Editor left open by a lost Cancel click and to wrong palette coordinates): in-place rename, resize, table prefix/colour options, collapse/expand, table context menu; datatype palette drag, ENUM/SET parameters, VARCHAR length change, default values, column reorder, deleting a column that is in an index / relation, duplicate names, Column Parameters dialog, creating/deleting a two-column index; 1:1 and self relations (one attempt of a self 1:n relation on `productgroup` created nothing, `55-self.png` - unconfirmed, the second click may have been lost), Relation Editor kind change and ON DELETE/UPDATE options, deleting a relation, dragging line segments/labels, splitted display; persistence of the n:m join table (the last File > Save click did not register twice, p2.xml timestamp 14:05 - unverified), reload of p2.xml, SQL Create Script export (MySQL/SQLite); Navigator repaint/zoom, DB Model tree after n:m, context menus, Datatypes palette. Only opened at the end: File > Export > SQL Create Script dialog (`62-sqlexport-*.png`, target SQLite preselected, the SQLite-specific option labels are greyed with grey check marks - not evaluated) on a fresh restart that reopened bin/Examples/order.xml (not p2.xml), so the DDL of the edited model was not generated. WorkMode=1 and git status (only this file) confirmed; no stderr output in the second session either.
