@@ -716,6 +716,19 @@ object EditorTableForm: TEditorTableForm
     Align = alBottom
     BevelOuter = bvNone
     TabOrder = 3
+    object ReadOnlyLbl: TLabel
+      Left = 8
+      Top = 8
+      Width = 4
+      Height = 14
+      AutoSize = True
+      Caption = ''
+      Font.Color = clGray
+      Font.Height = -11
+      Font.Name = 'Sans'
+      ParentFont = False
+      Visible = False
+    end
     object BottomRightPnl: TPanel
       Left = 630
       Top = 0

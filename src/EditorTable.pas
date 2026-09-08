@@ -125,6 +125,7 @@ type
     IndexDragHintLbl: TLabel;
     BottomRightPnl: TPanel;
     SubmitBtn: TSpeedButton;
+    ReadOnlyLbl: TLabel;
     AbortBtn: TSpeedButton;
     N2: TMenuItem;
     ClearAllSQLInsertsMI: TMenuItem;
@@ -217,6 +218,9 @@ type
     procedure MoveRowdownMIClick(Sender: TObject);
   private
     { Private declarations }
+    //True for linked objects and read-only models: the editor shows the
+    //table but no change can be applied (OK hidden, FormClose discards)
+    TableReadOnly: Boolean;
     DiscardChanges: Boolean;
 
     DragStartRow: integer;
@@ -381,6 +385,8 @@ end;
 
 procedure TEditorTableForm.SetTable(theTable: TEERTable);
 var i: integer;
+  theLinkedModel: TEERLinkedModel;
+  s: string;
 begin
   SourceEERTable:=theTable;
   EERModel:=theTable.ParentEERModel;
@@ -460,11 +466,28 @@ begin
     if(TEERColumn(EERTable.Columns[i]).PrevColName='')then
       TEERColumn(EERTable.Columns[i]).PrevColName:=TEERColumn(EERTable.Columns[i]).ColName;
 
-  if(EERModel.ReadOnly)or
-    (EERTable.IsLinkedObject)then
+  //Linked objects (tables placed from a linked model, e.g. News/Employee in
+  //Examples/order.xml) and read-only models cannot be edited: the OK button
+  //is hidden and FormClose discards everything. Say so in the dialog instead
+  //of silently dropping the button (model-edit-bug-catalog #8), set the
+  //state explicitly in both directions and refuse the in-place edits.
+  TableReadOnly:=(EERModel.ReadOnly)or(EERTable.IsLinkedObject);
+  SubmitBtn.Visible:=Not(TableReadOnly);
+  ReadOnlyLbl.Visible:=TableReadOnly;
+  if(EERModel.ReadOnly)then
+    ReadOnlyLbl.Caption:=DMMain.GetTranslatedMessage(
+      'The model is read only - changes cannot be applied.', -1)
+  else if(EERTable.IsLinkedObject)then
   begin
-    SubmitBtn.Visible:=False;
+    theLinkedModel:=EERModel.GetPlacedModelByID(EERTable.IDLinkedModel);
+    if(theLinkedModel<>nil)then
+      s:=theLinkedModel.ModelName
+    else
+      s:='?';
+    ReadOnlyLbl.Caption:=DMMain.GetTranslatedMessage(
+      'Linked object from model "%s" - read only, changes cannot be applied.', -1, s);
   end;
+  TableNameEd.ReadOnly:=TableReadOnly;
 end;
 
 procedure TEditorTableForm.FormClose(Sender: TObject;
@@ -663,6 +686,14 @@ begin
                   Length(theRel.FKFields.ValueFromIndex[j]));
             end;
         end;
+
+    //Let the relations rebuild their PK -> FK column mapping first: after a
+    //primary key was renamed TEERRel.RefreshObj drops the old FKFields entry
+    //and adds "<newname>=<FKPrefix><newname><FKPostfix>". CheckAllRelations
+    //then creates that column in the child table and removes the orphaned
+    //one. Without this the child lost its FK column and only got the new
+    //one on the next relation check (model-edit-bug-catalog #8).
+    SourceEERTable.RefreshRelations;
 
     EERModel.CheckAllRelations;
 
@@ -1111,6 +1142,9 @@ procedure TEditorTableForm.InsertColumn;
 var theColumn: TEERColumn;
   i: integer;
 begin
+  if(TableReadOnly)then
+    Exit;
+
   //Insert new column
   theColumn:=TEERColumn.Create(EERTable);
   try
@@ -1153,6 +1187,9 @@ end;
 
 procedure TEditorTableForm.EditDatatype;
 begin
+  if(TableReadOnly)then
+    Exit;
+
   if(ColumnGrid.Row<=EERTable.Columns.Count)then
   begin
     //User must not edit datatype of FK Column
@@ -1179,6 +1216,9 @@ procedure TEditorTableForm.EditCellStr(NewName: string = '');
 var doIt: Boolean;
 begin
   DoCellEdit:=False;
+
+  if(TableReadOnly)then
+    Exit;
 
   if(ColumnGrid.Row<=EERTable.Columns.Count)or
     ((ColumnGrid.Row>EERTable.Columns.Count)and(ColumnGrid.Col=1))then
@@ -1319,7 +1359,8 @@ begin
 
   ColumnGrid.MouseToCell(X, Y, ACol, ARow);
 
-  if(ARow>0)and(ARow<=EERTable.Columns.Count)and(Button=mbLeft)then
+  if(ARow>0)and(ARow<=EERTable.Columns.Count)and(Button=mbLeft)and
+    (Not(TableReadOnly))then
   begin
     //Only select Colnames (except when cursor is over DefVal)
     if(ACol<>3)and(ACol<>7)and(ACol<>8)then
@@ -1416,6 +1457,9 @@ procedure TEditorTableForm.DeleteColumnMIClick(Sender: TObject);
 var theCol: TEERColumn;
  i: integer;
 begin
+  if(TableReadOnly)then
+    Exit;
+
   for i:=ColumnGrid.Selection.Top to ColumnGrid.Selection.Bottom do
   begin
     //Always take the first selected column, not i
@@ -1454,6 +1498,9 @@ var theName: string;
   theIndex: TEERIndex;
   theID: integer;
 begin
+  if(TableReadOnly)then
+    Exit;
+
   theID:=DMMain.GetNextGlobalID;
   theName:=EERTable.ObjName+'_index'+IntToStr(theID);
   if(DMMain.ShowStringEditor(DMMain.GetTranslatedMessage('Please enter the Index Name:', 96),
@@ -1535,15 +1582,21 @@ begin
         IndexTypeCBox.Enabled:=True;
       end;
 
+      //Do not assign an explicit window colour here: under GTK2 the LCL
+      //applies it to the NORMAL, ACTIVE and PRELIGHT states of the tree
+      //view, and the selected row of an unfocused list is drawn in the
+      //ACTIVE state (white text) - the pre-selected first column became
+      //white-on-white (model-edit-bug-catalog #1). clDefault/clBtnFace
+      //keep the theme colours.
       if(TEERIndex(EERTable.Indices[i]).FKRefDef_Obj_id>-1)then
       begin
         IndexColListBox.Enabled:=False;
-        IndexColListBox.Color:=clBackground;
+        IndexColListBox.Color:=clBtnFace;
       end
       else
       begin
         IndexColListBox.Enabled:=True;
-        IndexColListBox.Color:=clWindow;
+        IndexColListBox.Color:=clDefault;
       end;
     end;
   end;
@@ -1578,6 +1631,9 @@ var theIndex: TEERIndex;
   newPos: integer;
   s: string;
 begin
+  if(TableReadOnly)then
+    Exit;
+
   if(Source.ClassNameIs('TDrawGrid'))then
     if(TDrawGrid(Source).Name='ColumnGrid')and
       (IndexListBox.ItemIndex>-1)and
@@ -1629,6 +1685,9 @@ end;
 procedure TEditorTableForm.DeleteColFromIndexBtnClick(Sender: TObject);
 var theIndex: TEERIndex;
 begin
+  if(TableReadOnly)then
+    Exit;
+
   if(IndexColListBox.ItemIndex>-1)and(IndexColListBox.Enabled)then
   begin
     theIndex:=TEERIndex(EERTable.Indices[IndexListBox.ItemIndex]);
@@ -1660,6 +1719,9 @@ end;
 procedure TEditorTableForm.IndexListBoxDblClick(Sender: TObject);
 var theName: string;
 begin
+  if(TableReadOnly)then
+    Exit;
+
   if(IndexListBox.ItemIndex>-1)then
   begin
     theName:=IndexListBox.Items[IndexListBox.ItemIndex];
@@ -1679,6 +1741,9 @@ end;
 
 procedure TEditorTableForm.IndexTypeCBoxCloseUp(Sender: TObject);
 begin
+  if(TableReadOnly)then
+    Exit;
+
   if(IndexTypeCBox.ItemIndex>0)then
     TEERIndex(EERTable.Indices[IndexListBox.ItemIndex]).IndexKind:=
       IndexTypeCBox.ItemIndex;
@@ -1709,6 +1774,9 @@ var //theIndex: TEERIndex;
   i: integer;
   doIt: Boolean;
 begin
+  if(TableReadOnly)then
+    Exit;
+
   if(IndexListBox.ItemIndex>-1)then
   begin
     if(MessageDlg(DMMain.GetTranslatedMessage('Do you really want to delete the selected index?', 5),
@@ -1852,6 +1920,9 @@ procedure TEditorTableForm.EditIndexColumnLengthMIClick(Sender: TObject);
 var theIndex: TEERIndex;
   s: string;
 begin
+  if(TableReadOnly)then
+    Exit;
+
   if(IndexColListBox.ItemIndex>-1)then
   begin
     theIndex:=TEERIndex(EERTable.Indices[IndexListBox.ItemIndex]);
@@ -2000,6 +2071,9 @@ var i: integer;
   theCol: TEERColumn;
   theIndex: TEERIndex;
 begin
+  if(TableReadOnly)then
+    Exit;
+
   if(IndexListBox.ItemIndex>-1)and
     (IndexListBox.ItemIndex<=EERTable.Indices.Count-1)then
   begin

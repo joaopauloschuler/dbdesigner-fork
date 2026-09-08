@@ -1621,3 +1621,72 @@ navigation (`Down`x4 `Right` for File > Open Recent). Shots: `fix13-*`.
   app's own file offset overwrites it). `pkill -x DBDesignerFork` kills all
   instances; mutter's frame process owns look-alike windows with the same title,
   filter `xdotool search --name` results by `getwindowpid`.
+
+## Fix: model-edit #1, #6, #8 - Table Editor index columns invisible, Tab in the in-place editors, "vanished" OK button on linked tables, PK rename -> FK column
+
+- **#1 empty index column list** (`src/EditorTable.pas` `ShowIndex`): the list *was* filled
+  (probe: `lbitems=1`), it just painted nothing. `ShowIndex` set
+  `IndexColListBox.Color:=clWindow` (or `clBackground` for FK-refdef indices); under GTK2
+  `TGtk2WSCustomListBox.SetColor` applies that colour with `gtk_widget_modify_base` to the
+  NORMAL, ACTIVE *and* PRELIGHT states of the tree view. GTK2 draws the selected row of an
+  *unfocused* tree view in the ACTIVE state, whose text colour in this theme is white - and
+  `ShowIndex` pre-selects the first column (`ItemIndex:=0`), so the single row
+  `idproductgroup` was white on white until a click focused the list (SELECTED state,
+  orange). `IndexListBox` never gets a `Color` assignment, which is why it was fine. Fix:
+  `clDefault` (enabled) / `clBtnFace` (disabled FK index) - both map to "theme default"
+  in `SetWidgetColor`. Adding a column via the grid popup "Add Column(s) to Selected
+  Index", changing the kind (dropdown must be opened and picked with the mouse - the
+  `OnCloseUp` handler, db-ui #19 lesson) and the eraser button all worked already; the
+  UNIQUE INDEX survives OK + reopen.
+- **#6 Tab swallowed in the Column Name editor** (`src/EditorTableField.pas`,
+  `src/EditorTableFieldDatatypeInplace.pas`): the probe showed VK_TAB reaching
+  `TEditorTableFieldEdit.DoKeyDown` (key=9) and nothing else - no `OnExit`, no focus
+  move (the LCL's `DoTabKey` runs after the handler and did not navigate either), so the
+  next letters were appended to the name. Fix: `DoKeyDown` handles Tab/Shift+Tab with
+  `ApplyChanges(goRight/goLeft)` (the constants existed but were never implemented) and
+  sets `Key:=0` (same reason as the doubled-character fix: an unhandled key is
+  re-dispatched by the GTK toplevel). `goRight` on a *new* row opens the datatype editor
+  (like Return); otherwise both modes hide the editor and feed VK_TAB / VK_LEFT into
+  `ColumnGridKeyDown`, so the cursor moves exactly like the grid's own Tab/Left
+  (Column Name <-> DataType <-> Default Value <-> Comments, last row -> new row). The
+  datatype in-place combo got the same Tab handling (`ApplyChanges`; if it did not open
+  the next row's name editor, simulate the grid key).
+- **#8 OK button gone after renaming `News.idNews`**: nothing to do with the rename -
+  the button was already missing when the editor opened. `News` and `Employee` carry
+  `IsLinkedObject="1"` in `Examples/order.xml` (placed from the `bookshop` linked model,
+  `<LINKEDMODELS>` at the end of the file; their headers are painted without the header
+  bitmap and with the blue border), and `SetTable` hides `SubmitBtn` for linked objects
+  and read-only models while `FormClose` discards the edits - original DBDesigner 4
+  semantics (linked objects are refreshed from their model). The catalog's re-check on
+  `productgroup` kept the OK button because that table is not linked. What changed:
+  `TableReadOnly` is computed in `SetTable`, `SubmitBtn.Visible` is set in both
+  directions, a grey `ReadOnlyLbl` (new label in `BottomPnl`, `EditorTable.lfm`) says
+  `Linked object from model "bookshop" - read only, changes cannot be applied.` (or the
+  read-only-model variant), `TableNameEd` becomes read-only and the in-place editors,
+  PK/NN/AI/flag toggles, Insert/Delete column and the Indices page handlers exit early -
+  so the grid no longer pretends to accept edits that are thrown away.
+- **PK rename -> FK column propagation** (found while verifying #8 on
+  `productgroup` -> `product`): `TEditorTableForm.ApplyChanges` called
+  `EERModel.CheckAllRelations` right after `SourceEERTable.Assign(EERTable)`.
+  `CheckRelations` deletes FK columns that no longer map to a PK (`FK_checked=False`) and
+  creates columns for `FKFields.Values[<pk>]` - but the `idproductgroup=idproductgroup`
+  -> `pg=FKpgCol` mapping is only rebuilt by `TEERRel.RefreshObj`, which ran later (from
+  `SourceEERTable.RefreshObj`). Result: `product` lost `idproductgroup (FK)` and got
+  `FKpgCol` only on the *next* relation check. Fix: `SourceEERTable.RefreshRelations`
+  before `CheckAllRelations`. Verified: after `pg` + Return + OK the canvas shows
+  `product.FKpgCol (FK)` immediately (`fix01-06-08/53-canvas-after-fix.png`). The
+  News -> Employee case of the catalog cannot be exercised in order.xml (both linked).
+- Escape in the datatype in-place editor (round-4 note): no `GLib-GObject-CRITICAL` on
+  stderr this time after Return / Escape / Down / Up in the grid - not reproduced,
+  nothing changed for it deliberately.
+- Driving gotchas: `xdotool search --name "DBDesigner Fork - order"` also returns the
+  `mutter-x11-frames` window (1878x923 at y=32) - filter with
+  `xprop -id <w> WM_CLASS | grep DBDesignerFork` to get the client (1878x886 at 42,69);
+  the same for the 702x491 Table Editor. Never pipe a script that starts the app into
+  `tail`/`read` - the app inherits stdout and the pipe never closes (redirect the app's
+  stdout to /dev/null). The "New Index" button first opens a 391x61 modal name prompt
+  (accept with its check mark) - a right-click sent while it is open goes nowhere. The
+  grid's popup (`ColPopupMenu`, 274x163) and the combo dropdown are override-redirect
+  windows: find them with `xdotool search --class DBDesignerFork` + `IsViewable` and
+  `import -window` them like any other window. The GTK2 tree view paints the unfocused
+  selection with the ACTIVE style - any `Color:=` on a `TListBox` overrides it.

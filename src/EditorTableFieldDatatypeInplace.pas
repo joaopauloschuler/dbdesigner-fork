@@ -153,6 +153,7 @@ end;
 
 procedure TEditorTableFieldDatatypeInplaceEditor.DoKeyDown(Sender: TObject;
   var Key: Word; Shift: TShiftState);
+var GridKey: Word;
 begin
   if(Key=VK_RETURN)or(Key=VK_RETURN)then
     ApplyChanges;
@@ -165,6 +166,39 @@ begin
 
   if(Key=VK_ESCAPE)then
     HideEdit;
+
+  //Tab/Shift+Tab: commit the datatype and move on like the grid's Tab/Left
+  //(the same convention as in the Column Name editor, see EditorTableField)
+  if(Key=VK_TAB)then
+  begin
+    ApplyChanges;
+
+    //ApplyChanges opens the name editor of a new row after the last column;
+    //otherwise move the grid cursor (DataType -> Default Value / <- Column Name)
+    with TEditorTableForm(TableEditor) do
+    begin
+      if(EditorTableFieldEdit.Visible)and(ssShift in Shift)then
+      begin
+        //Going back: close that new-row editor again and return to the name
+        DoCellEdit:=False;
+        EditorTableFieldEdit.Hide;
+        ColumnGrid.Row:=ColumnGrid.Row-1;
+        ColumnGrid.Col:=1;
+        ColumnGrid.SetFocus;
+      end
+      else if(Not(EditorTableFieldEdit.Visible))then
+      begin
+        if(ssShift in Shift)then
+          GridKey:=VK_LEFT
+        else
+          GridKey:=VK_TAB;
+        ColumnGridKeyDown(ColumnGrid, GridKey, []);
+      end;
+    end;
+
+    Key:=0;
+    Exit;
+  end;
 
   //If the user presses ( he want's to accept the autocompletion
   if(Key=Ord('('))then
