@@ -1367,3 +1367,69 @@ navigation (`Down`x4 `Right` for File > Open Recent). Shots: `fix13-*`.
   `index.php`, `db_open.php` (host/user/db correct), `Catalog_Products_frame.php`,
   `images/`, `incs/` into a scratch directory. `--selftest` 93/0. `DBConn.ini`
   (incl. `Password=bpsa`) and `WorkMode=1` restored.
+
+
+## Fix: db-ui #6, #10 - sync log scrolling and spelling, export dialog overlap and per-target options
+
+- **#6 scrolling**: `EERMySQLSyncDB` (`src/DBEERDM.pas`) appends to `ProgressMemo.Lines` and
+  pumps messages after every step, but nothing ever moved the memo. The LCL fires
+  `TMemo.OnChange` for programmatic `Lines.Add` too (`TCustomEdit.TextChanged` -> `Change`,
+  driven by the GTK text-buffer signal), so `TEERSynchronisationForm.ProgressMemoChange`
+  (`src/EERSynchronisation.pas`, wired in the `.lfm`) sets `SelStart:=Length(Text)`,
+  `SelLength:=0` and the GTK2 text view scrolls the caret on screen. No extra
+  `ProcessMessages` needed. Verified: after Execute the memo shows `Synchronisation finished.
+  / 12 Tables compared. / 50 Columns compared.` without touching it
+  (`$S/shots/db-ui/fix06-10/sync2_exec.png`).
+- **#6 spelling**: the source strings ('Syncronisation started/finished.', the
+  `SyncStdInsertsCBox` caption, the `SyncImg` hint, the "no tables ... syncronised" message)
+  are only fallbacks - at run time `GetTranslatedMessage(msg, Nr)` returns
+  `MessageCaptions[Nr-1]` and `TranslateForm` looks up `<lang>_<Class>_<Name>` by component
+  name, both from `DBDesignerFork_Translations.txt` (`[Messages]` section keys
+  `en_Message_Nr0152_TDMDBEER=...`). So the fix is in the *values* of
+  `bin/Data/DBDesignerFork_Translations.txt` (13 lines: en/de/xx for Nr0152, Nr0164,
+  `TCheckBox_SyncStdInsertsCBox`, `TImage_SyncImg_Hint`, and the French hint which read
+  "Syncronisation de Base de donn..."), plus the sources for consistency. Keys and component
+  names (`DatabasesyncronisationMI`, referenced by `UITestRunner.pas`) are untouched. The
+  file is ISO-8859-1 with CRLF - edit with `sed` on ASCII patterns only, never re-save it
+  from an editor as UTF-8. The user copy `~/.DBDesigner4/DBDesignerFork_Translations.txt` is
+  a verbatim copy made at first start and does NOT get refreshed - it was patched the same
+  way here; other installations keep the typo until they delete/refresh that copy.
+- **#10 overlap**: in `src/EERExportSQLScript.lfm` `EdLastDeleteTriggerPrefix` spans
+  Top 125-146 while `CBLastChange` began at Top 145 (Height 31, but AutoSize wins) so the
+  edit painted over the caption. The "Last change" block moved down by 11-12 px
+  (`CBLastChange` 156, edits 184/209/234, labels +4; the group is 313 high so it fits).
+  `CBLastChange`/`CBLastDelete` captions used `&  trigger` (an accelerator on a blank, shown
+  as a gap); now `&&` = a literal ampersand.
+- **#10 disabled glyphs**: not the LCL. The controls are plain disabled `TCheckBox`es;
+  the desktop theme is Yaru, whose gtk-2.0 pixmap theme (`/usr/share/themes/Yaru/gtk-2.0/
+  main.rc`) maps `function=CHECK state=INSENSITIVE shadow=OUT` to
+  `assets/menu-checkbox-insensitive.png` (an empty menu-item asset) although it ships
+  `checkbox-unchecked-insensitive.png`; disabled *checked* boxes use the proper
+  `checkbox-checked-insensitive.png` = grey tick. Hence "no glyph" for My SQL (options
+  forced off) and "grey tick" for PostgreSQL (options forced on) - both are the theme's
+  rendering of a correct state. Under Adwaita gtk-2.0 all disabled boxes have a glyph
+  (`export_adwaita_xvfb.png`). `GTK2_RC_FILES` is ignored on the desktop because the
+  xsettings daemon re-applies Yaru; the comparison had to run under a bare `Xvfb :99`.
+  Left as-is: a gtkrc override at start-up would replace the theme's whole pixmap engine
+  for GtkCheckButton, and painting our own glyphs is exactly what was to be avoided.
+- **#10 per-target state** (the real inconsistency): `CBTargetDataBaseChange` is now
+  table-driven through a nested `SetOption(CB, Enabled, Checked)`. Values per target are
+  unchanged for FireBird/My SQL/Oracle/PostgreSQL/SQL Server, but SQLite used to disable
+  `CBAutoIncrement`/`CBLastDelete`/`CBLastChange` without resetting `Checked`, so the state
+  remembered in the ini from an Oracle/FireBird session (`AutoIncrementTriggers=1`,
+  `LastChangeTriggers=1`, ...) stayed on and `GetSQLScript` emitted `CREATE SEQUENCE` and
+  trigger tables into the SQLite script. Now every disabled box carries an explicit value.
+  `LbAutoIncrementSeqName` also falls back to 'Sequence name:' instead of keeping the last
+  caption. Copy Script to Clipboard (SQLite) verified via a GTK3 reader: 12 `CREATE TABLE`,
+  5 `AUTOINCREMENT`, 0 `SEQUENCE`/`TRIGGER`.
+- Driving gotchas: `xdotool search --name X | head -1` can return mutter's frame window
+  (`/usr/libexec/mutter-x11-frames`, same title) - filter by `getwindowpid`. Reading the
+  clipboard with a GTK3 python snippet needs `GDK_BACKEND=x11` (with `WAYLAND_DISPLAY` set
+  it reads the Wayland clipboard and sees nothing from the X11 app). `import -window <id>`
+  of a window that has just been destroyed blocks forever - wrap in `timeout`. `pkill -f`
+  and `kill $(pgrep -f "Xvfb :99")` match the calling shell's own command line (exit 144);
+  use `pgrep -x Xvfb` / `pgrep -x DBDesignerFork`. The connection selector's `FormDestroy`
+  rewrites `DBConn.ini` without `Password=` on the first use, so the second run had to type
+  the password (`ctrl+a BackSpace`, then `xdotool type`); restore the backup at the end.
+- `--selftest` under `xvfb-run -a`: 107 PASS / 0 FAIL. `DBConn.ini` (with `Password=bpsa`)
+  and `DBDesignerFork_Settings.ini` (`WorkMode=1`) restored from the backups.

@@ -375,16 +375,16 @@ object EERExportSQLScriptFrom: TEERExportSQLScriptFrom
     end
     object CBLastChange: TCheckBox
       Left = 277
-      Top = 145
+      Top = 156
       Width = 217
-      Height = 31
-      Caption = 'Last change date/user column &  trigger'
+      Height = 19
+      Caption = 'Last change date/user column && trigger'
       TabOrder = 7
       OnClick = CBLastChangeClick
     end
     object EdLastChangeDateColName: TEdit
       Left = 373
-      Top = 173
+      Top = 184
       Width = 141
       Height = 21
       Enabled = False
@@ -393,19 +393,19 @@ object EERExportSQLScriptFrom: TEERExportSQLScriptFrom
     end
     object LabColNameLastChange: TLabel
       Left = 293
-      Top = 177
+      Top = 188
       AutoSize = True
       Caption = 'Date col name:'
     end
     object LabLastChangeUserColName: TLabel
       Left = 293
-      Top = 202
+      Top = 213
       AutoSize = True
       Caption = 'User col name:'
     end
     object EdLastChangeUserColName: TEdit
       Left = 373
-      Top = 198
+      Top = 209
       Width = 101
       Height = 21
       Enabled = False
@@ -416,8 +416,8 @@ object EERExportSQLScriptFrom: TEERExportSQLScriptFrom
       Left = 277
       Top = 48
       Width = 193
-      Height = 31
-      Caption = 'Last delete table &  triggers'
+      Height = 19
+      Caption = 'Last delete table && triggers'
       TabOrder = 12
       OnClick = CBLastDeleteClick
     end
@@ -461,13 +461,13 @@ object EERExportSQLScriptFrom: TEERExportSQLScriptFrom
     end
     object LbLastChangeTriggerPrefix: TLabel
       Left = 293
-      Top = 226
+      Top = 238
       AutoSize = True
       Caption = 'Trigger prefix:'
     end
     object EdLastChangeTriggerPrefix: TEdit
       Left = 373
-      Top = 222
+      Top = 234
       Width = 101
       Height = 21
       Enabled = False

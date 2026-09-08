@@ -567,7 +567,7 @@ object MainForm: TMainForm
         Width = 26
         Height = 16
         Cursor = crHandPoint
-        Hint = 'Database Syncronisation'
+        Hint = 'Database Synchronisation'
         AutoSize = True
         ParentShowHint = False
         Picture.Data = {

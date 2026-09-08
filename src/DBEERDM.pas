@@ -2176,7 +2176,7 @@ var EERModel: TEERModel;
 begin
   EERModel:=theModel;
 
-  Log.Add(DMMain.GetTranslatedMessage('Syncronisation started.', 152));
+  Log.Add(DMMain.GetTranslatedMessage('Synchronisation started.', 152));
 
   ColumnCompCounter:=0;
   ColumnModCounter:=0;
@@ -2982,7 +2982,7 @@ begin
     end;
 
 
-    Log.Add(DMMain.GetTranslatedMessage('Syncronisation finished.', 164)+#13#10+
+    Log.Add(DMMain.GetTranslatedMessage('Synchronisation finished.', 164)+#13#10+
       '-------------------------------------');
 
     if(ModelTables.Count>1)then

@@ -594,134 +594,57 @@ begin
 end;
 
 procedure TEERExportSQLScriptFrom.CBTargetDataBaseChange(Sender: TObject);
+var Target: string;
+
+  //Every option gets an explicit Enabled/Checked pair for every target, so a
+  //disabled check box always shows the value the generator will use. Before,
+  //the SQLite branch only disabled the three trigger boxes and left them in
+  //the state remembered from the last (Oracle/FireBird) session, so the
+  //script got CREATE SEQUENCE and trigger tables (db-ui-bug-catalog #10).
+  procedure SetOption(CB: TCheckBox; AEnabled, AChecked: boolean);
+  begin
+    CB.Enabled:=AEnabled;
+    CB.Checked:=AChecked;
+  end;
+
 begin
-  NullCBox.Enabled := false;
-  GOCB.Enabled := false;
-  CommitCB.Enabled := false;
-  IndiceFK.Enabled := true;
-  PortableIndicesCBox.Enabled := false;
-  HideOnDeleteUpdateNoActionCBox.Enabled := false;
-  CBDefaultBeforeNotNull.Enabled := false;
+  Target:=CBTargetDataBase.Text;
 
-  if CBTargetDataBase.Text = 'My SQL' then
+  //Fixed per target, never editable
+  SetOption(NullCBox, False, Target<>'My SQL');
+  SetOption(PortableIndicesCBox, False, Target<>'My SQL');
+  SetOption(HideOnDeleteUpdateNoActionCBox, False,
+    (Target='Oracle')or(Target='PostgreSQL')or(Target='SQL Server'));
+  SetOption(GOCB, False, Target='SQL Server');
+  SetOption(CommitCB, False, (Target='Oracle')or(Target='PostgreSQL'));
+  SetOption(CBDefaultBeforeNotNull, False, (Target='Oracle')or(Target='PostgreSQL'));
+
+  //Default per target, editable
+  SetOption(IndiceFK, True,
+    (Target='Oracle')or(Target='PostgreSQL')or(Target='SQL Server'));
+
+  //Trigger options: only where the target supports them; the user's choice is
+  //kept while switching between such targets
+  if(Target='Oracle')or(Target='FireBird')then
+    CBAutoIncrement.Enabled:=True
+  else
+    SetOption(CBAutoIncrement, False, False);
+
+  if(Target='Oracle')or(Target='FireBird')or(Target='SQL Server')then
   begin
-    NullCBox.Checked := false;
-    IndiceFK.Checked := false;
-    PortableIndicesCBox.Checked := false;
-    HideOnDeleteUpdateNoActionCBox.Checked := false;
-    GOCB.Checked := false;
-    CommitCB.Checked := false;
-    CBDefaultBeforeNotNull.Checked := false;
-    CBAutoIncrement.Checked := false;
-
-    CBAutoIncrement.Enabled := false;
-    CBLastDelete.Enabled := false;
-    CBLastChange.Enabled := false;
-
-    CBAutoIncrement.Checked := false;
-    CBLastDelete.Checked := false;
-    CBLastChange.Checked := false;
-
+    CBLastDelete.Enabled:=True;
+    CBLastChange.Enabled:=True;
+  end
+  else
+  begin
+    SetOption(CBLastDelete, False, False);
+    SetOption(CBLastChange, False, False);
   end;
 
-  if CBTargetDataBase.Text = 'Oracle' then
-  begin
-    NullCBox.Checked := true;
-    IndiceFK.Checked := true;
-    PortableIndicesCBox.Checked := true;
-    HideOnDeleteUpdateNoActionCBox.Checked := true;
-    GOCB.Checked := false;
-    CommitCB.Checked := true;
-    CBDefaultBeforeNotNull.Checked := true;
-//    CBAutoIncrement.Checked := true;
-
-    CBAutoIncrement.Enabled := true;
-    CBLastDelete.Enabled := true;
-    CBLastChange.Enabled := true;
-
-    LbAutoIncrementSeqName.Caption := 'Sequence name: ';
-{    //ORA AutoInc
-    EdAutoIncrementSeqName.Text := ifThen(CBAutoIncrement.Checked,
-                                          EdAutoIncrementSeqName.Text,
-                                          'GlobalSequence');}
-  end;
-
-  if CBTargetDataBase.Text = 'PostgreSQL' then
-  begin
-    NullCBox.Checked := true;
-    IndiceFK.Checked := true;
-    PortableIndicesCBox.Checked := true;
-    HideOnDeleteUpdateNoActionCBox.Checked := true;
-    GOCB.Checked := false;
-    CommitCB.Checked := true;
-    CBDefaultBeforeNotNull.Checked := true;
-    CBAutoIncrement.Checked := false;
-
-    CBAutoIncrement.Enabled := false;
-    CBLastDelete.Enabled := false;
-    CBLastChange.Enabled := false;
-
-    CBAutoIncrement.Checked := false;
-    CBLastDelete.Checked := false;
-    CBLastChange.Checked := false;
-  end;
-
-  if CBTargetDataBase.Text = 'SQL Server' then
-  begin
-    NullCBox.Checked := true;
-    IndiceFK.Checked := true;
-    PortableIndicesCBox.Checked := true;
-    HideOnDeleteUpdateNoActionCBox.Checked := true;
-    GOCB.Checked := true;
-    CommitCB.Checked := false;
-
-    CBDefaultBeforeNotNull.Checked := false;
-    CBAutoIncrement.Checked := false;
-
-    CBAutoIncrement.Enabled := false;
-    CBLastDelete.Enabled := true;
-    CBLastChange.Enabled := true;
-
-    CBAutoIncrement.Checked := false;
-  end;
-
-  if CBTargetDataBase.Text = 'FireBird' then
-  begin
-    NullCBox.Checked := true;
-    IndiceFK.Checked := false;
-    PortableIndicesCBox.Checked := true;
-    HideOnDeleteUpdateNoActionCBox.Checked := false;
-    GOCB.Checked := false;
-    CommitCB.Checked := false;
-    CBDefaultBeforeNotNull.Checked := false;
-//    CBAutoIncrement.Checked := true;
-
-    CBAutoIncrement.Enabled := true;
-    CBLastDelete.Enabled := true;
-    CBLastChange.Enabled := true;
-
-    LbAutoIncrementSeqName.Caption := 'Generator name: ';
-    //FBIRD AutoInc
-{    EdAutoIncrementSeqName.Text := ifThen(CBAutoIncrement.Checked,
-                                          EdAutoIncrementSeqName.Text,
-                                          'GlobalGenerator');}
-  end;
-
-  if CBTargetDataBase.Text = 'SQLite' then
-  begin
-    NullCBox.Checked := true;
-    IndiceFK.Checked := false;
-    PortableIndicesCBox.Checked := true;
-    HideOnDeleteUpdateNoActionCBox.Checked := false;
-    GOCB.Checked := false;
-    CommitCB.Checked := false;
-    CBDefaultBeforeNotNull.Checked := false;
-
-    CBAutoIncrement.Enabled := false;
-    CBLastDelete.Enabled := false;
-    CBLastChange.Enabled := false;
-  end;
-
+  if(Target='FireBird')then
+    LbAutoIncrementSeqName.Caption:='Generator name: '
+  else
+    LbAutoIncrementSeqName.Caption:='Sequence name: ';
 end;
 
 function TEERExportSQLScriptFrom.GetSqlGeneratorOrSequence(

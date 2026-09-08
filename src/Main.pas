@@ -1406,7 +1406,7 @@ begin
     if(FActiveEERForm.Classname='TEERForm')then
     begin
       if(TEERForm(FActiveEERForm).EERModel.GetEERObjectCount([EERTable])=0)then
-        MessageDlg(DMMain.GetTranslatedMessage('There are no tables in the model which can be syncronised.', 15),
+        MessageDlg(DMMain.GetTranslatedMessage('There are no tables in the model which can be synchronised.', 15),
           mtError, [mbOK], 0)
       else
       begin
