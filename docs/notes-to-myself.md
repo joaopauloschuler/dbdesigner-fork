@@ -1738,3 +1738,73 @@ navigation (`Down`x4 `Right` for File > Open Recent). Shots: `fix13-*`.
   under the compositor - restart the app for a clean canvas. `xdotool click --repeat 2
   --delay 60` is more reliable for the double-click on the small `CartRel` label than
   `--delay 80`; the label is at client (124,314) with the window at 0,0.
+
+## Fix: model-edit #9 - Edit menu items permanently disabled, no Ctrl+C/X/V/A shortcuts
+
+- **Root cause** (`src/Main.xfm` vs `src/Main.lfm`): the Kylix form refreshed the
+  Edit menu through the CLX-only `TMenuItem.OnShow` events (`CopyMI/CutMI/
+  CopyselectedObjectsasImageMI.OnShow=DeleteMIShow`, `PasteMI.OnShow=PasteMIShow`,
+  `SelectAllMI/CenterModelMI.OnShow=ActivateEERMIOnShow`, `Undo/RedoMIShow`). The LCL
+  `TMenuItem` has no `OnShow`, the port dropped the handlers from the .lfm (the methods
+  survived unused in Main.pas) and the items stayed at their streamed `Enabled=False`.
+  Copy/Cut/Paste/Select All never had a `ShortCut`; the Ctrl+A/C/V/X blocks in
+  `DoApplicationEvent` were already commented out in the original.
+- **Fix** (`src/Main.pas`, `src/Main.lfm`): `RefreshEditMenuItems(QueryClipboard)`
+  (calls the old `UndoMIShow/RedoMIShow/PasteMIShow` logic and sets Copy / Copy as
+  Image / Cut / Delete from `GetSelectedObjsCount`, Select All / Center Model from the
+  active model) is called from `EditMI.OnClick` - under GTK2 the `activate` signal of a
+  menu-bar item fires when its submenu opens, so this replaces `OnShow` - and from the
+  new `MainForm.OnShortCut`, which the LCL runs before it looks a key up in the menu.
+  Shortcuts in the .lfm: Undo Ctrl+Z (16474), Redo Ctrl+Y (16473), Copy Ctrl+C
+  (16451), Cut Ctrl+X (16472), Paste Ctrl+V (16470), Select All Ctrl+A (16449).
+  Keys are not stolen from edit controls: `TextEditControlHasFocus` (`Screen.
+  ActiveControl` is a `TCustomEdit`/`TCustomComboBox`/SynEdit) makes the refresh
+  disable the items, and a disabled item is not a shortcut match, so the key goes on
+  to the control. A *modal* editor never sees the main menu anyway
+  (`TApplication.IsShortcut` consults only `Screen.GetCurrentModalForm`). The same
+  guard now covers the Ctrl+Z / Ctrl+Shift+Z / Ctrl+Del branches of
+  `DoApplicationEvent` (previously Ctrl+Z in the Table Editor's name box undid a model
+  action).
+- **GTK2 gotcha that cost an hour**: the first version queried `Clipboard.AsText`
+  inside the shortcut refresh. `gtk_clipboard_wait_for_text` runs a nested main loop,
+  which processed the Ctrl key *release* before `TMenu.IsShortcut` computed the shift
+  state with `GetKeyState(VK_CONTROL)` (live, not from the message) - the lookup then
+  searched for plain `C`, found nothing, and Ctrl+C did nothing while the probes showed
+  the item enabled. `FormShortCut` therefore refreshes without the clipboard query
+  (`PasteMI` is enabled whenever a model is active and no edit control has the focus;
+  `PasteMIClick` checks for `<` itself); only the menu-open refresh asks the clipboard.
+- **Paste** (`PasteMIClick`): the pasted tables kept the original names; tables whose
+  name collides with another table are renamed `name_1`, `name_2`, ... and refreshed.
+  Paste ignores clipboard text that is not model XML. The pasted copy is selectable and
+  opens its own Table Editor (columns and PRIMARY index intact, `fix09/10-editor-copy`).
+- **Center Model** (`src/EERDM.pas` `CenterModel`): additionally scrolls the model's
+  scroll box so the centre of the model bounds is in the middle of the view - before,
+  the objects moved to the middle of the 3072-px canvas and the top-left view went blank.
+- **Copy as Image**: guarded against no active model and reports in the status bar;
+  `Clipboard.Assign(TBitmap)` is the LCL way (image/bmp). Could not be verified
+  externally: no xclip/xsel on the box, and a python GTK3 reader could not read even a
+  clipboard set by another python GTK3 process in this sandbox (X selection transfer
+  between processes does not complete here), so only the in-app text round trip is proven.
+- Verified on DISPLAY=:0 (`$S/shots/model-edit/fix09/`): Edit menu with `productgroup`
+  selected shows Copy/Copy as Image/Cut/Delete/Select All/Center Model enabled with
+  their shortcuts, Paste disabled with an empty clipboard (`04-editmenu-sel`); Ctrl+C
+  -> "1 Object(s) copied", Ctrl+V -> `productgroup_1` at +30/+30, selected
+  (`08/09-status`, `09-crop`), double-click opens its Table Editor (`10`); inside the
+  editor's Table Name edit Ctrl+A / Ctrl+C / End / Ctrl+V doubled the text
+  (`11-crop`) and the canvas got no second paste (`12-crop`); Ctrl+X -> confirmation
+  listing `productgroup_1`, Yes removes it (`13`, `14-crop`); Ctrl+A selects all 33
+  objects (`15`); the menu then shows "Undo Delete Object(s)" and Paste enabled (`16`);
+  Center Model (`21-centered-scrolled`). `xvfb-run -a ./bin/DBDesignerFork --selftest`:
+  93 PASS / 0 FAIL / 78 SKIP (unchanged - the items are still streamed disabled and
+  the self-test clicks without opening the menu); `WorkMode=1`, `DBConn.ini` md5
+  unchanged, settings restored from the backup (Save As changes `RecentSaveFileAsDir`).
+- Driving gotchas: `xwininfo -geometry` of a decorated window is *not* its screen
+  position (the main window prints `-0-0`, the Table Editor `+260+156` while it sits
+  at 274,205) - use `Absolute upper-left X/Y`; three Cancel clicks were lost that way.
+  Override-redirect popups (menus) do report their real position. `gdb -p` is blocked
+  (ptrace scope), so `writeln(StdErr)` probes are the only backtrace substitute.
+- Not done: the canvas/table context menus keep their own items (Select Object / Edit /
+  Refresh / Delete / Copy Table Name ... and "Select All" on the canvas popup, which
+  calls `TEERForm.SelectAllMIClick`) - no Copy/Paste there, as in the original.
+  `DoApplicationEvent` still handles Ctrl+S/O/T/R/W/E/Q for the whole application,
+  including inside modal dialogs' edit boxes (pre-existing).

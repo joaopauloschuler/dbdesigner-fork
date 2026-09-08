@@ -70,7 +70,7 @@ interface
 
 uses
   SysUtils, Types, Classes, Graphics, Controls, Forms, Dialogs,
-  StdCtrls, ExtCtrls, Menus, LCLType, LCLIntf, ComCtrls, Grids, DBGrids,
+  StdCtrls, ExtCtrls, Menus, LCLType, LCLIntf, LMessages, ComCtrls, Grids, DBGrids,
   DBXpress, DB, SqlExpr, ImgList, Buttons, DBCtrls, QT, Printers,
   Clipbrd, QStyle,
 {$IFDEF USE_QTheming}QThemed,{$ENDIF}
@@ -434,6 +434,8 @@ type
     procedure NavInfoPBoxPaint(Sender: TObject);
     procedure Test1Click(Sender: TObject);
     procedure ExportMDBXMLFileMIClick(Sender: TObject);
+    procedure EditMIClick(Sender: TObject);
+    procedure FormShortCut(var Msg: TLMKey; var Handled: Boolean);
   private
     { Private declarations }
     SelfTestTmr: TTimer;
@@ -460,6 +462,8 @@ type
     procedure SelfTestTmrTimer(Sender: TObject);
     procedure SelfTestIdleHandler(Sender: TObject; var Done: Boolean);
     procedure RunSelfTestNow;
+    function TextEditControlHasFocus: Boolean;
+    procedure RefreshEditMenuItems(QueryClipboard: Boolean);
   public
     { Public declarations }
     FActiveEERForm: TCustomForm;
@@ -1006,6 +1010,82 @@ begin
 
 end;
 
+//True while the keyboard focus is in a text editing control (edit, memo,
+//combo, SynEdit, grid in-place editor) - the standard Ctrl+C/X/V/A/Z/Y must
+//then go to that control and not to the model
+function TMainForm.TextEditControlHasFocus: Boolean;
+var c: TWinControl;
+begin
+  Result:=False;
+  try
+    c:=Screen.ActiveControl;
+    if(c<>nil)then
+      Result:=(c is TCustomEdit)or(c is TCustomComboBox)or
+        (c.ClassNameIs('TSynEdit'))or(c.ClassNameIs('TCustomSynEdit'));
+  except
+    //ActiveControl may point nowhere while a form is being destroyed
+  end;
+end;
+
+//CLX refreshed the Edit menu items through their OnShow events (UndoMIShow,
+//DeleteMIShow, PasteMIShow, ActivateEERMIOnShow in Main.xfm); the LCL
+//TMenuItem has no OnShow, so this is called from EditMI.OnClick (fires when
+//the submenu opens) and from FormShortCut (before a Ctrl+key shortcut is
+//looked up in the menu, so a disabled item lets the key through to the
+//focused edit control).
+//QueryClipboard=False skips the Clipboard.AsText call of PasteMIShow: under
+//GTK2 that call runs a nested main loop which swallows the Ctrl key release,
+//so the shortcut lookup that follows FormShortCut would no longer see Ctrl
+//and never match - PasteMIClick checks the clipboard content itself.
+procedure TMainForm.RefreshEditMenuItems(QueryClipboard: Boolean);
+var ModelActive, HasSel, InEdit: Boolean;
+begin
+  ModelActive:=False;
+  if(FActiveEERForm<>nil)then
+    if(FActiveEERForm.Classname='TEERForm')then
+      ModelActive:=True;
+
+  InEdit:=TextEditControlHasFocus;
+
+  HasSel:=False;
+  if(ModelActive)then
+    HasSel:=(TEERForm(FActiveEERForm).EERModel.GetSelectedObjsCount>0);
+
+  UndoMIShow(UndoMI);
+  RedoMIShow(RedoMI);
+  if(InEdit)then
+  begin
+    UndoMI.Enabled:=False;
+    RedoMI.Enabled:=False;
+  end;
+
+  CopyMI.Enabled:=HasSel and Not(InEdit);
+  CopyselectedObjectsasImageMI.Enabled:=HasSel;
+  CutMI.Enabled:=HasSel and Not(InEdit);
+  DeleteMI.Enabled:=HasSel and Not(InEdit);
+  SelectAllMI.Enabled:=ModelActive and Not(InEdit);
+  CenterModelMI.Enabled:=ModelActive;
+
+  PasteMI.Enabled:=ModelActive and Not(InEdit);
+  if(PasteMI.Enabled)and(QueryClipboard)then
+    PasteMIShow(PasteMI);
+end;
+
+procedure TMainForm.EditMIClick(Sender: TObject);
+begin
+  RefreshEditMenuItems(True);
+end;
+
+procedure TMainForm.FormShortCut(var Msg: TLMKey; var Handled: Boolean);
+begin
+  Handled:=False;
+
+  //Only the Edit menu shortcuts (Ctrl+Z/Y/C/X/V/A) need the refresh
+  if(KeyDataToShiftState(Msg.KeyData)*[ssShift, ssCtrl, ssAlt]=[ssCtrl])then
+    if(Msg.CharCode in [Ord('A'), Ord('C'), Ord('V'), Ord('X'), Ord('Y'), Ord('Z')])then
+      RefreshEditMenuItems(False);
+end;
+
 procedure TMainForm.NotationStandardMIClick(Sender: TObject);
 begin
   TMenuItem(Sender).Checked:=Not(TMenuItem(Sender).Checked);
@@ -1342,15 +1422,28 @@ end;
 
 procedure TMainForm.PasteMIClick(Sender: TObject);
 var f: TextFile;
-  ctext: string;
-  i, anz: integer;
+  ctext, s: string;
+  i, j, anz: integer;
+  theTbl: TEERTable;
+
+  function TableNameUsedByOther(theTable: TEERTable; const theName: string): Boolean;
+  var k: integer;
+  begin
+    Result:=False;
+    with TEERForm(FActiveEERForm).EERModel do
+      for k:=0 to ComponentCount-1 do
+        if(Components[k] is TEERTable)and(Components[k]<>theTable)then
+          if(CompareText(TEERTable(Components[k]).ObjName, theName)=0)then
+          begin
+            Result:=True;
+            Exit;
+          end;
+  end;
 begin
   if(FActiveEERForm<>nil)then
     if(FActiveEERForm.Classname='TEERForm')then
-      if(Clipboard.AsText<>'')then
+      if(Copy(Clipboard.AsText, 1, 1)='<')then
       begin
-        //ctext:=Clipboard.AsText;
-
         ctext:=DMEER.AssignNewIDsToEERObjects(Clipboard.AsText, True);
 
         AssignFile(f, DMMain.SettingsPath+'clipboard.xml');
@@ -1380,6 +1473,28 @@ begin
               inc(anz);
         end;
 
+        //The pasted objects (the selected ones) keep the names of the
+        //originals - give tables that collide with an existing table a
+        //unique name (name_1, name_2, ...)
+        with TEERForm(FActiveEERForm).EERModel do
+          for i:=0 to ComponentCount-1 do
+            if(Components[i] is TEERTable)then
+              if(TEERTable(Components[i]).Selected)then
+              begin
+                theTbl:=TEERTable(Components[i]);
+                s:=theTbl.ObjName;
+                j:=0;
+                while(TableNameUsedByOther(theTbl, s))do
+                begin
+                  inc(j);
+                  s:=theTbl.ObjName+'_'+IntToStr(j);
+                end;
+                if(s<>theTbl.ObjName)then
+                begin
+                  theTbl.ObjName:=s;
+                  theTbl.RefreshObj;
+                end;
+              end;
 
         DeleteFile(DMMain.SettingsPath+'clipboard.xml');
 
@@ -2958,7 +3073,7 @@ begin
 end;
 
 procedure TMainForm.DoApplicationEvent(Sender: QObjectH; Event: QEventH; var Handled: Boolean);
-var TypingInMemo: Boolean;
+var TypingInMemo, TypingInEdit: Boolean;
   Key: Word;
   theShiftState: TShiftState;
   EditorIsActive: Boolean;
@@ -2984,6 +3099,10 @@ begin
   except
     //Catch Linux exception when ActiveControl is not nil but points nowhere
   end;
+
+  //Any text editing control (also in a modal editor) has the focus:
+  //Ctrl+Z / Ctrl+Del etc. belong to it, not to the model
+  TypingInEdit:=TypingInMemo or TextEditControlHasFocus;
 
   // -------------------------------------------------------
   // Keydowns
@@ -3114,7 +3233,7 @@ begin
     begin
       // Del
       if(Key=VK_DELETE)and
-        (theShiftState=[ssCtrl])then
+        (theShiftState=[ssCtrl])and(Not(TypingInEdit))then
       begin
         DeleteMIClick(self);
         Handled:=True;
@@ -3221,13 +3340,13 @@ begin
 
       // Z
       else if(Key=Key_Z)and
-        (theShiftState=[ssCtrl])then
+        (theShiftState=[ssCtrl])and(Not(TypingInEdit))then
       begin
         UndoMIClick(self);
         Handled:=True;
       end
       else if(Key=Key_Z)and
-        (theShiftState=[ssCtrl, ssShift])then
+        (theShiftState=[ssCtrl, ssShift])and(Not(TypingInEdit))then
       begin
         RedoMIClick(self);
         Handled:=True;
@@ -3547,13 +3666,19 @@ end;
 procedure TMainForm.CopyselectedObjectsasImageMIClick(Sender: TObject);
 var ModelBmp: TBitmap;
 begin
-  //Save File
+  if(FActiveEERForm=nil)then
+    Exit;
+  if(FActiveEERForm.Classname<>'TEERForm')then
+    Exit;
+
   ModelBmp:=TBitmap.Create;
   try
     TEERForm(FActiveEERForm).EERModel.PaintModelToImage(ModelBmp, True);
 
-    // TODO: Copy bitmap to clipboard using LCL API
+    //TClipboard.Assign(TBitmap) publishes the image as image/bmp (pcfBitmap)
     Clipboard.Assign(ModelBmp);
+
+    DMGUI.SetStatusCaption(DMMain.GetTranslatedMessage('Selected Object(s) copied to clipboard as image.', -1));
   finally
     ModelBmp.Free;
   end;
