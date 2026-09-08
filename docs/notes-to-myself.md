@@ -1433,3 +1433,74 @@ navigation (`Down`x4 `Right` for File > Open Recent). Shots: `fix13-*`.
   the password (`ctrl+a BackSpace`, then `xdotool type`); restore the backup at the end.
 - `--selftest` under `xvfb-run -a`: 107 PASS / 0 FAIL. `DBConn.ini` (with `Password=bpsa`)
   and `DBDesignerFork_Settings.ini` (`WorkMode=1`) restored from the backups.
+
+## Verification: round 4 (db-ui-bug-catalog #1-#13)
+
+### Self-test count (question a): 93 PASS / 78 SKIP is the baseline
+
+- Five variants on the same source all give **93 PASS / 0 FAIL** (`xvfb-run -a`): real
+  `~/.DBDesigner4`; `ShowPalettesDocked=0` (74 SKIP: the four palette menu items become
+  enabled and pass, and the four palette buttons of Phase 7b disappear because the
+  palettes are no longer visible forms); no `[RecentFiles]` + `ReopenLastFile=0` (77 SKIP,
+  117 instead of 118 menu items - `OpenRecent<N>MI` items are created per recent file);
+  an empty `HOME`; `cwd=bin`. `DBConn.ini` with or without `Password=` makes no difference
+  either. So ini state, recent files, `DBConn_Current.ini` and cwd do *not* explain the
+  "107 PASS" some fix agents reported.
+- What the count *does* depend on: Phase 7b tests the buttons of every form that is
+  `Visible` at that moment (`Form:` lines in the log). Baseline forms: PaletteModelFrom,
+  PaletteDataTypesForm, PaletteNavForm, PaletteToolsForm, EERForm (19 buttons). Per phase:
+  6 = 41, 7 = 28, 7b = 19, 8 = 5. A run that leaves one more editor open (e.g. the
+  Query-mode `EditorQueryForm`, 22 buttons, if `PaletteModelFrom.AddBtn` -> `SetTable` gets
+  a connection) adds its buttons as PASSes. The 107 runs could not be reproduced with the
+  current source; the only state-dependent branch on that path was the connection selector
+  (see b), which is now disabled in self-test mode, and two consecutive runs after the
+  change gave 93/78 both times. Treat **93 PASS / 0 FAIL / 78 SKIP** (docked palettes,
+  one recent file) as the baseline; any FAIL matters, a PASS delta means the set of
+  visible forms at Phase 7b changed - compare the `Form:` lines, not the total.
+- Skip breakdown at baseline: 29 "In unsafe/skip list", 24 "Separator", 16 "Submenu
+  parent", 9 "Disabled" (Copy/Paste/SelectAll/CopyselectedObjectsasImage/CenterModel and
+  the four palette items while docked).
+
+### Self-test and database connections (question b)
+
+- Phase 6 clicks `QueryModeMI` after `DesignModeMI`, so the app is in Query mode by Phase
+  7b. There `PaletteModelFrom.AddBtn` creates a table and sends `QEventType_EditTable`,
+  which in Query mode opens `TEditorQueryForm.SetTable` -> `DMDB.GetDBConnButtonClick(self,
+  DefQueryDBConn)` -> `GetUserSelectedDBConn` -> modal `DBConnSelectForm` (the log showed
+  `[AUTO-CLOSE] Closing modal: DBConnSelectForm` right after `AddBtn`). The auto-close
+  timer cancels it, but only if it is still armed; if it was consumed by an earlier modal,
+  the selector waits forever, and if anything returns `mrOK` with a bad password the
+  `while(1=1)` retry loop in `GetDBConnButtonClick` shows the error box and re-opens the
+  selector without end. That is the "modal loop when DBConn.ini had no Password=" report.
+- Fix (commit 1f3c5da, `src/DBDM.pas`): `GetUserSelectedDBConn` returns `nil` and
+  `GetDBConnButtonClick` returns at once when `SettingsReadOnly` (the `--selftest` flag
+  from `MainDM`) is set. Every selector/connect entry point in the app goes through one of
+  the two (Main `ConnecttoDatabaseMI`, EditorQuery, EditorTableData, Reverse Engineering,
+  Synchronisation, Store in Database), so the self-test can never reach a real database
+  now. The selector form itself is not exercised by the self-test (its menu items are on
+  the unsafe list anyway). `DBConn.ini` md5 unchanged after the runs, `WorkMode=1` kept.
+
+### What the verification found and fixed
+
+- **#14** (26282ba): the c9c00bc "drop the `mx<x2` bound" change never landed - the commit only
+  added a `writeln(stderr,'DBG Click ...')` line, so `...` worked in the main app by luck (the
+  click fell inside the 22 px params column) and not in the plugins. The plugin editor's
+  "List index (-1)" comes from `DMDB.DatabaseTypes` being empty: `LoadSettingsFromIniFile`
+  reads `[DatabaseTypes]` from `<ProgName>_Settings.ini` and a plugin's ini has none. Fallback
+  to `DBDesignerFork_Settings.ini`, then a built-in list. Lesson: when a fix note says "dropped
+  the bound", `git show` the commit - and grep binaries/sources for leftover `DBG` lines.
+- **#15** (1a872fe): `QEventType_EnableMainFormRefreshTmr` cleared `FActiveEERForm` after
+  `UnregisterEERForm` had already switched to the surviving model; now only cleared when the
+  list is empty, and the surviving form's `FormActivate(nil)` re-sends the palette refresh
+  events that the closing form's `FormClose` had cleared with `nil`.
+- Open: #16 (Table Editor doubles the first typed char in the new row), #17 (Drop/Optimize/
+  Repair dialog height), #18 (`TableScope` display), #19 (DataImporter fields list lag).
+- Round trips: `tests/sqlite-roundtrip.sh` and `tests/mysql-roundtrip.sh` (into `dbdtest3`,
+  dropped afterwards) clean on fresh exports; `TestSQLExprShim`, `TestSQLite`, `TestMySQLShim`
+  print SUCCESS; all four plugins rebuild. Demo/HTMLReport/SimpleWebFront compile only their
+  .lpr on a rebuild (they do not use DBDM/DBConnSelect); DataImporter does and relinks.
+- Driving: two fork agents shared DISPLAY=:0 (main app vs standalone plugins) - works if each
+  matches windows by its own pid and always types the password (`DBConn.ini` loses `Password=`
+  whenever any selector closes). `$!` after `cd bin && ./X &` is the subshell's pid, not the
+  app's - use `pgrep -x DBDesignerFork`. Dead windows of old instances keep showing up in
+  `xdotool search`; filter by a live pid. Menu popups sit 11 px above the main window's y.

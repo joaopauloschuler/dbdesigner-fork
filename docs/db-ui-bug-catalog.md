@@ -123,6 +123,54 @@ Observed: the editor stays open; a "Division by zero - Press OK to ignore" box e
 Cause: `GetOrderByClause` (`Plugins/SimpleWebFront/EditorView.pas`) read `OrderColumnsComboBox.Items[ItemIndex]` with `ItemIndex = -1` (the LCL resets it on `Items.Clear` in `ShowColsInListBox`); `TGtkListStoreStringList.Get` reports out-of-bounds through `RaiseGDBException`, i.e. a deliberate integer division by zero; the `assert`s are compiled out.
 Status: fixed in e94f70a - -1 means no order/ascending, `ShowColsInListBox` re-selects index 0; editor re-laid out (500x615, no scroll ranges) so the Order By and Where-clause groups are not clipped.
 
+### 14. Database Connection Editor in the plugins: "..." button does nothing, "Edit Connection" raises "List index (-1) out of bounds"
+
+Severity: functional (found by the round-4 verification, plugins only).
+Steps: DataImporter > connection button; select the OrderMySQL row; click "..." (nothing); right-click > Edit Connection.
+Observed: "List index (-1) out of bounds" box, no editor (`verify/B-di-sel2.png`, `verify/B-di-popup.png`, `verify/B-di-msg.png`).
+Cause: two things. (a) `ConnectionsListViewClick` (`src/DBConnSelect.pas`) still had the `mx<x2` upper bound that c9c00bc was meant to drop (that commit only added a `writeln(stderr,'DBG Click ...')` line, so #1 worked in the main app only because the click happened to land inside the 22 px params column) - the "..." click missed and the DBG line was printed on every list click. (b) `TDMDB.LoadSettingsFromIniFile` reads `[DatabaseTypes]` from `<ProgName>_Settings.ini`; a plugin's `DBDplugin_<X>_Settings.ini` has no such section, so `DMDB.DatabaseTypes` is empty and the editor indexes `DatabaseTypes[DatabaseTypesCBox.ItemIndex]` with -1 (`src/DBConnEditor.pas:212`).
+Status: fixed in 26282ba - the hit-test uses the column's left edge only and calls `EditSelectedDBConn`; the DBG line is gone; `DatabaseTypes` falls back to `DBDesignerFork_Settings.ini` and then to the built-in list `MySQL/Oracle/ODBC/SQLite/MSSQL`. Verified: DataImporter "..." on OrderMySQL opens the editor pre-filled with Driver=MySQL (`verify/V-di-editor.png`).
+
+### 15. Closing one of two open models leaves the remaining model inactive: empty palettes, Plugins / Save in Database / Model Options do nothing
+
+Severity: functional.
+Steps: open order.xml; File > New (or Open from Database, which also creates a model); File > Close on the new model.
+Observed: "order" is displayed, but the Navigator/Datatypes/DB Model palettes are empty and Plugins > *, File > Save in Database and Options > Model Options do nothing silently (`verify/A-plugins-after.png`, `verify/A-sweep-noactive-palettes.png`).
+Cause: the `QEventType_EnableMainFormRefreshTmr` handler in `src/Main.pas` set `FActiveEERForm := nil` on every child-form close, after `UnregisterEERForm` (called from `TEERForm.FormClose`) had already switched to the surviving model; every `if(FActiveEERForm<>nil)` handler then bailed. The closing form's palette-clear events also left the palettes empty.
+Status: fixed in 1a872fe - the reference is only cleared when no registered form is left, and the surviving form's `FormActivate` is re-run to refill the palettes. Verified: File > New, File > Close -> palettes populated, Model Options opens (`verify/V-s1-fixed.png`).
+
+### 16. Table Editor: the first character typed into the empty new-column row is doubled
+
+Severity: functional (minor).
+Steps: open the Table Editor of `productgroup`; click the Column Name cell of the empty last row; type `abc`.
+Observed: the cell shows `aabc` (`verify/A-sweep-te-dupchar.png`; `synccol` became `ssynccol`, `verify/A-sweep-te-newcol.png`). Reproduced twice.
+Suspected cause: `ColumnGridKeyDown` (`src/EditorTable.pas:~1013`) starts the in-place editor on the key and the LCL grid then re-delivers the same key to the editor. Fix scope: small. Not in ui-bug-catalog.md.
+Status: open.
+
+### 17. SQL Drop / Optimize / Repair script dialogs keep the full height of the Create dialog (~430 px blank)
+
+Severity: cosmetic.
+Steps: File > Export > SQL Drop Script (also Optimize Table Script, Repair Table Script).
+Observed: 537x579 dialog with the settings group hidden and a large blank area above the buttons (`verify/A-sweep-drop.png`, `A-sweep-optimize.png`, `A-sweep-repair.png`). The scripts themselves are correct (12 `DROP TABLE` in FK order, `OPTIMIZE TABLE`, `REPAIR TABLE`; `<scratchpad>/verify4/A-drop.sql` etc.).
+Suspected cause: `src/EERExportSQLScript.pas:~175` - `Height:=Height-SQLCreatesSettingGBox.Height-10` is commented out (the buttons would need `akBottom` anchors). Fix scope: small.
+Status: open.
+
+### 18. Database Connection Editor, Advanced page: `TableScope` shown as `tsTable, tsView,`
+
+Severity: cosmetic (minor).
+Steps: edit OrderSQLite/OrderMySQL, Advanced page.
+Observed: the `TableScope` value `[tsTable, tsView]` is displayed as `tsTable, tsView,` (brackets stripped, trailing comma) (`verify/A-03-advanced.png`).
+Suspected cause: `RefreshParams` in `src/DBConnEditor.pas` splitting the set string on `,` for the grid. Fix scope: small.
+Status: open.
+
+### 19. DataImporter: "Fields of the Destination Table" list lags one selection behind the table combo when selected with the keyboard
+
+Severity: cosmetic (minor).
+Steps: DataImporter connected to OrderMySQL; open the destination table combo and move with the Down key.
+Observed: combo shows `webserver` while the fields list still shows `forumtopic`'s columns (`verify/B-di-8.png`); the next selection re-syncs.
+Suspected cause: the list is filled from `OnChange`/`OnSelect` per intermediate item under GTK2 (`Plugins/DataImporter/DBImportData.pas`). Fix scope: small.
+Status: open.
+
 ## Not bugs / could not reproduce
 
 - Connection selector tree: nodes named "..." under "Network Hosts"/"MySQL" are lazy-expansion placeholders (`DBConnSelect.pas:222,259`), not a bug. Clicking "SQLite"/"All Connections" filters the list correctly (first click sometimes only focuses the tree; keyboard navigation works).
@@ -141,3 +189,51 @@ Status: fixed in e94f70a - -1 means no order/ascending, `ShowColsInListBox` re-s
 Exercised (all on the real display, screenshots in `<scratchpad>/shots/db-ui/`): Database menu; connection selector (row selection, tree filtering, "..." button, New Database Connection, wrong credentials, Connect); Database Connection Editor (General/Advanced pages, driver list, all fields, OK, persistence in DBConn.ini); Reverse Engineering against MySQL (all controls, Execute into the open model); Synchronisation against MySQL (Execute, log); Query Mode (SELECT, INSERT, record buttons); Plugins Demo, HTMLReport, DataImporter (tabs, connection dialog), SimpleWebFront (pages); File > Export > SQL Create Script dialog (target list, options, buttons).
 
 Not reached in the 30-minute limit: Reverse Engineering against SQLite (OrderSQLite connection was not used this round), synchronisation error handling with a deliberately broken model, DBGrid editing/posting of data, SQL Drop/Optimize/Repair script dialogs, actual content of the exported SQLite script, Options > Model Options database pages, Table Editor datatype lists for SQLite, "Open from Database"/"Save in Database", plugin end-to-end runs (import a text file, generate web pages/HTML report), deleting a connection with the eraser button.
+
+## Verification (round 4)
+
+Date: 2026-09-08, real display (DISPLAY=:0), build at e4ffd19 plus the verification commits
+1f3c5da, 26282ba, 1a872fe. Screenshots: `<scratchpad>/shots/db-ui/verify/` (`A-*` main app,
+`B-*` plugins, `V-*` verifier).
+
+| Entry | Result | Note |
+|---|---|---|
+| 1 "..." / Edit Connection | verified (main app); regressed in plugins -> fixed | Main app: both routes open the editor pre-filled (`A-01-editor-dots.png`, `A-01-editor-popup.png`). Plugins: "..." missed and Edit Connection crashed (#14) - the committed hit-test still had the upper bound; fixed in 26282ba, re-verified in DataImporter (`V-di-editor.png`) |
+| 2 Port field | verified | new connection typed `3307` -> `Port=3307` in DBConn.ini (`A-02-port-filled.png`, `A-02-sel6.png`) |
+| 3 editor cosmetics | verified | label clear of combo, typed username survives driver CloseUp, "Value" header (`A-03-backmysql.png`, `A-03-advanced.png`); see #18 for the TableScope display |
+| 4 MySQL login error | verified | "Access denied for user 'bpsa'@'localhost' (using password: YES)", selector reopens with the row selected and password cleared (`A-04-error.png`, `A-04-after.png`) |
+| 5 reverse engineering layout | verified | OrderMySQL "12 skipped", canvas `compare -metric AE` = 0; OrderSQLite "12 skipped", `child`/`parent` in free cells (`A-05-*.png`) |
+| 6 sync memo | verified | ends on "Synchronisation finished. / 12 Tables compared. / 50 Columns compared." untouched (`A-06-sync-exec.png`) |
+| 7 Query-mode DML | verified | INSERT idproduct=99 visible in `mysql` while connected (count 4), DELETE -> 3 (`A-07-insert.png`) |
+| 8 DataImporter tabs/layout/password | verified | tabs switch, captions unclipped, status text explains the disabled Execute, selector pre-selected (`B-di-tabs.png`, `B-di-1.png`, `B-di-sel1.png`) |
+| 9 SimpleWebFront | verified | 799x356 without blank strip; 127.0.0.1/dbdtest/bpsa pre-filled from `DBConn_Current.ini`; Grid Options/Views pages clean; Create Webpages wrote `index.php`, `db_open.php` (`B-swf-1.png`, `B-swf-6.png`). The launch-from-menu pre-fill was not re-driven by agent A (blocked by #15 in that session); the ini path is the same code |
+| 10 export dialog | verified | caption clear; My SQL/Oracle/PostgreSQL/SQLite states consistent; SQLite script 12 CREATE TABLE / 5 AUTOINCREMENT / 0 SEQUENCE-TRIGGER; My SQL script 3 `ENGINE=`, 5 AUTO_INCREMENT (`A-10-*.png`) |
+| 11 Progress form | verified | Execute shows the Progress window, no BorderStyle box |
+| 12 import errors / unmapped columns | verified | 3-row CSV -> `product_import` count 3, `pic` NULL; duplicate-PK re-import -> "Data import failed after 0 lines ... Duplicate entry '201'" and the table unchanged (`B-di-import.png`, `B-di-fail.png`) |
+| 13 View Editor OK | verified | "Products" on `product` -> editor closes, view listed, no hidden box (`B-swf-4.png`, `B-swf-vieweditor.png`) |
+
+Summary: 13/13 entries verified; one partial regression (#1 in the plugins, plus the leftover
+`DBG` stderr line) found and fixed as #14.
+
+Earlier rounds (round-trip tables): SQLite stages A/B/D/F and MySQL stages A-F hold.
+`tests/sqlite-roundtrip.sh` on the fresh SQLite export: no load errors, 12 tables, 5 AUTOINCREMENT,
+rows loaded once; `tests/mysql-roundtrip.sh` on the fresh My SQL export into `dbdtest3`: no errors,
+12 tables, 5 auto_increment, 3 InnoDB (`<scratchpad>/verify4/rt-*.txt`). Sync against OrderSQLite
+still fails with `near "show": syntax error` (sqlite-bug-catalog #8, expected, DB untouched).
+
+## Round-4 sweep findings
+
+Functional:
+- #14 (fixed, 26282ba): plugin connection editor "..." / Edit Connection.
+- #15 (fixed, 1a872fe): surviving model inactive after closing another model (found via Open from Database + Close).
+- #16 (open): Table Editor doubles the first character typed into the new-column row.
+
+Cosmetic:
+- #17 (open): Drop/Optimize/Repair script dialogs keep the Create dialog's height.
+- #18 (open): `TableScope` shown as `tsTable, tsView,` in the Advanced grid.
+- #19 (open): DataImporter fields list lags the table combo on keyboard selection.
+- SimpleWebFront: "Create Webpages" stays disabled with an empty Password field and gives no hint (by design of `InputComplete`; a status hint like DataImporter's would help).
+
+Swept without findings: Reverse Engineering against SQLite (14 tables, 12 skipped, 2 placed); Synchronisation with a changed model (`productgroup` column added -> "1 Column added.", applied to MySQL, reverted with ALTER TABLE); Query-mode DBGrid browsing and in-cell edit + post (no error, no write-back as documented); Open from Database (connects, empty model list, nothing created); Save in Database (blocked by #15 in the session, not re-driven after the fix); Model Options General/Database/Plugin Data pages unclipped; Table Editor datatype list is the MySQL list for every model (there is no SQLite datatype list in `DatabaseInfo.ini`, only `SQLite_MySQL_DatatypeSubst`); eraser button deletes a connection after a confirmation and removes it from DBConn.ini; HTMLReport end-to-end (69 KB report); Demo opens.
+
+Self-test: baseline is 93 PASS / 0 FAIL / 78 SKIP (see notes-to-myself.md "Verification: round 4"); the self-test no longer opens the connection selector (1f3c5da).
