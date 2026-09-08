@@ -1085,3 +1085,17 @@ navigation (`Down`x4 `Right` for File > Open Recent). Shots: `fix13-*`.
 - `--selftest` 107 PASS / 0 FAIL, `DBConn.ini` md5 unchanged; `dbdtest2`/`dbdtest3` dropped,
   `DBConn.ini` restored from `$S/fix06-DBConn.ini.bak` (with the `Password=` line).
 
+
+## Verification of mysql-bug-catalog #1-#9 and fix #10 (sync `Null` YES/NO)
+
+- All nine entries verified on the real display (details in the catalog's "Verification"
+  section); `--selftest` 107/0, standalone tests pass, plugins build.
+- **#10**: `EERMySQLSyncDB` "check not null" now accepts `Y` and `YES`. With the MySQL general
+  log switched to `log_output=TABLE` (`SET GLOBAL general_log=1` works for `bpsa`; `mysql.general_log`
+  is the easiest witness for what a sync really sent, `TRUNCATE` it between runs) the second sync of
+  an unchanged `order.xml` sends only the two `BINARY` ALTERs (catalog #11).
+- Driving gotchas: a `Password=` line in `DBConn.ini` pre-fills the selector's password box, so
+  `xdotool type` appends - `ctrl+a BackSpace` first. The first click after typing into the query memo
+  is still lost sometimes (repeat with `windowactivate`). Plugins menu order is the reverse of the
+  `readdir` order (`ls -U bin | grep DBDplugin_`): Demo, HTMLReport, DataImporter, SimpleWebFront.
+  `pgrep -x DBDplugin_HTMLReport` never matches (name > 15 chars), use `pgrep -f`.

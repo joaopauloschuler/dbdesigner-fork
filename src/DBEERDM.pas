@@ -2620,8 +2620,10 @@ begin
 
 
 
-            //check not null
-            if(theColumn.NotNull<>(DMDB.SchemaSQLQuery.Fields[2].AsString<>'Y'))then
+            //check not null (MySQL 8 answers YES/NO, older servers Y/N; mysql-bug-catalog #10)
+            if(theColumn.NotNull<>
+              ((DMDB.SchemaSQLQuery.Fields[2].AsString<>'Y')and
+               (DMDB.SchemaSQLQuery.Fields[2].AsString<>'YES')))then
               ColumnChanged:=True;
 
             //theColumn.AutoInc:=False;

@@ -100,6 +100,11 @@ dialog. Everything below was observed with those two edits in place unless state
 - Repro: after stage E `SHOW CREATE TABLE product` in `dbdtest2` has no `COMMENT` clauses, while the same table created from the exported script in `dbdtest` has `COMMENT 'The AutoIncrement ID Field'` etc. (`$S/shimtest.txt` "show create" vs `mysql dbdtest2 -e "SHOW CREATE TABLE product\G"`).
 - Suspects: the sync builds its own CREATE/ALTER text in `EERMySQLSyncDB` instead of `GetSQLCreateCode` with comments on. Not checked further. Complexity: **small/medium**.
 
+### 10. Synchronisation "modifies" every nullable column of an unchanged table (`Null` compared with `Y`, MySQL 8 answers `YES`)
+- **FIXED** (branch a3, verification round). `EERMySQLSyncDB` (`src/DBEERDM.pas`, "check not null") compared the model's `NotNull` with `SHOW FIELDS` `Null <> 'Y'`; MySQL 5+ returns `YES`/`NO`, so every nullable column looked changed and got a `MODIFY COLUMN` with its unchanged definition on every run. Now `Y` and `YES` are both accepted (the reverse engineering already did that). Verified with the general log: the second sync of the unchanged `order.xml` into `dbdtest2` issues no ALTER except the two `BINARY` columns of #11.
+- Severity: **cosmetic / noisy** (harmless re-applied definitions, but the log hides real changes among ~40 false ones)
+- Repro (before): sync `order.xml` twice into an empty database; the second run logs `Modifying column X from table Y` for every nullable column.
+
 ## Not tested
 - ~~Clean File > Exit and whether it writes the new connection (#6)~~ - it does (fix round); the keyboard path `File` + `End` + `Return` opens the recent-files submenu, click the last menu item instead.
 - Reverse engineering with "Create Standard Inserts from table data", datatype substitution variants, "Based on Tablenames and ID-Fieldnames" relation mode.
@@ -117,3 +122,57 @@ dialog. Everything below was observed with those two edits in place unless state
 - Error boxes: parse the *absolute* geometry (last `+x+y` on the `xwininfo -root -tree` line), OK is at (width-55, height-27). `import`/`xwininfo` fail with "Resource temporarily unavailable" while a GTK menu is open.
 - `pkill -f "DBDesignerFork <path>"` kills your own `bash -c` (exit 144); use `pgrep -x DBDesignerFork | xargs kill`.
 - The app reopens the last file at start (`ReopenLastFile=1`), so File > New before reverse engineering into a fresh model.
+
+## Verification (branch a3, after commits bb89f64, fee5471, cc66307 + #10)
+
+Build: `lazbuild -B DBDesignerFork.lpi` and the 4 plugins clean; `tests/TestSQLite.pas`,
+`tests/TestSQLExprShim.pas`, `tests/TestMySQLShim.pas` pass with empty `LD_LIBRARY_PATH`;
+`xvfb-run -a ./bin/DBDesignerFork --selftest` 107 PASS / 0 FAIL, exit 0, `DBDesignerFork_Settings.ini`
+and `DBConn.ini` md5 unchanged, `WorkMode=1`. Screenshots/logs: `$S/verify/verify-*.png`.
+
+| Entry | Result | Note |
+|---|---|---|
+| #1 connector | verified | selector -> connect -> "Connected to Database bpsa@dbdtest"; wrong password / port 3307 give the error box and the selector comes back (no crash, no hang, ~4 s) |
+| #2 schema fields | verified | Reverse Engineering and Synchronisation dialogs open on the 12-table db, `TestMySQLShim` 5/14/11 fields |
+| #3 ENGINE= | verified | export byte-identical to `$S/mysql/fix01-order_mysql.sql`, `tests/mysql-roundtrip.sh` 0 errors, 12 tables |
+| #4 AutoInc | verified | 5 `AutoInc="1"` in `$S/verify/reveng.xml` |
+| #5 UNIQUE/prefix | verified | `product_ean` `IndexKind=2`, `info(100)` kept |
+| #6 DBConn.ini | verified | the `[OrderMySQL2]`/`4`/`U` entries survived a kill; note: a hand-written `Password=` line is loaded into the selector's password box, so typing there *appends* (first "Server connect failed" of this round was `bpsabpsa`) - clear the box first |
+| #7 native FKs | verified | with the 2 exported FKs in `dbdtest`: both come back with their CASCADE rules, the other 9 via the name heuristic (10/11, self-relation not guessable without an FK); composite 2-column FK recovered as `FKFields="a=pa\nb=pb"` with CASCADE/RESTRICT |
+| #8 error summary | not re-tested | no failing statement occurred in this round (all 12 tables load) |
+| #9 comments | verified | `SHOW CREATE TABLE product` in `dbdtest2` has the 4 column COMMENTs after the sync |
+| #10 Null YES | verified | second sync of the unchanged model: only the 2 BINARY ALTERs of #11 in the general log |
+
+Round-trip table, this round:
+
+| Stage | Status |
+|---|---|
+| A export "My SQL" | works, identical to the last round |
+| B load | works, 0 errors, 12 tables, 5 auto_increment |
+| C connect + reverse engineer | works (`$S/verify/verify-revdlg.png`) |
+| D compare | works: 12 tables, all columns OK, AutoInc, UNIQUE, 10/11 relations (`$S/verify/compare.txt`) |
+| E sync | works: 12 tables + comments, no error box; unchanged model -> no ALTER (except #11); modified model (`$S/mysql/order_mod.xml`) -> `ALTER TABLE productgroup MODIFY COLUMN groupname VARCHAR(60) NOT NULL` + `CREATE TABLE synctest`, both verified with the CLI; "Don't delete existing Tables" unchecked -> `drop table synctest` |
+| F query mode | works: 3 rows, "Query opened. 3 Record(s) fetched"; `nosuch` -> error box |
+| SQLite regression | works: reverse engineering of `$S/sqlite/verify/order.sqlite` returns the 12 tables with all columns and 11 relations |
+
+Sweep also covered: reverse engineering into an open model ("12 table(s) already exist in the model and were skipped"),
+a database named `DbdUpper` (sync creates both tables), the HTMLReport plugin on a reverse-engineered model
+(`$S/verify/report.html`). "Apply changes to Model" is greyed out in the sync dialog (not offered).
+
+## Round 2 findings
+
+### 11. Synchronisation always re-applies `VARCHAR ... BINARY` columns (BINARY option not visible in `SHOW FIELDS` Type on MySQL 8)
+- Severity: **cosmetic / noisy** (one harmless `MODIFY COLUMN` per BINARY column on every sync)
+- Repro: sync `order.xml` into an empty db twice; the second run logs `Modifying column name from table webserver` and `... ip from table weblog` and the general log shows `ALTER TABLE webserver MODIFY COLUMN name Varchar(20) BINARY NULL` (same for `weblog.ip`).
+- Cause: the "Check Options" loop in `EERMySQLSyncDB` (`src/DBEERDM.pas` ~2761) looks for each datatype option (`BINARY`, `UNSIGNED`, ...) as a substring of `SHOW FIELDS` `Type`. MySQL 8 stores `VARCHAR(20) BINARY` as `varchar(20)` with collation `utf8mb4_bin`; the Type string no longer contains `BINARY`, so the option always compares as "not set in db".
+- Fix idea: use `SHOW FULL FIELDS` and treat a `_bin` collation as the `BINARY` option for string types (only for options named BINARY). Complexity: **small**.
+
+### 12. "Don't delete existing Tables" unchecked drops tables without confirmation
+- Severity: **usability / data loss risk** (by design in DBDesigner 4; noted because a wrong model file or a linked-table mix-up would silently drop data)
+- Repro: model without `synctest`, db with it, uncheck the box, Execute: the log says `Drop table synctest` and the table is gone, no question asked.
+- Suspects: `EERMySQLSyncDB` drop loop in `src/DBEERDM.pas`. Fix idea: a `MessageDlg` listing the tables about to be dropped (once, before executing). Complexity: **small**.
+
+### 13. Sync header counts linked tables: "13 Table(s) in Database, 14 Table(s) in Model"
+- Severity: **cosmetic**
+- Repro: `order.xml` has 12 own tables + 2 linked (`Employee`, `News`); the sync only creates the 12 (the linked ones are skipped correctly) but the count says 14, so the log never "adds up".
+- Suspects: the count uses `TEERModel` table count including `IsLinkedObject` tables. Complexity: **small**.
