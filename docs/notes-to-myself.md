@@ -1099,3 +1099,38 @@ navigation (`Down`x4 `Right` for File > Open Recent). Shots: `fix13-*`.
   is still lost sometimes (repeat with `windowactivate`). Plugins menu order is the reverse of the
   `readdir` order (`ls -U bin | grep DBDplugin_`): Demo, HTMLReport, DataImporter, SimpleWebFront.
   `pgrep -x DBDplugin_HTMLReport` never matches (name > 15 chars), use `pgrep -f`.
+
+
+## Fix: sync BINARY re-apply, drop confirmation, linked-table count (mysql-bug-catalog #11, #12, #13)
+
+- **#11**: MySQL 8 reports `VARCHAR(20) BINARY` as `varchar(20)` + collation `utf8mb4_bin`; the
+  `SHOW FIELDS` `Type` string never contains `BINARY`, so the "Check Options" loop of
+  `EERMySQLSyncDB` (`src/DBEERDM.pas`) saw the option as unset and emitted a `MODIFY COLUMN`
+  on every run. The column comparison now runs `show full fields from <table>` (Field, Type,
+  Collation, Null, Key, Default, Extra, Privileges, Comment), all its positional `Fields[n]`
+  reads were changed to `FieldByName(...)` (the extra Collation column would have shifted them),
+  and an option named `BINARY` also counts as set in the db when the collation ends in `_bin`.
+  `Collation` is a real column (NULL for non-string types) so it does not vanish like the
+  `NULL AS x` literals of #2. Witness: `mysql.general_log` of the second sync of `order.xml`
+  into a fresh db - 12 `show full fields`, 0 `ALTER`; the memo ends with `12 Tables compared.
+  50 Columns compared.` and no `Modifying column` line (`$S/fix11-genlog2.txt`,
+  `$S/fix11-sync2b-c.png`).
+- **#12**: the drop loop now fills a `DropTables` list first (only when "Don't delete existing
+  Tables" is unchecked) and asks once with `MessageDlg(..., mtConfirmation, [mbYes, mbNo])`
+  listing the tables; Yes drops them as before, No logs `Dropping of N table(s) skipped by
+  user: ...` and the sync continues with the column comparison. The message uses
+  `GetTranslatedMessage(..., -1, ...)` (out-of-range number = untranslated original) so no
+  translation slot is claimed. `Controls` (mrYes) and `StrUtils` (RightStr) were added to the
+  uses clause. Verified on the display (`$S/fix11-confirm.png`, `$S/fix11-noyes.png`).
+- **#13**: `TEERSynchronisationForm.GetDBConnSBtnClick` (`src/EERSynchronisation.pas`) counted
+  `GetEERObjectCount([EERTable])` incl. the 2 linked tables. It now walks `GetEERObjectList`
+  and skips `IsLinkedObject` tables unless `EERModel.CreateSQLforLinkedObjects`, the same rule
+  `EERMySQLSyncDB` applies to its `ModelTables` list. Header now `12 Table(s) in Model.`
+- Driving: Database menu at client (185,12); its popup is a 234x135 window at +189+95 with
+  "Database Synchronisation" at y+68. The selector pre-fills the password from `DBConn.ini`;
+  the Connect button is at window (683,235). In the sync dialog (395x518) "Don't delete existing
+  Tables" is at (47,141) and Execute at (257,459). The Execute click right after a click into
+  the progress memo is lost sometimes - `windowactivate` and click again. `ctrl+End` in the
+  memo scrolls to the end of the log.
+- `--selftest` 0 FAIL, `tests/TestMySQLShim.pas` SUCCESS, `dbdtest2` dropped, general log
+  off and truncated, `DBConn.ini` restored from `$S/fix11-DBConn.ini.bak`.

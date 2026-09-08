@@ -58,7 +58,7 @@ interface
 
 uses
   SysUtils, Classes, LCLType, SqlExpr, DB, Forms, StdCtrls, Dialogs,
-  EERModel, DBXpress, RegExpr;
+  EERModel, DBXpress, RegExpr, StrUtils, Controls;
 
 type
   CreateTableSyntax = (MySQL, SQLite, Oracle, MSSQL);
@@ -2344,7 +2344,8 @@ var EERModel: TEERModel;
   theDatatype, theModelDatatype: TEERDatatype;
   s, DatatypeName, DatatypeParams, prevIndex: string;
   NewPrimaryKey, ColumnChanged, ChangeColumnName,
-  checkIndex, PKFieldIsChecked: Boolean;
+  checkIndex, PKFieldIsChecked, OptionInDB, DoDropTables: Boolean;
+  DropTables: TStringList;
   //IndexComment: string;
   ColumnCompCounter, ColumnModCounter, ColumnDelCounter,
   ColumnAddCounter,
@@ -2521,22 +2522,45 @@ begin
       //Drop tables not longer in model in reverse order
       DMMain.ReverseList(ModelTables);
 
-      for i:=0 to DbTables.Count-1 do
-      begin
-        position:=-1;
-        for j:=0 to ModelTables.Count-1 do
-          if(CompareText(DbTables[i], TEERTable(ModelTables[j]).ObjName)=0)then
-            position:=j;
+      //Collect the tables to drop first and ask once before the first DROP
+      //(mysql-bug-catalog #12); "No" skips the drops, the sync goes on
+      DropTables:=TStringList.Create;
+      try
+        if(Not(KeepExTbls))then
+          for i:=0 to DbTables.Count-1 do
+          begin
+            position:=-1;
+            for j:=0 to ModelTables.Count-1 do
+              if(CompareText(DbTables[i], TEERTable(ModelTables[j]).ObjName)=0)then
+                position:=j;
 
-        //if the table is not in DB-Table List, create it
-        if(position=-1)and(Not(KeepExTbls))then
-        begin
-          Log.Add(DMMain.GetTranslatedMessage('Drop table %s', 155,
-            DbTables[i]));
-          inc(TableDropCounter);
+            if(position=-1)then
+              DropTables.Add(DbTables[i]);
+          end;
 
-          ExecSyncStmt('drop table '+DbTables[i], False);
-        end;
+        DoDropTables:=(DropTables.Count>0);
+        if(DoDropTables)then
+          DoDropTables:=(MessageDlg(
+            DMMain.GetTranslatedMessage('The following %s table(s) are not in the model '+
+              'and will be DROPPED from the database (all their data is lost):'+#13#10#13#10+
+              '%s'+#13#10#13#10+'Drop these tables?', -1,
+              IntToStr(DropTables.Count), DropTables.CommaText),
+            mtConfirmation, [mbYes, mbNo], 0)=mrYes);
+
+        if(DoDropTables)then
+          for i:=0 to DropTables.Count-1 do
+          begin
+            Log.Add(DMMain.GetTranslatedMessage('Drop table %s', 155,
+              DropTables[i]));
+            inc(TableDropCounter);
+
+            ExecSyncStmt('drop table '+DropTables[i], False);
+          end
+        else if(DropTables.Count>0)then
+          Log.Add('Dropping of '+IntToStr(DropTables.Count)+
+            ' table(s) skipped by user: '+DropTables.CommaText);
+      finally
+        DropTables.Free;
       end;
 
       //Re-reverse order
@@ -2568,22 +2592,26 @@ begin
         DbColumns.Clear;
         IndexColumns.Clear;
 
-        DMDB.SchemaSQLQuery.SQL.Text:='show fields from '+theTable.ObjName;
+        //SHOW FULL FIELDS: Field, Type, Collation, Null, Key, Default, Extra,
+        //Privileges, Comment. Read by name: MySQL 8 reports a VARCHAR ... BINARY
+        //column as varchar(n) with a *_bin collation instead of "BINARY" in the
+        //Type string (mysql-bug-catalog #11)
+        DMDB.SchemaSQLQuery.SQL.Text:='show full fields from '+theTable.ObjName;
         DMDB.SchemaSQLQuery.Open;
         while(Not(DMDB.SchemaSQLQuery.EOF))do
         begin
           inc(ColumnCompCounter);
-          DbColumns.Add(DMDB.SchemaSQLQuery.Fields[0].AsString);
+          DbColumns.Add(DMDB.SchemaSQLQuery.FieldByName('Field').AsString);
 
           //find column
           theColumn:=nil;
           ColNr:=-1;
           ChangeColumnName:=False;
           for j:=0 to theTable.Columns.Count-1 do
-            if(CompareText(DMDB.SchemaSQLQuery.Fields[0].AsString, TEERColumn(theTable.Columns[j]).ColName)=0)or
-              (CompareText(DMDB.SchemaSQLQuery.Fields[0].AsString, TEERColumn(theTable.Columns[j]).PrevColName)=0)then
+            if(CompareText(DMDB.SchemaSQLQuery.FieldByName('Field').AsString, TEERColumn(theTable.Columns[j]).ColName)=0)or
+              (CompareText(DMDB.SchemaSQLQuery.FieldByName('Field').AsString, TEERColumn(theTable.Columns[j]).PrevColName)=0)then
             begin
-              if(CompareText(DMDB.SchemaSQLQuery.Fields[0].AsString, TEERColumn(theTable.Columns[j]).PrevColName)=0)then
+              if(CompareText(DMDB.SchemaSQLQuery.FieldByName('Field').AsString, TEERColumn(theTable.Columns[j]).PrevColName)=0)then
                 ChangeColumnName:=True;
 
               ColNr:=j;
@@ -2595,10 +2623,10 @@ begin
           if(theColumn=nil)then
           begin
             Log.Add(DMMain.GetTranslatedMessage('Dropping column %s from table %s', 157,
-              DMDB.SchemaSQLQuery.Fields[0].AsString, theTable.ObjName));
+              DMDB.SchemaSQLQuery.FieldByName('Field').AsString, theTable.ObjName));
             inc(ColumnDelCounter);
 
-            SQLStr.Add('ALTER TABLE '+theTable.ObjName+' DROP COLUMN '+DMDB.SchemaSQLQuery.Fields[0].AsString);
+            SQLStr.Add('ALTER TABLE '+theTable.ObjName+' DROP COLUMN '+DMDB.SchemaSQLQuery.FieldByName('Field').AsString);
           end
           else
           begin
@@ -2607,37 +2635,37 @@ begin
 
 
             //Add to IndexColumns List
-            if(DMDB.SchemaSQLQuery.Fields[3].AsString='PRI')then
-              IndexColumns.Add(DMDB.SchemaSQLQuery.Fields[0].AsString);
+            if(DMDB.SchemaSQLQuery.FieldByName('Key').AsString='PRI')then
+              IndexColumns.Add(DMDB.SchemaSQLQuery.FieldByName('Field').AsString);
 
             //check primary key change
             if(theColumn.PrimaryKey=True)and
-              (Not(DMDB.SchemaSQLQuery.Fields[3].AsString='PRI'))then
+              (Not(DMDB.SchemaSQLQuery.FieldByName('Key').AsString='PRI'))then
               NewPrimaryKey:=True;
 
-            if(theColumn.PrimaryKey=False)and(DMDB.SchemaSQLQuery.Fields[3].AsString='PRI')then
+            if(theColumn.PrimaryKey=False)and(DMDB.SchemaSQLQuery.FieldByName('Key').AsString='PRI')then
               NewPrimaryKey:=True;
 
 
 
             //check not null (MySQL 8 answers YES/NO, older servers Y/N; mysql-bug-catalog #10)
             if(theColumn.NotNull<>
-              ((DMDB.SchemaSQLQuery.Fields[2].AsString<>'Y')and
-               (DMDB.SchemaSQLQuery.Fields[2].AsString<>'YES')))then
+              ((DMDB.SchemaSQLQuery.FieldByName('Null').AsString<>'Y')and
+               (DMDB.SchemaSQLQuery.FieldByName('Null').AsString<>'YES')))then
               ColumnChanged:=True;
 
             //theColumn.AutoInc:=False;
 
             //-------------------------------
             //Get Datatype name from DB
-            DatatypeName:=DMDB.SchemaSQLQuery.Fields[1].AsString;
+            DatatypeName:=DMDB.SchemaSQLQuery.FieldByName('Type').AsString;
             DatatypeParams:='';
             if(Pos('(', datatypename)>0)then
             begin
               DatatypeName:=Copy(DatatypeName, 1, Pos('(', DatatypeName)-1);
-              DatatypeParams:=Copy(DMDB.SchemaSQLQuery.Fields[1].AsString,
-                Pos('(', DMDB.SchemaSQLQuery.Fields[1].AsString),
-                Pos(')', DMDB.SchemaSQLQuery.Fields[1].AsString)-Pos('(', DMDB.SchemaSQLQuery.Fields[1].AsString)+1);
+              DatatypeParams:=Copy(DMDB.SchemaSQLQuery.FieldByName('Type').AsString,
+                Pos('(', DMDB.SchemaSQLQuery.FieldByName('Type').AsString),
+                Pos(')', DMDB.SchemaSQLQuery.FieldByName('Type').AsString)-Pos('(', DMDB.SchemaSQLQuery.FieldByName('Type').AsString)+1);
             end;
             //int unsigned -> just get int
             if(Pos(' ', datatypename)>0)then
@@ -2651,20 +2679,20 @@ begin
             if(theColumn.DefaultValue='')then
             begin
               //and the defval in db is not 0 and not ''
-              if((DMDB.SchemaSQLQuery.Fields[4].AsString<>'0')and(DMDB.SchemaSQLQuery.Fields[4].AsString<>'')and
-                (DMDB.SchemaSQLQuery.Fields[4].AsString<>'0000-00-00 00:00:00')and
-                (DMDB.SchemaSQLQuery.Fields[4].AsString<>'0000-00-00'))then
+              if((DMDB.SchemaSQLQuery.FieldByName('Default').AsString<>'0')and(DMDB.SchemaSQLQuery.FieldByName('Default').AsString<>'')and
+                (DMDB.SchemaSQLQuery.FieldByName('Default').AsString<>'0000-00-00 00:00:00')and
+                (DMDB.SchemaSQLQuery.FieldByName('Default').AsString<>'0000-00-00'))then
                 ColumnChanged:=True;
             end
             else
             //if there IS a default value
             begin
               //and it is not equal to the db defval
-              if(theColumn.DefaultValue<>DMDB.SchemaSQLQuery.Fields[4].AsString)then
+              if(theColumn.DefaultValue<>DMDB.SchemaSQLQuery.FieldByName('Default').AsString)then
               begin
                 if(Comparetext(DatatypeName, 'tinyint')=0)and
-                  (((DMDB.SchemaSQLQuery.Fields[4].AsString='0')and(Comparetext(theColumn.DefaultValue, 'False')=0))or
-                  ((DMDB.SchemaSQLQuery.Fields[4].AsString='1')and(Comparetext(theColumn.DefaultValue, 'True')=0)))then
+                  (((DMDB.SchemaSQLQuery.FieldByName('Default').AsString='0')and(Comparetext(theColumn.DefaultValue, 'False')=0))or
+                  ((DMDB.SchemaSQLQuery.FieldByName('Default').AsString='1')and(Comparetext(theColumn.DefaultValue, 'True')=0)))then
                   //Ignore BOOLEAN / tinyint: 0=False, 1=True
                 else
                 begin
@@ -2674,7 +2702,7 @@ begin
                     DefaultFormatSettings.DecimalSeparator:='.';
                     try
                       if(StrToFloat(theColumn.DefaultValue)<>
-                        StrToFloat(DMDB.SchemaSQLQuery.Fields[4].AsString))then
+                        StrToFloat(DMDB.SchemaSQLQuery.FieldByName('Default').AsString))then
                         ColumnChanged:=True;
 
                     except
@@ -2744,7 +2772,7 @@ begin
                 begin
                   //Check unsigned
                   if((Pos(UpperCase(theDatatype.Options[0]),
-                    UpperCase(DMDB.SchemaSQLQuery.Fields[1].AsString))>0)<>theColumn.OptionSelected[0])then
+                    UpperCase(DMDB.SchemaSQLQuery.FieldByName('Type').AsString))>0)<>theColumn.OptionSelected[0])then
                     ColumnChanged:=True;
 
                   //ShowMessage('Tolerate int without params: '+DatatypeName+DatatypeParams+'='+theModelDatatype.GetPhysicalTypeName)
@@ -2769,9 +2797,17 @@ begin
               //Check Options
               if(Assigned(theDatatype))then
                 for j:=0 to theDatatype.OptionCount-1 do
-                  if((Pos(UpperCase(theDatatype.Options[j]),
-                    UpperCase(DMDB.SchemaSQLQuery.Fields[1].AsString))>0)<>theColumn.OptionSelected[j])then
+                begin
+                  OptionInDB:=(Pos(UpperCase(theDatatype.Options[j]),
+                    UpperCase(DMDB.SchemaSQLQuery.FieldByName('Type').AsString))>0);
+                  //MySQL 8: BINARY on a string column shows up only as a
+                  //*_bin collation (mysql-bug-catalog #11)
+                  if(CompareText(theDatatype.Options[j], 'BINARY')=0)and
+                    (RightStr(LowerCase(DMDB.SchemaSQLQuery.FieldByName('Collation').AsString), 4)='_bin')then
+                    OptionInDB:=True;
+                  if(OptionInDB<>theColumn.OptionSelected[j])then
                     ColumnChanged:=True;
+                end;
             end
             else
               ColumnChanged:=True;
@@ -2779,7 +2815,7 @@ begin
             if(ColumnChanged)or(ChangeColumnName)then
             begin
               Log.Add(DMMain.GetTranslatedMessage('Modifying column %s from table %s', 158,
-                DMDB.SchemaSQLQuery.Fields[0].AsString, theTable.ObjName));
+                DMDB.SchemaSQLQuery.FieldByName('Field').AsString, theTable.ObjName));
               inc(ColumnModCounter);
 
               //New name

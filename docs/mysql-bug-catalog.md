@@ -162,17 +162,20 @@ a database named `DbdUpper` (sync creates both tables), the HTMLReport plugin on
 ## Round 2 findings
 
 ### 11. Synchronisation always re-applies `VARCHAR ... BINARY` columns (BINARY option not visible in `SHOW FIELDS` Type on MySQL 8)
+- **FIXED**. Cause: the "Check Options" loop searched `BINARY` in the `SHOW FIELDS` `Type` string, which MySQL 8 no longer contains (the option lives in the `_bin` collation). The sync now runs `SHOW FULL FIELDS`, reads the columns by name and treats a collation ending in `_bin` as the `BINARY` option set. Verified with the general log: the second sync of `order.xml` into a freshly synced `dbdtest2` sends 12 `show full fields` and no `ALTER`.
 - Severity: **cosmetic / noisy** (one harmless `MODIFY COLUMN` per BINARY column on every sync)
 - Repro: sync `order.xml` into an empty db twice; the second run logs `Modifying column name from table webserver` and `... ip from table weblog` and the general log shows `ALTER TABLE webserver MODIFY COLUMN name Varchar(20) BINARY NULL` (same for `weblog.ip`).
 - Cause: the "Check Options" loop in `EERMySQLSyncDB` (`src/DBEERDM.pas` ~2761) looks for each datatype option (`BINARY`, `UNSIGNED`, ...) as a substring of `SHOW FIELDS` `Type`. MySQL 8 stores `VARCHAR(20) BINARY` as `varchar(20)` with collation `utf8mb4_bin`; the Type string no longer contains `BINARY`, so the option always compares as "not set in db".
 - Fix idea: use `SHOW FULL FIELDS` and treat a `_bin` collation as the `BINARY` option for string types (only for options named BINARY). Complexity: **small**.
 
 ### 12. "Don't delete existing Tables" unchecked drops tables without confirmation
+- **FIXED**. Cause: the drop loop of `EERMySQLSyncDB` executed `drop table` straight away. The tables to drop are now collected first and one confirmation (Yes/No) lists them before the first DROP; No logs `Dropping of N table(s) skipped by user` and the sync goes on with the column comparison. Verified on the display with an extra `synctest` table: No keeps it (sync finishes, 12 tables compared), Yes drops it (`1 Table dropped.`).
 - Severity: **usability / data loss risk** (by design in DBDesigner 4; noted because a wrong model file or a linked-table mix-up would silently drop data)
 - Repro: model without `synctest`, db with it, uncheck the box, Execute: the log says `Drop table synctest` and the table is gone, no question asked.
 - Suspects: `EERMySQLSyncDB` drop loop in `src/DBEERDM.pas`. Fix idea: a `MessageDlg` listing the tables about to be dropped (once, before executing). Complexity: **small**.
 
 ### 13. Sync header counts linked tables: "13 Table(s) in Database, 14 Table(s) in Model"
+- **FIXED**. Cause: `TEERSynchronisationForm.GetDBConnSBtnClick` used `GetEERObjectCount([EERTable])`, which includes linked tables, while `EERMySQLSyncDB` drops them from its list unless `CreateSQLforLinkedObjects` is set. The header now counts with the same rule: `0 Table(s) in Database, 12 Table(s) in Model.`
 - Severity: **cosmetic**
 - Repro: `order.xml` has 12 own tables + 2 linked (`Employee`, `News`); the sync only creates the 12 (the linked ones are skipped correctly) but the count says 14, so the log never "adds up".
 - Suspects: the count uses `TEERModel` table count including `IsLinkedObject` tables. Complexity: **small**.

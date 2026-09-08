@@ -134,6 +134,8 @@ end;
 procedure TEERSynchronisationForm.GetDBConnSBtnClick(Sender: TObject);
 var SelDBConn: TDBConn;
   theTables: TStringList;
+  ModelTables: TList;
+  ModelTableCount, i: integer;
 begin
   DBConnEd.Text:='';
   if(Sender.ClassNameIs('TSpeedButton'))then
@@ -186,9 +188,23 @@ begin
         if(theTables.IndexOf('DBDesigner4')<>-1)then
           theTables.Delete(theTables.IndexOf('DBDesigner4'));
 
+        //Count only the tables the sync handles: linked tables are skipped
+        //unless CreateSQLforLinkedObjects is set (mysql-bug-catalog #13)
+        ModelTables:=TList.Create;
+        try
+          EERModel.GetEERObjectList([EERTable], ModelTables);
+          ModelTableCount:=0;
+          for i:=0 to ModelTables.Count-1 do
+            if(EERModel.CreateSQLforLinkedObjects)or
+              (Not(TEERTable(ModelTables[i]).IsLinkedObject))then
+              inc(ModelTableCount);
+        finally
+          ModelTables.Free;
+        end;
+
         ProgressMemo.Lines.Add(DMMain.GetTranslatedMessage('%s Table(s) in Database, '+
           '%s Table(s) in Model.', 221,
-          IntToStr(theTables.Count), IntToStr(EERModel.GetEERObjectCount([EERTable])))+#13#10+
+          IntToStr(theTables.Count), IntToStr(ModelTableCount))+#13#10+
           '-------------------------------------');
       finally
         theTables.Free;
