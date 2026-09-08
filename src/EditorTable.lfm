@@ -288,7 +288,7 @@ object EditorTableForm: TEditorTableForm
         end
         object GroupBox1: TGroupBox
           Left = 238
-          Top = -2
+          Top = 0
           Width = 295
           Height = 127
           Caption = 'Row Settings'
@@ -346,7 +346,7 @@ object EditorTableForm: TEditorTableForm
           object RowFormatLU: TComboBox
             Left = 128
             Top = 92
-            Width = 75
+            Width = 160
             Height = 21
             ItemHeight = 15
             Items.Strings = (

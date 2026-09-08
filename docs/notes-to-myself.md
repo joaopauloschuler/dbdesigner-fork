@@ -1808,3 +1808,65 @@ navigation (`Down`x4 `Right` for File > Open Recent). Shots: `fix13-*`.
   calls `TEERForm.SelectAllMIClick`) - no Copy/Paste there, as in the original.
   `DoApplicationEvent` still handles Ctrl+S/O/T/R/W/E/Q for the whole application,
   including inside modal dialogs' edit boxes (pre-existing).
+
+## Fix: model-edit #10-#12 - "clipped" table after a second PK column (not a bug), n:m join table placement, Table Options page
+
+- **#10 is not a height bug.** Probes in `TEERTable.RefreshObj` / `PaintObj2Canvas`
+  showed `ColCount=7 Obj_H=142 Height=106` before and after the PK toggle on
+  `product.name` (order.xml is displayed at 75 % zoom, `EvalZoomFac`), and the
+  cached image, the control and the painted rows are identical in size. What both
+  observers saw is the *selection frame*: `PaintObj2Canvas` draws it (white line
+  plus black `psDot` line) at `yo+tblHeight-3` - exactly on top of the solid bottom
+  border - and the Table Editor leaves the table selected, so the last row's
+  descenders touch a dotted line instead of a solid one and the 3x crop looks "cut
+  off". The catalog's own `pass2/01-main.png` vs `29-after-ok.png` have the same
+  row positions (`fix10-12/p2-cmp.png`). The PK separator "below the two key
+  columns" is correct (`i>0 and PK<>PrimaryKey` in `PaintCachedImg`). The height
+  path was still exercised in all the cases the task lists: remove the PK again,
+  add a column with a 38-character name (`200x119`, `12-crop2.png`), delete it
+  again (`110x106`, `16-crop2.png`) - the control grows and shrinks with the rows
+  and the width follows the longest name. No code change for #10.
+- **#11 join table placement** (`src/EERModel.pas`): the n:m branch of
+  `TEERTable.DoMouseDown` placed `<a>_has_<b>` at the midpoint of its parents,
+  which in order.xml is on top of the "Stores all products..." note next to
+  `carthasproduct`. New `TEERModel.GetFreeObjPos(x, y, w, h, ExcludeObj)` walks
+  rings around the wanted top-left (step = `PositionGrid` when
+  `UsePositionGrid`, else 10 model px; nearest candidate inside a ring wins; 60
+  rings max, then the original position) and returns the first spot where the
+  `w x h` rectangle plus a 10-px margin does not intersect any `TEERTable`,
+  `TEERNote` or `TEERImage` and stays inside `EERModel_Width/Height`. Regions
+  and relation parts are deliberately not obstacles (tables live inside regions;
+  lines are re-routed by `RefreshRelations`). It is called after the two
+  relations exist and `RefreshObj` gave the join table its real `Obj_W/Obj_H`,
+  after the grid snap. Verified: `productgroup_has_creditcard` lands in the gap
+  above the note, overlapping nothing (`fix10-12/21-crop.png` vs `18-crop.png`).
+  The reverse-engineering placer (`EERReverseEngineerPlaceTables`) keeps its own
+  grid logic - it lays out many tables at once and a per-table nearest search
+  would not give the row/column layout users expect.
+- **#11 PK question**: the FK columns of the join table *are* the composite
+  primary key already - the original code creates both relations with `rk_1n`
+  (identifying) and `CheckRelations` sets `PrimaryKey:=True` for identifying
+  kinds; the canvas shows key icons for `FKidproductgroupCol (FK)` /
+  `FKidcreditcardCol (FK)` (`fix10-12/18-nm-zoom.png`). The catalog's "no key
+  icon" was a 1x misread at 75 % zoom. Nothing restored.
+- **#12 Table Options page** (`src/EditorTable.lfm`): `RowFormatLU` 75 -> 160 px
+  (the group box is 295 wide, nothing else sits in that row) so
+  `default/dynamic/fixed/compressed` are readable; `GroupBox1` ("Row Settings")
+  moved from `Top = -2` to `Top = 0` - the LCL caption is taller than the Kylix one
+  and the tab sheet clipped the top of the "R", which read as "How Settings"
+  (`22-caption-zoom.png`; page control is 135 high, the 127-px box still fits).
+  `TblPasswordEd` stays a plain edit: `src/EditorTable.xfm` has no
+  `EchoMode/PasswordChar` on it either (the value is the MySQL `PASSWORD=` table
+  option, stored in clear text in the model XML), so a masked field would only
+  hide what the file shows anyway.
+- Verified on DISPLAY=:0 (`$S/shots/model-edit/fix10-12/`): `03/13` before,
+  `23-crop.png` after for the options page; `18` / `21` for the n:m placement;
+  `xvfb-run -a ./bin/DBDesignerFork --selftest`: 93 PASS / 0 FAIL / 78 SKIP;
+  `WorkMode=1` restored from the backup, `DBConn.ini` md5 unchanged.
+- Driving gotchas this time: `: > bin/stderr.log` while the app runs leaves the
+  app's file offset in place - the file becomes sparse and `grep` calls it binary
+  (`grep -a ... | tr -d '\0'`). Two clicks on the key cell (one "to be safe")
+  toggle the PK twice; always screenshot the grid before OK. `xdotool key
+  Delete` on a selected grid row deletes the column (`ColumnGridKeyDown`).
+  Clicking the tree node "Table Options" at client (67,312) twice is harmless
+  when the first click after `windowactivate` is lost.

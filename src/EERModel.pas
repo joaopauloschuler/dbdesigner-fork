@@ -160,6 +160,7 @@ type
     function NewRegion(x, y, w, h: integer; LogTheAction: Boolean): Pointer;
     procedure SendRegionsToBack;
     function NewImage(x, y, w, h: integer; LogTheAction: Boolean): Pointer;
+    function GetFreeObjPos(x, y, w, h: integer; ExcludeObj: TObject = nil): TPoint;
 
     //Set, Get ModelName
     procedure SetModelName(name: string);
@@ -2876,6 +2877,95 @@ begin
       'Obj_Y='+IntToStr(theImage.Obj_Y)+#13#10+
       'Obj_W='+IntToStr(theImage.Obj_W)+#13#10+
       'Obj_H='+IntToStr(theImage.Obj_H));
+
+end;
+
+//Return the position nearest to (x, y) where a w x h object does not
+//overlap any table, note or image of the model (regions and relation lines
+//are not obstacles - tables live inside regions and the lines are re-routed).
+//Used by the n:m tool, which used to drop the join table on the midpoint of
+//its two parents regardless of what was there (model-edit-bug-catalog #11).
+//Candidates are visited ring by ring around (x, y), nearest first inside a
+//ring, with the position grid as step when it is active; the search gives up
+//after 60 rings and returns the original position.
+function TEERModel.GetFreeObjPos(x, y, w, h: integer; ExcludeObj: TObject = nil): TPoint;
+const margin=10;
+  maxRings=60;
+var ring, dx, dy, sx, sy, cx, cy, bestX, bestY: integer;
+  bestDist, dist: Int64;
+  found: Boolean;
+
+  function PosIsFree(px, py: integer): Boolean;
+  var j: integer;
+    o: TEERObj;
+  begin
+    PosIsFree:=False;
+    if(px<0)or(py<0)or(px+w>EERModel_Width)or(py+h>EERModel_Height)then
+      Exit;
+    for j:=0 to ComponentCount-1 do
+    begin
+      if(Components[j]=ExcludeObj)then
+        continue;
+      if(Components[j] is TEERTable)or
+        (Components[j] is TEERNote)or
+        (Components[j] is TEERImage)then
+      begin
+        o:=TEERObj(Components[j]);
+        if(px<o.Obj_X+o.Obj_W+margin)and(px+w+margin>o.Obj_X)and
+          (py<o.Obj_Y+o.Obj_H+margin)and(py+h+margin>o.Obj_Y)then
+          Exit;
+      end;
+    end;
+    PosIsFree:=True;
+  end;
+
+begin
+  GetFreeObjPos:=Point(x, y);
+
+  sx:=10;
+  sy:=10;
+  if(UsePositionGrid)then
+  begin
+    if(PositionGrid.X>0)then
+      sx:=PositionGrid.X;
+    if(PositionGrid.Y>0)then
+      sy:=PositionGrid.Y;
+    x:=(x div sx)*sx;
+    y:=(y div sy)*sy;
+  end;
+
+  for ring:=0 to maxRings do
+  begin
+    found:=False;
+    bestDist:=0;
+    bestX:=x;
+    bestY:=y;
+    for dy:=-ring to ring do
+      for dx:=-ring to ring do
+      begin
+        //Only the border of the ring; the inner cells were tested before
+        if(Abs(dx)<>ring)and(Abs(dy)<>ring)then
+          continue;
+        cx:=x+dx*sx;
+        cy:=y+dy*sy;
+        dist:=Int64(dx*sx)*(dx*sx)+Int64(dy*sy)*(dy*sy);
+        if(found)and(dist>=bestDist)then
+          continue;
+        if(PosIsFree(cx, cy))then
+        begin
+          found:=True;
+          bestDist:=dist;
+          bestX:=cx;
+          bestY:=cy;
+        end;
+      end;
+
+    if(found)then
+    begin
+      GetFreeObjPos:=Point(bestX, bestY);
+      Exit;
+    end;
+  end;
 
 end;
 
@@ -8055,6 +8145,16 @@ begin
             begin
               newNMtable.Obj_X:=(newNMtable.Obj_X div ParentEERModel.PositionGrid.X) * ParentEERModel.PositionGrid.X;
               newNMtable.Obj_Y:=(newNMtable.Obj_Y div ParentEERModel.PositionGrid.Y) * ParentEERModel.PositionGrid.Y;
+            end;
+
+            //Don't drop the join table onto the objects that already sit
+            //between its parents - take the nearest free spot instead
+            //(model-edit-bug-catalog #11)
+            with ParentEERModel.GetFreeObjPos(newNMtable.Obj_X, newNMtable.Obj_Y,
+              newNMtable.Obj_W, newNMtable.Obj_H, newNMtable) do
+            begin
+              newNMtable.Obj_X:=X;
+              newNMtable.Obj_Y:=Y;
             end;
 
             newNMtable.RefreshObj;
