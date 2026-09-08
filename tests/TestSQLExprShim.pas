@@ -182,6 +182,62 @@ begin
       Owner.Free;
     end;
 
+    // Query mode "Execute SQL" runs DML through TSQLDataSet.ExecSQL; the
+    // statement must be committed (dbExpress auto-commit) so that another
+    // connection sees it while the first is still connected, and it must
+    // survive Close (which rolls back the open transaction) - db-ui #7.
+    WriteLn;
+    WriteLn('Testing DML commit after TSQLDataSet.ExecSQL:');
+    DS.SQL.Text := 'INSERT INTO customers VALUES (99, ''Query'', ''q@example.com'')';
+    if DS.ExecSQL(True) <> 1 then
+    begin
+      WriteLn('FAIL: ExecSQL did not report 1 row affected');
+      Halt(1);
+    end;
+    DS.SQL.Text := 'SELECT COUNT(*) AS n FROM customers WHERE id=99';
+    DS.Open;
+    if DS.Fields[0].AsInteger <> 1 then
+    begin
+      WriteLn('FAIL: inserted row not visible on own connection');
+      Halt(1);
+    end;
+    DS.Close;
+    // A second connection only sees the row once it is committed.
+    Prov := nil;
+    Owner := TComponent.Create(nil);
+    try
+      with SqlExpr.TSQLDataSet.Create(Owner) do
+      begin
+        SQLConnection := Writer;
+        SQL.Text := 'SELECT COUNT(*) AS n FROM customers WHERE id=99';
+        Open;
+        if Fields[0].AsInteger <> 1 then
+        begin
+          WriteLn('FAIL: ExecSQL INSERT not committed: second connection sees ',
+            Fields[0].AsInteger, ' rows with id=99');
+          Halt(1);
+        end;
+        Close;
+      end;
+    finally
+      Owner.Free;
+    end;
+    WriteLn('  INSERT via ExecSQL visible on a second connection');
+    CheckExternalWrite('after ExecSQL', 7);
+    DS.SQL.Text := 'DELETE FROM customers WHERE id=99';
+    DS.ExecSQL(True);
+    Conn.Close;
+    Conn.Open;
+    DS.SQL.Text := 'SELECT COUNT(*) AS n FROM customers WHERE id=99';
+    DS.Open;
+    if DS.Fields[0].AsInteger <> 0 then
+    begin
+      WriteLn('FAIL: ExecSQL DELETE rolled back by Close');
+      Halt(1);
+    end;
+    DS.Close;
+    WriteLn('  DELETE via ExecSQL survived Close/Open');
+
     Writer.Close;
     Conn.Close;
     WriteLn;

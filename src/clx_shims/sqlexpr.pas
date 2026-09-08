@@ -183,9 +183,10 @@ begin
   if (Transaction <> nil) and (not Transaction.Active) then
     Transaction.StartTransaction;
   inherited ExecuteDirect(ASQL);
-  // Auto-commit after DML (Delphi dbExpress auto-commits)
+  // Auto-commit after DML (Delphi dbExpress auto-commits). CommitRetaining:
+  // Commit would CloseDataSets on every dataset of the transaction.
   if (Transaction <> nil) and Transaction.Active then
-    Transaction.Commit;
+    Transaction.CommitRetaining;
 end;
 
 procedure TSQLConnection.ReleaseIdleTransaction;
@@ -364,9 +365,20 @@ begin
 end;
 
 function TSQLDataSet.ExecSQL(ExecDirect: Boolean): Integer;
+var
+  Conn: TSQLConnection;
 begin
   inherited ExecSQL;
   Result := RowsAffected;
+  // dbExpress auto-commits every statement; SQLDB leaves the DML inside the
+  // connection's TSQLTransaction, which nobody commits and Close rolls back
+  // (db-ui-bug-catalog #7: "1 Rows affected" but the row never reached the
+  // server). CommitRetaining rather than Commit so open datasets (table data
+  // editor, client dataset fetch) survive; sqlite then re-BEGINs deferred,
+  // so no lock is held while idle (sqlite-bug-catalog #13).
+  Conn := GetSQLConnection;
+  if (Conn <> nil) and (Conn.Transaction <> nil) and Conn.Transaction.Active then
+    Conn.Transaction.CommitRetaining;
 end;
 
 { TSQLMonitor }

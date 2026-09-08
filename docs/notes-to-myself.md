@@ -1134,3 +1134,51 @@ navigation (`Down`x4 `Right` for File > Open Recent). Shots: `fix13-*`.
   memo scrolls to the end of the log.
 - `--selftest` 0 FAIL, `tests/TestMySQLShim.pas` SUCCESS, `dbdtest2` dropped, general log
   off and truncated, `DBConn.ini` restored from `$S/fix11-DBConn.ini.bak`.
+
+
+## Fix: db-ui #7 - Query mode DML "1 Rows affected" but never committed
+
+- **Cause**: dbExpress auto-commits every statement, SQLDB does not. Since sqlite-bug-catalog
+  #2 the shim `TSQLConnection` always owns a `TSQLTransaction`; `TCustomSQLQuery.ExecSQL`
+  starts it (`MaybeStartTransaction`) and leaves the INSERT/UPDATE/DELETE inside it. Nothing
+  committed it: `ReleaseIdleTransaction` (sqlite #13) only runs from `TSQLDataSet.InternalClose`,
+  and `ExecuteSQLCmdScript` (`src/DBDM.pas`) never *opens* `OutputQry`, so on MySQL (InnoDB)
+  and SQLite the change was rolled back by `TSQLConnection.Close` (`Transaction.Rollback`).
+  MySQL DDL (sync CREATE/ALTER) only worked because MySQL autocommits DDL implicitly. On SQLite
+  the bug was masked whenever a SELECT was run and closed afterwards - that idle-release commit
+  took the pending DML with it - which is why sqlite `CheckExternalWrite` never caught it.
+- **Fix** (`src/clx_shims/sqlexpr.pas`): `TSQLDataSet.ExecSQL(ExecDirect)` now
+  `CommitRetaining`s the connection's transaction after `inherited ExecSQL`. That covers every
+  write path in the app: `ExecuteSQLCmdScript` (Query mode Execute, sync CREATE TABLE and
+  standard inserts), `EditorTableData.ExecSQLBtnClick`, `EERStoreInDatabase`, and the
+  `SchemaSQLQuery.ExecSQL` calls in `DBEERDM`. `TSQLConnection.ExecuteDirect` (`DMDB.ExecSQL`,
+  used by sync deletes/inserts and the DataImporter plugin) already committed, but with
+  `Commit`, which `CloseDataSets` on every dataset of the transaction; it now uses
+  `CommitRetaining` too. Not `sqoAutoCommit`: SQLDB implements that with plain `Commit`.
+  `CommitRetaining` on sqlite is `COMMIT` + deferred `BEGIN` (no lock), so the sqlite #13
+  idle-release behaviour is unchanged (an external `sqlite3` could read the row while the app
+  stayed connected).
+- **Not a write path**: the Query-mode DBGrid edits go into the shim `TClientDataSet`
+  (`src/clx_shims/dbclient.pas`, a `TBufDataset` copy) which has no `ApplyUpdates`/provider
+  write-back, so grid edits never reach the database at all (as in the Delphi original without
+  `ApplyUpdates`). Left as is.
+- `tests/TestSQLExprShim.pas` gained a DML block: INSERT via `TSQLDataSet.ExecSQL` must be
+  visible on a second connection, an external write must still succeed afterwards, and a
+  DELETE must survive `Conn.Close; Conn.Open`. Old shim: "FAIL: ExecSQL DELETE rolled back by
+  Close".
+- Verified on DISPLAY=:0: Display > Query Mode, the catalog INSERT (idproduct=99) via the
+  "Execute SQL" button on OrderMySQL -> `mysql` sees the row while connected and after
+  Database > Disconnect; DELETE the same way -> 0 rows, `product` back to 3
+  (`$S/shots/db-ui/fix07/06-status-both.png`, `09-status.png`). Same on a copy of
+  `order.sqlite` (`DBConn.ini` `Database=` pointed at `$S/fix07/order_copy.sqlite` and restored)
+  checked with `sqlite3` while connected and after disconnect (`11-sqlite-insert-status.png`,
+  `12-status.png`). `--selftest` 107 PASS / 0 FAIL; `TestSQLExprShim`, `TestSQLite`,
+  `TestMySQLShim` print SUCCESS. `DBConn.ini` md5 unchanged, `WorkMode=1` restored.
+- Driving gotchas: `xdotool search --pid <pid> --name <x>` ORs the criteria (it returned the
+  Tips window for "Select Database Connection"); match with `getwindowname` instead, and skip
+  xids below the main window's (dead windows of earlier instances still say IsViewable). The
+  Query-mode "Execute SQL" button is at client (447,659) with the memo at (200,700); the first
+  click after typing is lost (repeat with `windowactivate`). The Database menu popup is
+  234x135 at +189+95, "Disconnect from Database" at y+41 - clicking by screen coordinates
+  once hit "Connect to Database" and, after aborting that login box, produced a
+  "[TCustomForm.SetFocus] DBConnSelectForm ... Can not focus" box (OK is harmless).
