@@ -1300,41 +1300,23 @@ begin
 end;
 
 procedure TDBConnSelectForm.ConnectionsListViewClick(Sender: TObject);
-var x1, x2, i: integer;
-  theData: Pointer;
+var x1, i: integer;
   theListItem: TListItem;
 begin
-  x2:=0;
+  //left edge of the "..." (params) column; it is the last column and the
+  //drawn button extends to the list's right border, so no upper bound
+  //(db-ui-bug-catalog #1)
+  x1:=0;
   for i:=0 to 4 do
-    x2:=x2+ConnectionsListView.Columns[i].Width;
-
-  //paramaters
-  x1:=x2;
-  x2:=x2+ConnectionsListView.Columns[5].Width;
+    x1:=x1+ConnectionsListView.Columns[i].Width;
 
   //BUG in DELPHI 7
   theListItem:=ConnectionsListView.GetItemAt(10, my);
   if(theListItem<>nil)then
     ConnectionsListView.Selected:=theListItem;
-  writeln(stderr,'DBG Click mx=',mx,' my=',my,' x1=',x1,' x2=',x2,' sel=',ConnectionsListView.Selected<>nil,' w=',ConnectionsListView.Width,' c5=',ConnectionsListView.Columns[5].Width);
 
-  if(mx>x1)and(mx<x2)and(ConnectionsListView.Selected<>nil)then
-  begin
-    DBConnEditorForm:=TDBConnEditorForm.Create(self);
-    try
-      theData:=ConnectionsListView.Selected.Data;
-
-      DBConnEditorForm.SetData(SelDBConn, DBHosts);
-      DBConnEditorForm.ShowModal;
-
-      RefreshDBConnList;
-      for i:=0 to ConnectionsListView.Items.Count-1 do
-       if(ConnectionsListView.Items[i].Data=theData)then
-         ConnectionsListView.Selected:=ConnectionsListView.Items[i];
-    finally
-      DBConnEditorForm.Free;
-    end;
-  end;
+  if(mx>x1)and(ConnectionsListView.Selected<>nil)then
+    EditSelectedDBConn;
 end;
 
 procedure TDBConnSelectForm.NewConnBtnClick(Sender: TObject);

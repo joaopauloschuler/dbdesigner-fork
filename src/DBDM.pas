@@ -743,6 +743,24 @@ begin
   finally
     theIni.Free;
   end;
+
+  //Plugins read DBDplugin_<X>_Settings.ini (ProgName is the exe name), which
+  //has no [DatabaseTypes] section, so the Database Connection Editor indexed
+  //DatabaseTypes[-1] ("List index (-1) out of bounds", db-ui-bug-catalog #14).
+  //Fall back to the main program's ini, then to the built-in list.
+  if(DatabaseTypes.Count=0)then
+  begin
+    theIni:=TMemIniFile.Create(DMMain.SettingsPath+'DBDesignerFork_Settings.ini');
+    try
+      theIni.ReadSectionValues('DatabaseTypes', DatabaseTypes);
+      for i:=0 to DatabaseTypes.Count-1 do
+        DatabaseTypes[i]:=Copy(DatabaseTypes[i], Pos('=', DatabaseTypes[i])+1, Length(DatabaseTypes[i]));
+    finally
+      theIni.Free;
+    end;
+  end;
+  if(DatabaseTypes.Count=0)then
+    DatabaseTypes.Text:='MySQL'#10'Oracle'#10'ODBC'#10'SQLite'#10'MSSQL';
 end;
 
 procedure TDMDB.SaveSettingsToIniFile;
