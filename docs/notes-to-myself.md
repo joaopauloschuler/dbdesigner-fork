@@ -1182,3 +1182,50 @@ navigation (`Down`x4 `Right` for File > Open Recent). Shots: `fix13-*`.
   234x135 at +189+95, "Disconnect from Database" at y+41 - clicking by screen coordinates
   once hit "Connect to Database" and, after aborting that login box, produced a
   "[TCustomForm.SetFocus] DBConnSelectForm ... Can not focus" box (OK is harmless).
+
+## Fix: db-ui #5 - reverse engineering re-laid out every existing table
+
+- Cause: each of the five reverse engineering routines in `src/DBEERDM.pas`
+  (`EERReverseEngineer` ODBC/generic, `EERMySQLReverseEngineer`, `EERORCLReverseEngineer`,
+  `EERSQLiteReverseEngineer`, `EERMSSQLReverseEngineer`) carried its own copy of the
+  "Order table positions" loop, and every copy walked `EERModel.Components` for all
+  `TEERTable`s instead of the run's `DbTables` list. On a fresh model that is the same
+  set, so nobody noticed; with an open model (possible since the sqlite #14 skip logic)
+  every skipped table got a fresh grid cell too. Not `EERReverseEngineering.pas` /
+  `EERModel.pas` as the catalog guessed - the dialog only calls `DMDBEER`.
+- Change: one new `TDMDBEER.EERReverseEngineerPlaceTables(theModel, theTables, XCount)`
+  replaces the five loops. It only moves `theTables` (the new ones), but still tests the
+  candidate cell against every table of the model, so new tables land in the first free
+  cell (`80+x*250`, `40+y*160`, XCount per row) and never on top of a kept table. The
+  generic routine's quote/`schema.` prefix stripping that lived inside its loop is now a
+  small loop of its own over `DbTables` just before the placement call. The dead
+  `xpos/ypos/xanz/defwidth/defheight/tblAtPos/tmpTbl` locals of the callers are gone
+  (the Oracle routine still needs `tmpTbl` for its FK lookup).
+- Relations/indices of skipped tables: already sane, unchanged - columns, indexes and the
+  native FK derivation (SQLite `PRAGMA foreign_key_list`, MySQL `information_schema`) only
+  iterate `DbTables`, and `EERReverseEngineerMakeRelations(..., SkipExisting=True)` never
+  adds a second relation between two tables that have one. Consequence worth knowing: an FK
+  that a *skipped* table has towards a *new* table is not recovered (`weblog ->
+  webserver` after deleting `webserver` from `order.xml` and re-engineering: `webserver`
+  comes back, the relation and `weblog.idwebserver` do not - deleting the table had removed
+  the FK column from the model anyway).
+- Verified on DISPLAY=:0 (`$S/shots/db-ui/fix05/`): `./DBDesignerFork Examples/order.xml`
+  (a model path on the command line is opened directly, no GTK file dialog needed),
+  Reverse Engineering with OrderMySQL, all 12 tables: "12 table(s) already exist ... skipped",
+  the canvas crop (1560x780+40+40 of the main window) is pixel-identical before/after
+  (`compare -metric AE` = 0; the only diff in the full window is the status bar).
+  Mixed case: select `webserver`, Edit > Delete selected Object(s) (the bare `Delete` key
+  does nothing, the shortcut is Ctrl+Del), Yes; reverse engineer again -> "11 skipped",
+  only `webserver` appears at the default cell (80,40) over the logo, nothing else moved.
+  OrderSQLite (14 tables): "12 skipped", `child` and `parent` land in the next free cells
+  (330,40)/(580,40) with their `Rel_12`, all others untouched.
+- `--selftest`: 93 PASS / 0 FAIL / 78 SKIP - and the same 93/78 with the *unmodified*
+  source built from a `git stash`, so the earlier "107 PASS" is a settings/state
+  difference (skips are "In unsafe/skip list" 29, "Separator" 24, "Submenu parent" 16,
+  "Disabled" 9), not this change. `DBConn.ini` md5 unchanged, `WorkMode=1` restored after
+  each selftest run.
+- Driving: Database menu at client (185,12), popup 234x135 at +189+95, "Reverse
+  Engineering" at y+95; selector rows y 62 (OrderSQLite) / 84 (OrderMySQL), Connect at
+  (683,235); Reverse Engineering dialog Execute at (425,573); the "Information" box takes
+  Return. Edit menu popup is 300x241 at +82+95 with "Delete selected Object(s)" at y+175,
+  followed by a 405x154 "Confirmation" box (Yes at (350,125)).
