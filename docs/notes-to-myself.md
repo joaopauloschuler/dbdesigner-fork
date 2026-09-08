@@ -1870,3 +1870,30 @@ navigation (`Down`x4 `Right` for File > Open Recent). Shots: `fix13-*`.
   Delete` on a selected grid row deletes the column (`ColumnGridKeyDown`).
   Clicking the tree node "Table Options" at client (67,312) twice is harmless
   when the first click after `windowactivate` is lost.
+
+## Verification: round 5 (model-edit-bug-catalog #1-#12)
+
+- All twelve entries re-driven on DISPLAY=:0 against the rebuilt branch: 11 verified, #3 not
+  re-driven (n/a by design). Full table and the sweep in `docs/model-edit-bug-catalog.md`
+  "Verification (round 5)"; screenshots `<scratchpad>/shots/model-edit/verify/`.
+- New #13 (fixed, 2930524): `TEditorRelationForm.SetRelation` sized the FK grid columns but
+  left `Col`/`LeftCol` from the previous relation; with the cursor in the Comment column the
+  LCL scrolled "Dest. Name" out of the grid (FixedCols=1, only cols 1-2 scroll), so the second
+  relation opened in a session showed `Source Column | Comment` only. Reset
+  `LeftCol/Col/Row` after the widths. New #14 (open, stderr only): the GLib
+  "no emission of signal key-press-event to stop" critical reproduces with Return on a grid
+  cell followed by Return in the in-place name editor.
+- DDL round trip of the edited model: SQLite and MySQL scripts create all 14 tables; the
+  failures are the model's stored Standard Inserts (`INSERT INTO productgroup(idproductgroup..`)
+  which are free text and keep the old names after a rename - as in the original. Use
+  `--force` / strip `INSERT` lines when loading a renamed model.
+- Driving gotchas this round: `import -window ""` (empty xid) waits for an interactive click
+  and hangs the shell - guard every `shot`; `pkill -f DBDplugin_` matches the calling shell
+  (exit 144) - use `pkill -x DBDplugin_DataI` / `DBDplugin_Simpl` (15-char comm names); the
+  Table Editor form is reused, so a lost click leaves the *previous* focus (Table Name edit
+  with its text selected) and the next keystrokes rename the table instead of the column -
+  screenshot before Return; grid popups open at the mouse position, recompute the item
+  position per right-click; combo boxes in the export dialog are editable - click the arrow
+  (x+67), not the text; the Read view of a wide crop is downscaled, so measure line positions
+  with PIL (`sum(px)<500` per row) rather than by eye (cost three misplaced clicks on a
+  relation line); an appended popup screenshot shifts every y of the image below it.

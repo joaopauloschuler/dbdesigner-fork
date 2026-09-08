@@ -1,6 +1,6 @@
 # Model editing bug catalog (tables, columns, relations)
 
-Date: 2026-09-08. Branch: a3. Status: final (30-minute exploratory session on the real display, DISPLAY=:0 / XWayland; see Coverage). Fixed so far: #5 (8208145), #1, #6, #8 (670864e).
+Date: 2026-09-08. Branch: a3. Status: final (30-minute exploratory session on the real display, DISPLAY=:0 / XWayland; see Coverage). Fixed so far: #5 (8208145), #1, #6, #8 (670864e), #2, #4, #7 (3d2c6f3), #9 (83f1ec8), #11, #12 (c79715a), #13 (2930524). Round-5 verification: see the end of this file.
 
 Scope: creating/editing/deleting tables, columns and relations in the model editor, the Table Editor, Relation Editor, persistence (save/reload) and the generated SQL (MySQL / SQLite). Earlier catalogs (ui-bug-catalog.md, db-ui-bug-catalog.md, sqlite-/mysql-bug-catalog.md) are not repeated; regressions are marked as such. Screenshots: `<scratchpad>/shots/model-edit/`.
 
@@ -154,3 +154,42 @@ Status: fixed in c79715a - `RowFormatLU` widened 75 -> 160 px and the "Row Setti
 Exercised (`shots/model-edit/pass2/`): Save As into the scratchpad; table drag/undo/redo; Edit menu state with and without selection (#9); Ctrl+C/V; delete table with relation + undo; Table Editor of `product`/`productgroup`: NN/AI/PK toggles, second PK column propagation (#10), Table Options/Advanced/Comments pages (#12), comment persistence via File > Save; n:m relation creation (#11).
 
 Not reached in 30 minutes (about 8 minutes were lost to a Table Editor left open by a lost Cancel click and to wrong palette coordinates): in-place rename, resize, table prefix/colour options, collapse/expand, table context menu; datatype palette drag, ENUM/SET parameters, VARCHAR length change, default values, column reorder, deleting a column that is in an index / relation, duplicate names, Column Parameters dialog, creating/deleting a two-column index; 1:1 and self relations (one attempt of a self 1:n relation on `productgroup` created nothing, `55-self.png` - unconfirmed, the second click may have been lost), Relation Editor kind change and ON DELETE/UPDATE options, deleting a relation, dragging line segments/labels, splitted display; persistence of the n:m join table (the last File > Save click did not register twice, p2.xml timestamp 14:05 - unverified), reload of p2.xml, SQL Create Script export (MySQL/SQLite); Navigator repaint/zoom, DB Model tree after n:m, context menus, Datatypes palette. Only opened at the end: File > Export > SQL Create Script dialog (`62-sqlexport-*.png`, target SQLite preselected, the SQLite-specific option labels are greyed with grey check marks - not evaluated) on a fresh restart that reopened bin/Examples/order.xml (not p2.xml), so the DDL of the edited model was not generated. WorkMode=1 and git status (only this file) confirmed; no stderr output in the second session either.
+
+## Verification findings
+
+Date: 2026-09-08, verification pass on the rebuilt branch (commits 8208145..8d6559c). Screenshots: `<scratchpad>/shots/model-edit/verify/`; scratch model `<scratchpad>/model-edit/verify/v5.xml` (order.xml saved there right after opening), scripts `v5-mysql.sql` / `v5-sqlite.sql`.
+
+### 13. Relation Editor: the "Dest. Name" column of the Foreign Keys grid is scrolled out of view on the second relation opened in a session
+
+Severity: functional (minor - the FK column names cannot be seen or edited in the editor).
+Steps: open order.xml; double-click the `CartRel` label (all three grid columns shown, `13-releditor.png`); Cancel; create a 1:n relation with the tool and double-click its line (or open any other relation).
+Observed: the grid shows only `Source Column | Comment`, the `Dest. Name` column (`FKidCol`) is missing (`24-re-after-click.png`, `25-re-clickid.png`); a click into the fixed `Source Column` does not bring it back.
+Cause / fix: the reused form keeps the focused cell of the previous relation; with the cursor in the Comment column the LCL grid (FixedCols=1) scrolls `LeftCol` to 2 so the focused column is fully visible, which pushes column 1 out. `SetRelation` now resets `LeftCol`/`Col`/`Row` after sizing the columns. Verified: `CartRel` then `ProductgroupRel` in one session show `Source Column | Dest. Name | Comment` with `xy` / `FKxyCol` (`7072.png`). Status: fixed in 2930524.
+
+### 14. GLib-GObject-CRITICAL "no emission of signal key-press-event to stop" on Return in the Table Editor grid
+
+Severity: cosmetic (stderr noise only; nothing visible misbehaves).
+Steps: Table Editor of `productgroup`; click the `idproductgroup` Column Name cell; press Return (the in-place editor opens with the name selected); type `xy`; Return (commits).
+Observed: two `GLib-GObject-CRITICAL **: ../../../gobject/gsignal.c:1184: no emission of signal "key-press-event" to stop for instance '0x...'` lines at the moment of the Return keys (`stderr-session1.log`, 15:09:37); the rename itself works (`10.png`). Round 4 had seen the same message once for Escape in the datatype editor and could not reproduce it; this sequence reproduces it.
+Suspected cause: `ColumnGridKeyDown` / `TEditorTableFieldEdit.DoKeyDown` set `Key:=0` for VK_RETURN and the GTK2 LCL then calls `g_signal_stop_emission_by_name` on a widget that is not inside a `key-press-event` emission (the key was re-dispatched to the editor created during the handler). Not fixed - would need a probe with `G_DEBUG=fatal-criticals` and a backtrace; low value.
+
+Observations (not entries): the `Rel_13` label of an n:m join relation lands under the parent table (`carthasproduct`) after a reload (`5051.png`) - label placement, same as the original; the Standard Inserts stored in the model keep the old table/column names after a rename (they are free text in DBDesigner 4 too), so the exported inserts for `productgroup`/`product` fail on load - DDL unaffected; the Navigator's blue viewport frame looks narrower than the visible canvas (about half) - not investigated, present before this round (`00-main.png`).
+
+## Verification (round 5)
+
+| Entry | Result | Note |
+|---|---|---|
+| 1 | verified | PRIMARY shows `idproductgroup` in the index-column list; two-column index `nmst` on `Table_16` built via the grid popup, column removed from it when the column is deleted (`03-te-pg`, `44c`, `45`) |
+| 2 | verified | rename `productgroup` -> `productgroup_renamed` + OK: no stale line, splitted `forumpost` stubs painted (`12d`) |
+| 3 | not-verifiable | n/a by design (Return = OK); not re-driven |
+| 4 | verified | `CartRel` grid shows `idonlinecustomer` complete, flat silver header (`13s`); new #13 found and fixed on the second relation |
+| 5 | verified | `Table_16` from the Table tool selects and opens its editor; 1:n tool `Table_16` -> `creditcard`: line click selects, double-click opens the Relation Editor, Ctrl+Del lists `Rel_12` and removes it with `FKidCol` (`17`, `2223`, `3031`) |
+| 6 | verified | `abc` + Tab -> datatype editor, `VARCHAR(30)` + Tab -> next row; same for `id`/`nm`/`st` (`0405`, `18`, `3840`) |
+| 7 | verified | click on empty canvas + Ctrl+Del opens nothing |
+| 8 | verified | PK rename `idproductgroup` -> `xy` + OK gives `product.FKxyCol (FK)` at once; the linked `News` editor was not re-driven (`12c`) |
+| 9 | verified | Edit menu with a table selected: Copy/Cut/Paste/Delete/Select All/Center Model enabled with shortcuts; Ctrl+C/Ctrl+V -> `productgroup_renamed_1`, status "1 Object(s) pasted", Ctrl+Del removes it (`1415`, `16-confirm`) |
+| 10 | verified | second PK `name` on `product`: table fully drawn after deselecting, `pic` and bottom border intact (`33z`) |
+| 11 | verified | n:m `productgroup_renamed` x `creditcard`: join table in the free gap above the note, both FK columns with key icons, composite PK in the DDL (`34c`, `v5-mysql.sql`) |
+| 12 | verified | Table Options page: "Row Settings" caption complete, `default` readable in the Row format combo (`07-tableopts`) |
+
+Sweep (all OK unless noted): collapse/expand via the header arrow, table context menu (`3537`); ENUM('a','b') datatype, default value `a`, duplicate name auto-renamed `nm_2`, column delete with Delete key (`3840`, `45`); Relation Editor kind 1:n non-id -> 1:1 (end marker and FK becomes PK), Create Reference Definition + ON DELETE CASCADE persisted (`RefDef="Matching=0\nOnDelete=1\nOnUpdate=3"`, `2829`, `29z`); Save + fresh start on `v5.xml`: every edit present (`5051`); SQL Create Script for SQLite and MySQL: 14 tables load cleanly (`sqlite3`, `mysql` into `dbdtest5`, dropped) - renamed table, `xy` PK, `FKxyCol`, `PRIMARY KEY(idproduct, name)`, `Table_16` with `INDEX nmst(nm)`, join table `PRIMARY KEY(FKxyCol, FKidcreditcardCol)`, no `Rel_12`; only the stored Standard Inserts with old names fail (see observations). Regressions: Table Editor first character not doubled (db-ui #16), export dialog per-target options switch SQLite/MySQL (db-ui #10), DataImporter and SimpleWebFront launch from the Plugins menu (`57`). Not reached: datatype palette drag (one attempt dropped beside the table), column reorder, Column Parameters dialog, self relation, relation line/label dragging, reverse-engineering placement (db-ui #5, needs a database session), in-place rename/resize (not features of the original). Self-test 93 PASS / 0 FAIL / 78 SKIP; `TestSQLExprShim`, `TestSQLite`, `TestMySQLShim` print SUCCESS.
