@@ -464,19 +464,27 @@ begin
 
   
 
-  assert(DirectionComboBox.ItemIndex <> -1);
+  //No selection means ascending / no order. With the LCL, Items.Clear in
 
-  direction := DirectionComboBox.Items[DirectionComboBox.ItemIndex];
+  //ShowColsInListBox resets ItemIndex to -1, and Items[-1] raised an
 
-  if (direction = 'Ascending') then orderBy := 'a_'
+  //out-of-bounds error ("Division by zero" dialog) on OK (db-ui #9).
 
-  else if (direction = 'Descending') then orderBy := 'd_'
+  direction := 'Ascending';
 
-  else assert(false);
+  if (DirectionComboBox.ItemIndex <> -1) then
+
+    direction := DirectionComboBox.Items[DirectionComboBox.ItemIndex];
+
+  if (direction = 'Descending') then orderBy := 'd_'
+
+  else orderBy := 'a_';
 
 
 
-  assert(self.OrderColumnsComboBox.ItemIndex <> -1);
+  if (OrderColumnsComboBox.ItemIndex = -1) then
+
+    Exit;
 
   if (OrderColumnsComboBox.Items[OrderColumnsComboBox.ItemIndex] <> '') then
 
@@ -1093,6 +1101,10 @@ begin
   end;
 
 
+
+  //keep 'no order' selected after the rebuild (LCL resets ItemIndex)
+
+  if (OrderColumnsComboBox.ItemIndex = -1) then OrderColumnsComboBox.ItemIndex := 0;
 
 end;
 

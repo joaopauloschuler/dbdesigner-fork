@@ -486,7 +486,7 @@ implementation
 
 {$R *.lfm}
 
-uses MainDM, ZoomSel,
+uses MainDM, ZoomSel, IniFiles,
   PaletteTools, PaletteModel, PaletteDatatypes, OptionsModel, Options,
   EERPageSetup, PaletteNav, EERExportSQLScript, DBConnSelect,
   EERReverseEngineering, EERSynchronisation, EERStoreInDatabase, Splash,
@@ -2695,6 +2695,7 @@ procedure TMainForm.PluginMIClick(Sender: TObject);
 var thePath, theModelFilename: string;
   theFileDate: TDateTime;
   PluginChangedModel: Boolean;
+  theIni: TMemIniFile;
 begin
   if(FActiveEERForm<>nil)then
     if(FActiveEERForm.Classname='TEERForm')then
@@ -2714,6 +2715,21 @@ begin
         True, False, False);
 
       theFileDate:=DMMain.GetFileDate(thePath+'plugin_tmp.xml');
+
+      //Tell the plugin which database connection is open, so it can offer
+      //it (SimpleWebFront pre-fills its fields, DataImporter pre-selects
+      //it in the connection selector) - db-ui-bug-catalog #8/#9. Plugins
+      //read their own <exe>_Settings.ini, so this goes into a shared file.
+      theIni:=TMemIniFile.Create(thePath+'DBConn_Current.ini');
+      try
+        if(DMDB.CurrentDBConn<>nil)then
+          theIni.WriteString('Current', 'DBConnName', DMDB.CurrentDBConn.Name)
+        else
+          theIni.WriteString('Current', 'DBConnName', '');
+        theIni.UpdateFile;
+      finally
+        theIni.Free;
+      end;
 
       Enabled:=False;
       HidePalettes;

@@ -106,7 +106,7 @@ type
     function GetDBTables(var tablelist: TStringList; theSQLConn: TSQLConnection = nil; theDBConn: TDBConn = nil): Boolean;
 
     //Execute a SQL Command
-    procedure ExecSQL(s: string);
+    procedure ExecSQL(s: string; RaiseOnError: Boolean = False);
 
     procedure LoadSettingsFromIniFile;
     procedure SaveSettingsToIniFile;
@@ -678,7 +678,7 @@ begin
 
 end;
 
-procedure TDMDB.ExecSQL(s: string);
+procedure TDMDB.ExecSQL(s: string; RaiseOnError: Boolean = False);
 begin
   //Because of Delphi BUG!
   if(SQLConn.ActiveStatements<>0)then
@@ -698,8 +698,13 @@ begin
     except
       on x: Exception do
       begin
-        EDatabaseError.Create(DMMain.GetTranslatedMessage('SQL statement cannot be executed.'+#13#10+'%s', 144,
-          x.Message+#13#10+#13#10+s));
+        //The original code created this exception without raising it, so
+        //every error was swallowed. Callers that must know (DataImporter
+        //plugin, db-ui-bug-catalog #8) pass RaiseOnError; the sync keeps the
+        //old tolerant behaviour.
+        if(RaiseOnError)then
+          raise EDatabaseError.Create(DMMain.GetTranslatedMessage('SQL statement cannot be executed.'+#13#10+'%s', 144,
+            x.Message+#13#10+#13#10+s));
       end;
     end;
   end;

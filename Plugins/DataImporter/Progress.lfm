@@ -23,7 +23,6 @@ object ProgressForm: TProgressForm
       Width = 279
       Height = 21
       AutoSize = False
-      BorderStyle = bsSingle
       Caption = 'File:'
     end
     object FileLbl: TLabel
@@ -41,7 +40,6 @@ object ProgressForm: TProgressForm
       Width = 135
       Height = 21
       AutoSize = False
-      BorderStyle = bsSingle
       Caption = 'Current line:'
     end
     object CurrentLinesLbl: TLabel
@@ -59,7 +57,6 @@ object ProgressForm: TProgressForm
       Width = 135
       Height = 21
       AutoSize = False
-      BorderStyle = bsSingle
       Caption = 'Total lines:'
     end
     object TotalLinesLbl: TLabel
@@ -77,7 +74,6 @@ object ProgressForm: TProgressForm
       Width = 135
       Height = 21
       AutoSize = False
-      BorderStyle = bsSingle
       Caption = 'Errors:'
     end
     object ErrorsLbl: TLabel
@@ -95,7 +91,6 @@ object ProgressForm: TProgressForm
       Width = 135
       Height = 21
       AutoSize = False
-      BorderStyle = bsSingle
       Caption = 'Current file:'
     end
     object CurrentFileLbl: TLabel

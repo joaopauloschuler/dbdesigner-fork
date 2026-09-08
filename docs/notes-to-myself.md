@@ -1287,3 +1287,83 @@ navigation (`Down`x4 `Right` for File > Open Recent). Shots: `fix13-*`.
   (bpsa/bpsa, 127.0.0.1, dbdtest) -> status bar "Connected to Database bpsa@dbdtest";
   Advanced grid shows the "Value" header. `DBConn.ini` restored byte-for-byte
   (incl. `Password=bpsa`) and `WorkMode=1` afterwards.
+
+## Fix: db-ui #8-#9 - DataImporter layout/import, SimpleWebFront form size and connection pre-fill
+
+- **#8 tabs**: "Column Mapping"/"General Options" *do* switch when started from the
+  main app or directly (`./DBDplugin_DataImporter Examples/order.xml`); the catalog
+  observation was a lost first click (activate the window first). Nothing to fix there.
+- **#8 layout** (`Plugins/DataImporter/DBImportData.lfm`): the CLX design assumed an
+  8pt Tahoma; with the LCL's ~10pt Ubuntu every fixed `Width` clipped. Form is now
+  925x600, right column starts at x=336, `Label4`/`Label12` etc. lost their `Width`
+  (autosize), `PresetLU` 250 wide, `NewPresetBtn` 215 wide, both option group boxes 100
+  high (checkbox rows at 24/58), General Options group 100 high, `ModePageControl`
+  300 wide with the tab captions shortened to "From Text Files"/"From Database" (the
+  scroll arrows were GTK2 tab overflow, there were always two pages). "seperator"
+  -> "separator", the German leftovers of the fixed-length group are English
+  ("Column positions:", "Set", "Skip first line"). `SepOptionsGBox` is `Visible=True`
+  by default so the separator/delimiter row is shown before a file is checked
+  (`ShowTableOptions` still toggles it per mode). `DirEd.OnKeyDown=DirEdKeyDown` was
+  declared but never wired (Enter in the directory box now refreshes the list).
+  `DestDG.ColWidths` 115/210. Status label and `SubmitBtn.Hint` say why Execute is
+  disabled (GTK2 shows no hints on disabled speed buttons, so the status text matters).
+- **#8 password**: the plugin uses the same `TDBConnSelectForm` as the main app; the
+  password box is offered once a row is selected. What was missing is the pre-selection:
+  `src/Main.pas PluginMIClick` now writes `~/.DBDesigner4/DBConn_Current.ini`
+  (`[Current] DBConnName=<open connection or empty>`) before starting a plugin;
+  `GetDBConnSBtnClick` reads it (fallback: `RecentDestinationDBConn`) so the selector
+  opens with the main app's connection selected and the password box focused. Plugins
+  cannot use `SaveValueInSettingsIniFile` for this: `ProgName` is derived from the exe
+  name, so each plugin reads its own `DBDplugin_<X>_Settings.ini`.
+- **Import errors were swallowed** (`src/DBDM.pas TDMDB.ExecSQL`): the inner handler did
+  `EDatabaseError.Create(...)` without `raise`, so a failed INSERT (e.g. a wrong
+  destination table) produced "3 Lines of Data imported" and an empty table. `ExecSQL`
+  got a `RaiseOnError: Boolean = False` parameter; the DataImporter passes `True` and
+  `ImportBtnClick` shows "Data import failed after N lines" + the SQL. The sync callers
+  keep the old tolerant behaviour (original DBDesigner 4 semantics). Same no-`raise`
+  pattern fixed in `GetPresetsFromIniFile` (`EInOutError`).
+- **Unmapped columns**: `ImportBtnClick` inserted `''` for every destination column
+  without a mapping (auto-increment PKs, blobs, NOT NULL ints -> strict-mode errors);
+  the INSERT now lists only mapped columns (error if none).
+- **Progress.lfm**: `TLabel.BorderStyle = bsSingle` (CLX-only, 4 labels) raised
+  "Error reading Label1.BorderStyle" on Execute; removed. Audit: no other
+  `BorderStyle` on labels in `Plugins/*/*.lfm`.
+- **#9 form size** (`Plugins/SimpleWebFront/Main.lfm`): `Width/Height = 799/367` plus
+  `HorzScrollBar.Range=787`/`VertScrollBar.Range=332` made the LCL show a scrollbar
+  pair with a blank strip; now `ClientWidth/ClientHeight = 799/330`, ranges removed,
+  `PixelsPerInch 92 -> 96`. Grid Options page: `ViewComboBox` Top 36, "Columns visible
+  in Grid" label Top 66, list Top 84 (no overlap); the Views page `WhereClauseMemo`
+  lost its design-time `Line1..Line4`.
+- **#9 connection fields**: SWF keeps hostname/db/user/password in its own plugin data
+  inside the model; `plugin_tmp.xml` carries no connection (only `DefSaveDBConn`/
+  `DefSyncDBConn`/`DefQueryDBConn` names, none of them set by Database > Connect).
+  `PrefillConnectionFromDBDesigner` (Main.pas) reads `DBConn_Current.ini` and fills
+  only the still-empty fields from `DBConn.ini` (`HostName`, `Database`, `User_Name`,
+  `Password` if stored). Stored plugin data wins.
+- **View Editor OK did nothing** (`EditorView.pas GetOrderByClause`): with the LCL,
+  `Items.Clear` in `ShowColsInListBox` resets `OrderColumnsComboBox.ItemIndex` to -1;
+  `Items[-1]` hit `TGtkListStoreStringList.Get` "Out of bounds", which the LCL reports
+  via `RaiseGDBException` = a deliberate integer division by zero -> the mysterious
+  "Division by zero / Press OK to ignore" box, hidden *behind* the modal editor (found
+  with `gdb` `catch`/SIGFPE: `laztracer.pas:58`). Asserts are off in the build, so the
+  `assert(ItemIndex<>-1)` guards were no help. Now -1 = no order / ascending, and
+  `ShowColsInListBox` re-selects index 0. Editor layout widened to 500x615 (Order By
+  group 115 high, groups 466 wide, scroll ranges removed).
+- Gotchas: `pkill -f DBDplugin_X` kills the calling shell too (exit 144) - use
+  `pgrep -f "^\./DBDplugin_" | xargs kill`. `pgrep -x` can't see the plugin (name > 15
+  chars). Under XWayland `xdotool getwindowgeometry` adds the frame offset twice; use
+  `xwininfo -id` for absolute positions (`mousemove --window` itself lands correctly).
+  Combo popups are separate top-level windows of the same pid (find by size). A
+  "Press OK to ignore" LCL box can sit behind a modal form - list windows by pid when a
+  click seems ignored. `DBConn_Current.ini` is written on every plugin start; delete it
+  when restoring the settings directory.
+- Verified on DISPLAY=:0 (`<scratchpad>/shots/db-ui/fix08-09/`): DataImporter imported
+  `products.csv` (3 rows, `;` separated, header row) into `dbdtest.product_import`
+  (`CREATE TABLE ... LIKE product`, dropped afterwards) with Auto-Mapping, `pic` left
+  NULL; all three tabs, both option groups and the General Options page render
+  unclipped; from the main app the selector opens with OrderMySQL selected.
+  SimpleWebFront (from the main app, connected to OrderMySQL) shows 127.0.0.1/dbdtest/
+  bpsa; view "Products" on `product`, group "Catalog", Create Webpages wrote
+  `index.php`, `db_open.php` (host/user/db correct), `Catalog_Products_frame.php`,
+  `images/`, `incs/` into a scratch directory. `--selftest` 93/0. `DBConn.ini`
+  (incl. `Password=bpsa`) and `WorkMode=1` restored.
