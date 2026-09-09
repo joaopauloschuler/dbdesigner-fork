@@ -965,6 +965,7 @@ object PaletteModelFrom: TPaletteModelFrom
             00000000000000046E616D65}
           Indent = 18
           ParentFont = False
+          ScrollBars = ssAutoBoth
           TabOrder = 0
           OnCustomDrawItem = ModelTVCustomDrawItem
         end
@@ -1016,6 +1017,7 @@ object PaletteModelFrom: TPaletteModelFrom
           ParentFont = False
           PopupMenu = TablesPopupMenu
           ReadOnly = True
+          ScrollBars = ssAutoBoth
           TabOrder = 0
           TabStop = False
           OnCustomDrawItem = ModelTVCustomDrawItem

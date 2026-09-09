@@ -1544,6 +1544,7 @@ object EditorQueryForm: TEditorQueryForm
         ParentShowHint = False
         PopupMenu = StoredSQLPopupMenu
         ShowHint = True
+        ScrollBars = ssAutoBoth
         TabOrder = 0
         OnChange = StoredSQLTreeViewChange
         OnCustomDrawItem = StoredSQLTreeViewCustomDrawItem

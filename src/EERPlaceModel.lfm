@@ -59,6 +59,7 @@ object EERPlaceModelForm: TEERPlaceModelForm
       Anchors = [akTop, akLeft, akRight, akBottom]
       Images = LMImgList
       ReadOnly = True
+      ScrollBars = ssAutoBoth
       TabOrder = 1
       OnChange = LMTreeViewChange
       OnChanging = LMTreeViewChanging

@@ -975,6 +975,7 @@ object OptionsForm: TOptionsForm
       204F7074696F6E732E000000FFFFFFFFFFFFFFFF7805AF090000000000000000
       000000001544656661756C74204D6F64656C204F7074696F6E73}
     ReadOnly = True
+    ScrollBars = ssAutoBoth
     TabOrder = 2
     OnChange = PageControlTreeViewChange
   end

@@ -424,6 +424,7 @@ object EERStoreInDatabaseForm: TEERStoreInDatabaseForm
       PopupMenu = PopupMenu
       ReadOnly = True
       RowSelect = True
+      ScrollBars = ssAutoBoth
       TabOrder = 2
       OnChange = SavedModelsTVChange
       OnDblClick = SavedModelsTVDblClick

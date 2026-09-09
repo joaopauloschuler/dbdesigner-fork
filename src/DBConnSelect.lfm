@@ -402,6 +402,7 @@ object DBConnSelectForm: TDBConnSelectForm
       Images = DBConnImgList
       PopupMenu = HostsPopupMenu
       ReadOnly = True
+      ScrollBars = ssAutoBoth
       TabOrder = 1
       OnAdvancedCustomDrawItem = DBConnTVCustomDrawItem
       OnExpanding = DBConnTVExpanding

@@ -681,6 +681,7 @@ object OptionsModelForm: TOptionsModelForm
       65204F7074696F6E7324000000FFFFFFFFFFFFFFFF0020EE0200000000000000
       00000000000B506C7567696E2044617461}
     ReadOnly = True
+    ScrollBars = ssAutoBoth
     TabOrder = 2
     OnChange = PageControlTreeViewChange
   end
