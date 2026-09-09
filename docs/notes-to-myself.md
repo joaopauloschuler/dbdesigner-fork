@@ -1986,3 +1986,38 @@ navigation (`Down`x4 `Right` for File > Open Recent). Shots: `fix13-*`.
   round6.xml, closes Tips, double-clicks `Table_03` at (300,258) of the (now
   600x426) main window, then clicks Table Options / Advanced in the tree at
   y=312 / y=325 of the editor. No new stderr lines.
+
+## Fix: model-edit #20 - comment truncated to its first character after clicking out of an open in-place editor
+
+- **Cause:** not a focus race but a stuck mouse capture. When a cell is clicked while an
+  in-place `TEditorTableFieldEdit` is open, the GTK button press first takes the focus
+  away from the editor; its `OnExit` -> `ApplyChanges` -> `HideEdit` called
+  `Application.ProcessMessages` (the original "unoff. CLX fixes" workaround) *inside the
+  grid's button-press handling*. That pumped the button *release* through the grid before
+  the LCL had taken the mouse capture for the press (`TControl` LM_LBUTTONDOWN ->
+  `MouseCapture:=True` -> `OnMouseDown`), so the release that normally frees the capture
+  was already gone and the grid kept its GTK grab (`gtk_grab_get_current` = grid core
+  widget, `GetCaptureControl` = `ColumnGrid`). Under gtk2 a key press goes to the grab
+  widget instead of the toplevel; `HandleGtkKeyUpDown` still redirected the LM_KEYDOWN to
+  the focused editor (its `OnKeyDown` saw every key), then tried to stop the emission on the
+  toplevel - the "no emission of signal key-press-event to stop" GLib-CRITICAL - and the
+  GtkEntry never got the key. Only the first character survived because it went through
+  `ColumnGridKeyDown` -> `EditCellStr('c')`; Return worked because it is handled in
+  `OnKeyDown`. Round 6's stray `c` and probably most of the #14 CRITICALs were the same
+  thing.
+- **Fix:** `HideEdit` (`src/EditorTableField.pas`) no longer calls
+  `Application.ProcessMessages`; `Invalidate` is enough for the repaint. Nothing else changed.
+- **Verification** (`shots/fix20/`, real display, `verify6.xml` copy): exact repro (new
+  column `zz1`, `VARCHAR(7)` typed into the datatype combo, Return -> new-row name editor
+  open, click `name` Comments, `c-extra` + Return) keeps `c-extra` (`a12.png`); Tab from an
+  existing row's name -> DataType -> Default Value -> Comments then `via-tab` (`b012.png`);
+  names and datatypes typed without doubling or loss; OK + Ctrl+S + reopen shows everything
+  (`c1-reopened-c.png`, `fix20.xml`). Zero GLib-CRITICAL lines in the whole run.
+- **Probe lessons:** `writeln` to stdout is block-buffered when redirected - use
+  `writeln(StdErr, ...)`; a probe that dereferences `TableEditor` before `SetData` ran (the
+  `ApplyChanges` call from `ColumnGridMouseDown`) throws inside the mouse handler and
+  silently breaks the rest of the click. `~/.DBDesigner4/DBDesignerFork_Settings.ini` had
+  `WorkMode=2` (query mode, from `--selftest`): a double-click on a table then opens the
+  "Select Database Connection" dialog instead of the Table Editor - set `WorkMode=1` (and
+  `ShowTipsOnStartup=0`) for driving, restored afterwards.
+
