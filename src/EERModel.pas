@@ -9209,6 +9209,10 @@ begin
     if(Not(CreateIndices))and(TEERIndex(Indices[i]).IndexName<>'PRIMARY')then
       continue;
 
+    //An index without columns has no valid SQL form (INDEX name())
+    if(TEERIndex(Indices[i]).Columns.Count=0)then
+      continue;
+
     //SQLite: the PRIMARY KEY of an AUTOINCREMENT column is already inline
     if(DatabaseType = 'SQLite')and(TEERIndex(Indices[i]).IndexKind=ik_PRIMARY)and
       (TEERIndex(Indices[i]).Columns.Count=1)then
@@ -9241,7 +9245,11 @@ begin
       ik_UNIQUE_INDEX:
         sIndex:=sIndex+'UNIQUE INDEX '+DBQuote+TEERIndex(Indices[i]).IndexName+DBQuote+indexOnTable+'(';
       ik_FULLTEXT_INDEX:
-        sIndex:=sIndex+'FULLTEXT INDEX '+DBQuote+TEERIndex(Indices[i]).IndexName+DBQuote+indexOnTable+'(';
+        //FULLTEXT is MySQL syntax; SQLite gets a plain index
+        if(DatabaseType = 'SQLite')then
+          sIndex:=sIndex+'INDEX '+DBQuote+TEERIndex(Indices[i]).IndexName+DBQuote+indexOnTable+'('
+        else
+          sIndex:=sIndex+'FULLTEXT INDEX '+DBQuote+TEERIndex(Indices[i]).IndexName+DBQuote+indexOnTable+'(';
     end;
 
     for j:=0 to TEERIndex(Indices[i]).Columns.Count-1 do

@@ -1987,6 +1987,29 @@ navigation (`Down`x4 `Right` for File > Open Recent). Shots: `fix13-*`.
   600x426) main window, then clicks Table Options / Advanced in the tree at
   y=312 / y=325 of the editor. No new stderr lines.
 
+## Fix: model-edit #23 - empty index exported as `FULLTEXT INDEX idx7()`; FULLTEXT for SQLite
+
+- **Cause:** `TEERTable.GetSQLCreateCode` (`src/EERModel.pas`, index loop) wrote every
+  non-PRIMARY index regardless of `Columns.Count`, and the `ik_FULLTEXT_INDEX` case had
+  no per-target translation (the SQLite branches of that loop only covered the AUTOINCREMENT
+  PK, the indent and the `(n)` prefix length). Inherited from the original.
+- **Fix:** `continue` when `TEERIndex(Indices[i]).Columns.Count=0` (placed with the other
+  skip checks, before the indent is appended, so both the inline list and the portable
+  `CREATE INDEX` variant drop it); the FULLTEXT case writes `INDEX` when
+  `DatabaseType = 'SQLite'`, else `FULLTEXT INDEX` as before. No DROP INDEX counterpart
+  exists in the exporter. PRIMARY KEY handling untouched.
+- **Verification (`shots/fix23/`):** `fix23.xml` (round7 model, `idx7` FULLTEXT without
+  columns): `after-mysql.sql` differs from `round7-mysql.sql` only by the dropped
+  `FULLTEXT INDEX idx7())`; `after-sqlite.sql` has no `idx7` and loads with `sqlite3`.
+  `fix23b.xml` (same, `idx7` on `name`, edited in the XML): SQLite export
+  `CREATE INDEX idx7 ON Table_03 (name);`, loads. My SQL export of fix23b not repeated.
+  Driving notes: `./bin/DBDesignerFork <model.xml>` opens the model directly; the GTK
+  save dialog opens in "Recently Used" and ignores Save/Return until a folder row is
+  double-clicked (`xdotool click --repeat 2`), then a bare file name + Return works;
+  `xdotool getwindowgeometry` positions are stale for the client windows, use
+  `xwininfo -id` absolute coordinates; the Target Data Base dropdown is a separate
+  `DBDesignerFork` popup (140x184) - hover the item ~0.5 s before clicking.
+
 ## Fix: model-edit #21 - permanent scrollbars on all ported tree views
 
 - **Cause:** the #18 rule of thumb applied everywhere: ten `TTreeView` blocks in the
