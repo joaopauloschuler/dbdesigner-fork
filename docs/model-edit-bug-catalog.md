@@ -496,3 +496,47 @@ Proposed grouping: #29 alone (start-up/tips form: `src/Tips.lfm`, `src/Main.pas:
 Recommended fix order: #31 (silent data loss with a two-line fix), #32 (feature unusable), #29 (blocks work on small models and every driver run), #33 (ride along with #32).
 
 Exercised / not reached (round 9b + retry): exercised - rebuild from 0226c32; relation select by label click with Edit-menu verification, Ctrl+Del + Confirmation, undo/redo of relation delete, table-with-relation delete and table move with canvas/tree/menu/XML checks; redo-stack clearing after a new edit; second model via Ctrl+O; Ctrl-click multi-selection of two tables plus relation, cross-model copy/paste in both directions with datatype-id/name comparison in the saved XML (standard datatypes only); undo of the cross-model paste and undo isolation between the two models; File > Close with and without a real change (prompt seen with Cancel/No/Yes, Cancel path); Add/Link Model from File tool + canvas click + file dialog, the Place/Link dialog's File menu, Load Model from File inside it, Escape/Alt+F4/Abort. Not reached - 1(c) Table Editor session undo granularity, 1(d) Relation Editor change undo, 1(e) Ctrl+T + relation-tool undo/redo; save prompt Yes/No paths; paste of a column using a model-local datatype id; 3 (Copy as Image, Select All, Center Model, multi-selection Delete with region + note, undo); 4 beyond the load error (Selection/Place menus with a model, LMTreeView scrollbars #21, placing + undo). Round-7's Escape note is now #33.
+
+## Regression pass (2026-09-09, HEAD d0fbc19, rounds 6-9b combined)
+
+Date: 2026-09-09, 35-minute time box, real display DISPLAY=:0, binary rebuilt with `lazbuild --build-all` from d0fbc19. All work on copies under `<scratchpad>/shots/regress/` (`round8.xml`, `order.xml`, new `s1.xml`, `rev.xml`, `s1-mysql.sql`, `s1-sqlite.sql`, driver `h.sh`, stderr `run.log` - no exception, no GLib/GTK critical during the whole run). Purpose: replay the round 6-9b scenarios on one build, since every fix had only been verified alone. Nothing was changed in the code.
+
+| Entry | Result | Evidence (`shots/regress/`) |
+|---|---|---|
+| #15 string-input prompt readable | verified | `15-all.png` (bottom: "Name of Index:" fully visible next to the edit) |
+| #16 Set Datatype popup submenu | verified | `07-both.png`, `08-sub-s.png`, `09-sub2-s.png`, `10-comments-c.png` (col3 = DATETIME via popup > Date and Time Types) |
+| #17 RAID Type shows STRIPED | verified | `16-adv-c.png` |
+| #18 no scrollbars on the Table Editor page tree | verified | `16-adv-c.png`, `04-editor-s.png` |
+| #19 rename table away and back keeps its name | verified | `15-all.png` (middle: `Table_01` -> `foo` -> `Table_01`) |
+| #20 comment typed after clicking out of the new-row name editor | verified | `10-comments-c.png` (`comment three` complete) |
+| #21 tree views without permanent scrollbars | verified | `00-main-s.png`, `32-all.png` (DB Model tree, no bars) |
+| #22 Shift+click extends the grid row selection | verified | `11-multisel-c.png`, `13-multi-c.png` (rows 2-3 both set to BIGINT by one popup action) |
+| #23 SQL export skips empty indexes, no FULLTEXT for SQLite | verified | `s1-sqlite.sql`, `s1-mysql.sql` (`Table_01_index1280` without columns is in `s1.xml` but in neither script) |
+| #24 reverse engineering keeps column/table comments and InnoDB | verified | `rev.xml` (`TableType="1"`, `Comments="table comment child"`, 12 column comments), `52-rev-s.png` |
+| #25 sync error shown on top, dialog closable | verified (SQLite half) | `54-err-s.png` ("Synchronisation aborted ... SQLite ... not supported yet"), dialog closed with Escape afterwards (window list in the driver output); MySQL ALTER sync not reached |
+| #26 pasted FK index keeps its relation link | verified | `round8.xml` after paste: `FKRefDef_Obj_id="1307"` on `child_1`'s FK index = pasted `RELATION ID="1307"`, no stray `-1` beyond the non-FK indexes |
+| #27 DB Model tree shows the final pasted names | verified | `32-all.png` (top: `parent_1`, `parent`, `child_1`, `child`) |
+| #28 paste is one undo action | verified | `32-all.png` (Edit menu `Undo Paste Object(s)`), `35-all.png` (Ctrl+Z removes all three objects, Ctrl+Y restores them) |
+| #29 tips window parked lower-right, canvas clickable | verified | `60-tips.png`; `xwininfo`: tips at (1440,659) 469x272 on a 1920x955 screen, main window at (42,69) 600x426 - no overlap, canvas centre click went to the model |
+| #30 (unconfirmed) Ctrl+Del on a clicked relation | verified working | `41-all.png`: label click selects the relation, Ctrl+Del asks for confirmation, child loses `parent_id (FK)`, Ctrl+Z brings relation and FK column back |
+| #31 close after undo asks to save | verified | `35-all.png` (bottom: "The model has not been saved" after Ctrl+S, Ctrl+Z, File > Close; Cancel kept the model open) |
+| #32 Add/Link Model loads the picked file into the dialog only | not verified | the driver could not activate the `Add/Link Model` submenu item (mouse click and Return on the highlighted item both closed the menus without opening the file dialog, `61-sub.png`); not a product observation, no time left to retry |
+| #33 Place Model dialog closes with Escape / WM close | not verified | same as #32 |
+
+S1 (field editing, rounds 6/7): File > New, two tables via Ctrl+T, Table Editor on `Table_01`: `col1 VARCHAR(20)` typed, `col2 BOOL` from the in-cell drop-down (`06-both.png`), `col3 DATETIME` from the popup submenu, three comments (the third typed after clicking out of the open row-4 name editor), Shift+click rows 2-3 + popup > Numeric Types > BIGINT applied to both, table renamed `foo` and back, index `Table_01_index1280` created from a readable prompt, Advanced page correct, OK; `Table_02` with `id2`; relation drawn with the palette tool (the n:m button was hit instead of 1:n, so `Table_01_has_Table_02` was created - tool placement works either way); Ctrl+S to `s1.xml`: three tables, two relations, all three comments, datatype ids 20/6/6 persisted. Not reached: reopening `s1.xml` in the editor (the XML grep was taken as persistence evidence) and a real 1:n relation.
+S2 (paste/undo, rounds 9/9b): everything in the table above passed on the `round8.xml` copy. Note that a plain `Delete` key on a selected relation does nothing - the menu shortcut is Ctrl+Del, so this is by design, but it cost one attempt.
+S3 (database, round 8): `tests/mysql-roundtrip.sh round8-mysql.sql regress_r8` loaded without errors (`mysql-roundtrip.out`, both tables InnoDB, all comments in `information_schema`); the reverse engineering ran against the stored `OrderMySQL` connection (`dbdtest`, which holds the same round-8 tables with comments - the app had read `DBConn.ini` at start-up, so re-pointing it at `regress_r8` did not take effect for this run) and the saved `rev.xml` carries the comments and `TableType="1"`. SQLite sync: error on top, dialog closable. Not reached: Database Synchronisation of a modified copy against MySQL (ALTER listing). `regress_r8` was dropped afterwards.
+S4 (start-up and dialogs, rounds 6/9b): tips window verified as above; string-input prompt verified in S1; Add/Link Model not reached (driver problem, see #32/#33).
+
+Self-test (`xvfb-run -a ./bin/DBDesignerFork --selftest`, `selftest.log`): PASS 93, FAIL 0.
+
+### 34. (unconfirmed) Typing a datatype into an already filled DataType cell after a single click does not replace it
+
+Severity: cosmetic/usability if real; confidence low - one attempt inside the time box, the cell editor state was not captured.
+Steps: Table Editor, `col3` already `BIGINT` (set through the multi-row popup); single click on the DataType cell of row 3, Ctrl+A, type `DATETIME`, Return.
+Observed: the cell still reads `BIGINT` afterwards (`15-all.png`, middle grid, `col3`); the same typed sequence into a freshly created row (`col1`, `VARCHAR(20)` typed straight after Tab from the name editor) did replace the default `INTEGER` (`06-both.png`).
+Expected: either the click opens the in-place editor so that Ctrl+A + text replaces the value, or a second click / F2 is required and documented; in Delphi the DataType column editor opened on the first click.
+Suspected files: `src/EditorTable.pas` (`ColumnGrid` `OnSelectCell` / `OnMouseDown` after the #20/#22 changes, `HideEdit` path), `lcl/grids.pas` (`goEditing`, `goAlwaysShowEditor` options of the grid in `src/EditorTable.lfm`).
+Evidence: `13-multi-c.png`, `15-all.png`.
+
+Observations (not entries): (a) after `Cancel` on the "save the model before closing?" prompt a second identical Confirmation window (new xid) appeared at the top right of the screen once; it could not be told apart from a lost first click on the modal dialog (the first click after `windowactivate` is regularly dropped), so it is not filed. (b) The main window came back at 600x426 after the restart with tips enabled (the earlier session had 1287x758); window-size persistence was not part of this pass.
