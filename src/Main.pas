@@ -496,7 +496,7 @@ uses MainDM, ZoomSel, IniFiles,
   EERReverseEngineering, EERSynchronisation, EERStoreInDatabase, Splash,
   EERDM, EditorTable, EditorRelation, EditorRegion, EditorNote,
   EditorImage, GUIDM, DBDM, EditorQuery, EditorQueryDragTarget,
-  Tips, EERPlaceModel, DBEERDM, EERExportImportDM,
+  Tips, EERPlaceModel, DBEERDM, EERExportImportDM, Math,
   UITestRunner;
 
 procedure TMainForm.AppException(Sender: TObject; E: Exception);
@@ -1789,7 +1789,20 @@ begin
       try
         TipsForm:=TTipsForm.Create(self);
         TipsForm.TipMemo.Text:=#13#10+TipText;
+        //model-edit #29: the tips window used to be fsStayOnTop + poMainFormCenter,
+        //i.e. it sat over the middle of the canvas, above the main window even
+        //after a click on it, and swallowed every click on the tables under it.
+        //Keep it modeless (as in the original) but park it in the lower right
+        //corner of the main window, above the main window as its popup child
+        //(a plain fsNormal window is pushed behind the maximized main form by
+        //GNOME Shell's focus-stealing prevention and never seen).
+        TipsForm.PopupMode:=pmExplicit;
+        TipsForm.PopupParent:=self;
         TipsForm.Show;
+        //(after Show: mutter centres a transient window over its parent when
+        //it is mapped and only honours the position once it is on screen)
+        TipsForm.Left:=Max(Left, Left+Width-TipsForm.Width-24);
+        TipsForm.Top:=Max(Top, Top+Height-TipsForm.Height-48);
       except
         on E: Exception do
         begin
