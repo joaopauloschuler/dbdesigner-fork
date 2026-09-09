@@ -2440,3 +2440,31 @@ Driving notes: the earlier "tips window not shown in `import -window <main>`" is
   `order_mysql.sql`, `order.sqlite` copy): `51-52-stack.png` + `mysql` `2 ZZ`,
   `60-72-stack.png` + `sqlite3` `2|YY`, `20-22-stack.png` zero rows, `24-29-stack.png`
   four ways to open the editor. Not exercised: DBNavigator insert/delete write-back.
+
+## Fix: model-edit #45 - query-mode DATE/DATETIME shown as `23-4-03`
+
+- Display: `TField.AsString` on date fields is `DateTimeToStr(DefaultFormatSettings)`;
+  the LCL pulls those from the locale (`clocale`), so the grid showed `d-M-yy` and
+  dropped the time. `DoFieldGetText` (`src/EditorQuery.pas`) now uses explicit
+  `FormatDateTime` masks (`yyyy-mm-dd`, `hh:nn:ss`, `yyyy-mm-dd hh:nn:ss`) and
+  replaces the locale decimal separator by `.` on float/BCD fields; the grid's
+  `Text`/`DisplayText`, `ExportAllRecords` and `DBGridDrawColumnCell` all go through it.
+- Edit: `TDateTimeField.SetAsString` would parse with the locale too, so the same
+  fields get `OnSetText := DoFieldSetText` (ISO first via a `QueryFormatSettings`
+  record, `DefaultFormatSettings` as fallback, `EConvertError` with the expected form).
+- Write-back trap: `TSQLite3Connection` binds `ftDate/ftDateTime` params as a
+  Julian-day `double` (`sqlite3conn.pp`, `P.AsFloat - JulianEpoch`), and the schema
+  script creates DATE/DATETIME as text affinity, so the first SQLite test stored
+  `2453528.5`. `ApplyRecUpdate` (`src/clx_shims/dbclient.pas`) now has `AssignParam`:
+  date/time values go as ISO strings (`P.AsString`), NULL and everything else through
+  `AssignFieldValue`. MySQL accepts the quoted ISO literal as well.
+- Driving notes: grid row 1 starts at screen y=831 with the 1878x886 layout - a click
+  at exactly 831 hits the header/row edge and does not select the cell (three wasted
+  attempts); use y=841 for row 1, 862 for row 2. After a reconnect the first Execute
+  click can do nothing (fix43 oddity again) - click Execute a second time.
+- Verification: `shots/fix45/` (`h.sh`, `q.sh`, `c.sh` copies from fix43, scratch
+  MySQL `dbdfix45`, `order.sqlite` copy): `02-my-c.png`, `09-sq-c.png` display;
+  `05-apply-c.png` + `mysql` `2 2005-06-07`; `30-31-stack.png` + `1 2006-07-08 09:10:11`;
+  `21-apply-c.png` + `sqlite3` `2|2005-06-07`. Not exercised: SQLite DATETIME edit
+  (same `AssignParam` path as DATE), TIME columns (none in `order`), BOOL/TINYINT
+  (`AsString` of an integer field - nothing locale dependent).

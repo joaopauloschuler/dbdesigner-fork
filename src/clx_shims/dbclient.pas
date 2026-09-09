@@ -83,6 +83,27 @@ var
       WherePart := WherePart + '(' + QuotedName + '=:"OLD_' + AField.FieldName + '")';
   end;
 
+  // Date / time values go to the server as ISO text: TSQLite3Connection binds a
+  // date parameter as a Julian day double (sqlite3conn.pp), which stored
+  // 2453528.5 in a column the schema script created as DATE text
+  // (model-edit #45); MySQL and SQLite both accept the quoted ISO literal.
+  procedure AssignParam(P: TParam; AField: TField; const V: Variant);
+  begin
+    if VarIsNull(V) or VarIsEmpty(V) then
+      P.AssignFieldValue(AField, V)
+    else
+      case AField.DataType of
+        ftDate:
+          P.AsString := FormatDateTime('yyyy"-"mm"-"dd', VarToDateTime(V));
+        ftTime:
+          P.AsString := FormatDateTime('hh":"nn":"ss', VarToDateTime(V));
+        ftDateTime, ftTimeStamp:
+          P.AsString := FormatDateTime('yyyy"-"mm"-"dd" "hh":"nn":"ss', VarToDateTime(V));
+      else
+        P.AssignFieldValue(AField, V);
+      end;
+  end;
+
 begin
   if not (FSourceDataSet is TCustomSQLQuery) then
     raise EDatabaseError.Create('Cannot apply changes: the result is not bound to a SQL query.');
@@ -151,12 +172,12 @@ begin
       if Copy(Qry.Params[i].Name, 1, 4) = 'OLD_' then
       begin
         F := FieldByName(Copy(Qry.Params[i].Name, 5, MaxInt));
-        Qry.Params[i].AssignFieldValue(F, F.OldValue);
+        AssignParam(Qry.Params[i], F, F.OldValue);
       end
       else
       begin
         F := FieldByName(Qry.Params[i].Name);
-        Qry.Params[i].AssignFieldValue(F, F.Value);
+        AssignParam(Qry.Params[i], F, F.Value);
       end;
     end;
     if (Qry.Transaction <> nil) and not TSQLTransaction(Qry.Transaction).Active then

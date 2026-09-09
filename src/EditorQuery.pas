@@ -287,6 +287,7 @@ type
       DataCol: Integer; Column: TColumn; State: TGridDrawState);
     procedure OutputClientDataSetAfterOpen(DataSet: TDataSet);
     procedure DoFieldGetText(Sender: TField; var Text: String; DisplayText: Boolean);
+    procedure DoFieldSetText(Sender: TField; const Text: String);
 
     procedure SetSQLMemoText(Text: string);
     function GetSQLMemoText: string;
@@ -2422,12 +2423,12 @@ begin
             s:=s+'"'+DMMain.ReplaceText(OutputClientDataSet.Fields[i].AsString, '"', '""')+'"'
           else if(OutputClientDataSet.Fields[i].DataType=ftDateTime)or
             (OutputClientDataSet.Fields[i].DataType=ftTimeStamp)then
-            s:=s+'"'+OutputClientDataSet.Fields[i].AsString+'"'
+            s:=s+'"'+OutputClientDataSet.Fields[i].Text+'"'
           else if(OutputClientDataSet.Fields[i].DataType=ftDate)or
             (OutputClientDataSet.Fields[i].DataType=ftTime)then
-            s:=s+'"'+OutputClientDataSet.Fields[i].AsString+'"'
+            s:=s+'"'+OutputClientDataSet.Fields[i].Text+'"'
           else
-            s:=s+'"'+DMMain.ReplaceText(OutputClientDataSet.Fields[i].AsString, '"', '""')+'"';
+            s:=s+'"'+DMMain.ReplaceText(OutputClientDataSet.Fields[i].Text, '"', '""')+'"';
 
           if(i<OutputClientDataSet.Fields.Count-1)then
             s:=s+';';
@@ -3006,7 +3007,7 @@ begin
     theTextRect.Top:=Rect.Top+1;
     theTextRect.Right:=Rect.Right-1;
     theTextRect.Bottom:=Rect.Bottom-1;
-    TextRect(theTextRect, Rect.Left+2, Rect.Top+1, Column.Field.AsString);
+    TextRect(theTextRect, Rect.Left+2, Rect.Top+1, Column.Field.DisplayText);
   end;
 end;
 
@@ -3016,15 +3017,55 @@ begin
   for i:=0 to DataSet.FieldCount-1 do
   begin
     DataSet.Fields[i].OnGetText:=DoFieldGetText;
+    //Dates/times/decimals are shown in the ISO form the databases use
+    //(model-edit #45); parse the edited text back the same way.
+    if(DataSet.Fields[i].DataType in [ftDate, ftTime, ftDateTime, ftTimeStamp,
+      ftFloat, ftCurrency, ftBCD, ftFMTBcd])then
+      DataSet.Fields[i].OnSetText:=DoFieldSetText;
   end;
 
 end;
 
-procedure TEditorQueryForm.DoFieldGetText(Sender: TField; var Text: String; DisplayText: Boolean);
+//Locale independent format settings for the result grid: the ISO date /
+//time form the databases return and '.' as decimal separator (model-edit #45).
+function QueryFormatSettings: TFormatSettings;
 begin
+  Result:=DefaultFormatSettings;
+  Result.DateSeparator:='-';
+  Result.TimeSeparator:=':';
+  Result.ShortDateFormat:='yyyy-mm-dd';
+  Result.LongDateFormat:='yyyy-mm-dd';
+  Result.ShortTimeFormat:='hh:nn:ss';
+  Result.LongTimeFormat:='hh:nn:ss';
+  Result.DecimalSeparator:='.';
+  Result.ThousandSeparator:=#0;
+end;
+
+procedure TEditorQueryForm.DoFieldGetText(Sender: TField; var Text: String; DisplayText: Boolean);
+var F: TField;
+begin
+  F:=TField(Sender);
   //Catch empty datetime fields
   try
-    Text:=TField(Sender).AsString;
+    if(F.IsNull)then
+      Text:=''
+    else
+      case F.DataType of
+        ftDate:
+          Text:=FormatDateTime('yyyy"-"mm"-"dd', F.AsDateTime);
+        ftTime:
+          Text:=FormatDateTime('hh":"nn":"ss', F.AsDateTime);
+        ftDateTime, ftTimeStamp:
+          Text:=FormatDateTime('yyyy"-"mm"-"dd" "hh":"nn":"ss', F.AsDateTime);
+        ftFloat, ftCurrency, ftBCD, ftFMTBcd:
+        begin
+          Text:=F.AsString;
+          if(DefaultFormatSettings.DecimalSeparator<>'.')then
+            Text:=StringReplace(Text, DefaultFormatSettings.DecimalSeparator, '.', []);
+        end;
+      else
+        Text:=F.AsString;
+      end;
   except
     on x: Exception do
     begin
@@ -3039,6 +3080,43 @@ begin
         end;
       end;
     end;
+  end;
+end;
+
+procedure TEditorQueryForm.DoFieldSetText(Sender: TField; const Text: String);
+var F: TField;
+  s: string;
+  fs: TFormatSettings;
+  d: TDateTime;
+begin
+  F:=TField(Sender);
+  s:=Trim(Text);
+  if(s='')then
+  begin
+    F.Clear;
+    Exit;
+  end;
+  fs:=QueryFormatSettings;
+  case F.DataType of
+    ftDate, ftDateTime, ftTimeStamp:
+    begin
+      //ISO first (what the grid shows), then the locale form as a fallback
+      if(not(TryStrToDateTime(s, d, fs)))and
+        (not(TryStrToDateTime(s, d, DefaultFormatSettings)))then
+        raise EConvertError.Create('"'+s+'" is not a valid date, use YYYY-MM-DD [HH:NN:SS].');
+      F.AsDateTime:=d;
+    end;
+    ftTime:
+    begin
+      if(not(TryStrToTime(s, d, fs)))and
+        (not(TryStrToTime(s, d, DefaultFormatSettings)))then
+        raise EConvertError.Create('"'+s+'" is not a valid time, use HH:NN:SS.');
+      F.AsDateTime:=d;
+    end;
+    ftFloat, ftCurrency, ftBCD, ftFMTBcd:
+      F.AsFloat:=StrToFloat(s, fs);
+  else
+    F.AsString:=Text;
   end;
 end;
 
