@@ -2,7 +2,7 @@
 # DBDesigner Fork — Lazarus Port Task List
 
 > **Instructions:** As you complete each task, mark it by changing `[ ]` to `[X]`.
-> Example: `[X] Task completed` ✅
+> Example: `[X] Task completed` ✅ — `[~]` marks a task that is partly done (see its sub-items).
 >
 > Work through the phases in order. Within each phase, tasks are listed in recommended order.
 > Commit after completing each logical group of tasks.
@@ -71,7 +71,6 @@
 ### 1.3 RegExpr.pas
 - [X] Decide: keep bundled version or use FPC's built-in RegExpr
 - [X] If keeping: add `{$mode delphi}`, compile and fix
-- [ ] If replacing: update all call sites to match FPC RegExpr API
 - [X] Verify unit compiles cleanly
 
 ### 1.4 EERModel.pas — ⚠️ Critical (14,343 lines)
@@ -111,7 +110,13 @@
 
 ### 2.1 DBDM.pas — Core Database Module (1,050 lines)
 - [X] Replace `uses` clause: `DBXpress, FMTBcd, DBClient, Provider, SqlExpr` → `SQLDB, BufDataset` (via shim units)
-- [X] Add SQLDB connector units (mysql, postgres, sqlite, etc.)
+- [~] Working SQLDB connector units
+  - [x] `SQLite3Conn`
+  - [x] `MySQL80Conn` 
+  - [ ] Oracle
+  - [ ] MSSQL
+  - [ ] ODBC
+  - [ ] PostgreSQL
 - [X] Replace `TDataSetProvider` / `TClientDataSet` → direct `TSQLQuery` or `TBufDataset` (via shim: TClientDataSet wraps TBufDataset, TDataSetProvider bridges)
 - [X] Add `TSQLTransaction` between connection and queries (handled inside TSQLConnection shim)
 - [X] Rewrite `ConnectToDB` to create connector by DriverName (TSQLConnection.Open maps DriverName→ConnectorType)
@@ -148,7 +153,7 @@
 ### 2.5 Configuration Compatibility
 - [X] Review `bin/Data/DBConn_DefaultSettings.ini` — parameter names preserved via shim layer
 - [X] Review `bin/Data/DBDesignerFork_DatabaseInfo.ini` — compatible
-- [X] Test connection with at least one database engine (SQLite verified: connect, DDL, DML, query, schema info)
+- [X] Test connection with at least one database engine (SQLite 3 and MySQL 8 verified: connect, DDL, DML, query, schema info)
 
 ### 2.6 Phase 2 Wrap-up
 - [X] All database-related units compile
@@ -276,7 +281,7 @@
 ### 5.2 Plugin Loading Infrastructure
 - [X] Update plugin loading code — plugins are standalone executables, not shared libs; existing FindFirst/CreateProz mechanism works
 - [X] Platform-aware — Linux executables have no extension, already handled
-- [ ] Test plugin discovery and loading
+- [X] Test plugin discovery and loading — all four plugins start from the Plugins menu; DataImporter, SimpleWebFront and HTMLReport driven end to end (db-ui-bug-catalog, mysql-bug-catalog)
 
 ### 5.3 Demo Plugin
 - [X] Convert `Plugins/Demo/DBDplugin_Demo.dpr` → `.lpr`
@@ -302,7 +307,7 @@
 
 ### 5.7 Phase 5 Wrap-up
 - [X] All plugins compile as standalone executables
-- [X] EmbeddedPDF compiles (runtime PDF testing pending)
+- [X] EmbeddedPDF compiles (runtime PDF testing still pending, see Final phase)
 - [X] Commit Phase 5 work
 
 ---
@@ -310,39 +315,47 @@
 ## Final — Integration Testing & Cleanup
 
 ### Functional Testing
-- [X] **Automated UI self-test** (`--selftest`) — 63 PASS, 0 FAIL, 79 SKIP across 142 UI components (UITestRunner.pas)
-- [X] Application launches without errors (tested via xvfb-run, runs without crash)
-- [X] Load example model (`bin/Examples/order.xml`) — XML parsing verified (14 tables loaded correctly via TestModelLoad)
-- [ ] Create a new model with tables, fields, and relations
-- [ ] Save model to XML and reload — verify round-trip
-- [ ] Export SQL script (MySQL) — verify output
-- [ ] Export SQL script (PostgreSQL) — verify output
-- [ ] Export SQL script (Oracle) — verify output
-- [ ] Export SQL script (SQLite) — verify output
-- [X] Connect to a live SQLite database (verified via TestSQLExprShim)
-- [ ] Connect to a live MySQL database
-- [X] Reverse-engineer a database schema (stTables, stColumns, stIndexes all verified with SQLite)
-- [ ] Synchronise model with database
-- [ ] Test print / page setup
+Evidence for the items below is recorded in the bug catalogs (`docs/ui-bug-catalog.md`, `docs/sqlite-bug-catalog.md`, `docs/mysql-bug-catalog.md`, `docs/db-ui-bug-catalog.md`, `docs/model-edit-bug-catalog.md`) and in `docs/notes-to-myself.md`. Each catalog is one diagnosis round on a real display followed by fixes and a verification pass.
+
+- [X] **Automated UI self-test** (`--selftest`) — baseline 93 PASS, 0 FAIL, 78 SKIP (UITestRunner.pas; also sweeps the buttons of every visible form; never opens a database connection or touches the user's settings)
+- [X] Application launches without errors (real display and xvfb-run)
+- [X] Load example model (`bin/Examples/order.xml`) — through the UI and via TestModelLoad
+- [X] Create a new model with tables, fields, and relations — model-edit-bug-catalog (round 5)
+- [X] Save model to XML and reload — verify round-trip — edited models reloaded in rounds 4 and 5
+- [X] Export SQL script (MySQL) — verify output — script loads into MySQL 8 without errors (`tests/mysql-roundtrip.sh`)
+- [ ] Export SQL script (PostgreSQL) — verify output — not verified, no server available
+- [ ] Export SQL script (Oracle) — verify output — not verified, no server available
+- [X] Export SQL script (SQLite) — verify output — script loads into sqlite3 without errors (`tests/sqlite-roundtrip.sh`)
+- [X] Connect to a live SQLite database — through the UI (sqlite-bug-catalog) and TestSQLExprShim
+- [X] Connect to a live MySQL database — MySQL 8 through the UI (mysql-bug-catalog) and TestMySQLShim
+- [X] Reverse-engineer a database schema — SQLite and MySQL: all columns, indexes, auto-increment and foreign-key relations of the 12-table example recovered
+- [X] Synchronise model with database — MySQL 8 (mysql-bug-catalog stage E); not possible against SQLite (known limitation)
+- [ ] Test print / page setup — Page Setup dialog exercised, printed output not checked
 - [ ] Test PDF export
-- [X] Test zoom, navigation palette, model palette — verified via UITestRunner selftest (all palette show/hide/dock/undock pass)
-- [ ] Test copy/paste of tables and relations
-- [X] Test undo functionality — verified via UITestRunner selftest (UndoMI/RedoMI click without error)
-- [X] Load a plugin (Demo) — verified all 4 plugins launch without crash via xvfb-run
-- [ ] Generate HTML report via plugin
-- [X] Test on Linux — compiles and launches on x86-64 Linux (Ubuntu/Debian container)
+- [X] Test zoom, navigation palette, model palette — self-test plus real-display rounds
+- [X] Test copy/paste of tables and relations — model-edit-bug-catalog #9
+- [X] Test undo functionality — only that Undo/Redo run without exceptions (self-test); restored state not yet verified
+- [X] Load a plugin (Demo) — all four plugins started from the Plugins menu on a real display
+- [X] Generate HTML report via plugin — report generated from reverse-engineered models (mysql and sqlite catalogs)
+- [X] Test on Linux — x86-64 Linux, GTK2
 - [ ] Test on Windows
 - [ ] Test on macOS (if applicable)
 
+### Runtime Hardening (added during the test rounds)
+- [X] Load `libsqlite3.so.0` / `libmysqlclient.so.21` by versioned name (`clx_shims/sqlitelib.pas`, `clx_shims/mysqllib.pas`), no symlink or `-dev` package needed
+- [X] Commit DML executed through the shim (SQLDB does not autocommit like dbExpress); release the SQLite read lock when idle
+- [X] `--selftest` leaves settings and `DBConn.ini` untouched and never opens a connection
+- [X] Recover the real `mysql_error()` text on failed logins
+
 ### Code Cleanup
-- [ ] Remove `clx_shims/` folder — replace all `Q*` references with direct LCL unit names
-- [ ] Remove or archive the bundled `SynEdit/` folder
+- [ ] Remove `clx_shims/` folder — replace all `Q*` references with direct LCL unit names (optional; the shim layer is the documented approach of the port and may stay)
+- [X] Remove or archive the bundled `SynEdit/` folder — archived as `SynEdit_clx_original/`; the project uses the Lazarus SynEdit package
 - [X] Archive unused Delphi-specific files (`.dof`, `.dsk`, `.dsm`, `.cfg`) to `archive/`
-- [ ] Update `DBDesigner4.inc` — remove obsolete defines
-- [ ] Review and clean up any remaining `{$IFDEF}` blocks for Delphi/Kylix
-- [X] Update `README.md` with new build instructions for Lazarus
+- [ ] Update `DBDesigner4.inc` — remove obsolete defines (`USE_IXMLDBMODELType` and `USE_QTheming` are disabled but still referenced in the sources)
+- [ ] Review and clean up any remaining `{$IFDEF}` blocks for Delphi/Kylix (about 55 `MSWINDOWS`, 40 `LINUX` and 21 `USE_IXMLDBMODELType` blocks remain)
+- [X] Update `README.md` with new build instructions for Lazarus — and with the project status, tests and catalogs (September 2026)
 - [X] Update `port-to-lazarus.md` with lessons learned
-- [ ] Final commit and tag release
+- [ ] Final commit and tag release (no tags yet)
 
 ---
 
@@ -350,16 +363,18 @@
 
 | Phase | Status | Tasks | Done |
 |---|---|---|---|
-| Phase 0 — Setup & Scaffolding | ✅ Complete | 30 | 29 |
-| Phase 1 — Non-Visual Core | ✅ Complete | 34 | 33 |
-| Phase 2 — Database Layer | ✅ Complete (compile) | 33 | 32 |
-| Phase 3 — UI Forms | ✅ Complete (compile) | 54 | 54 |
+| Phase 0 — Setup & Scaffolding | ✅ Complete | 30 | 30 |
+| Phase 1 — Non-Visual Core | ✅ Complete | 33 | 33 |
+| Phase 2 — Database Layer | 🟡 SQLite 3 and MySQL 8 working (runtime tested); Oracle, MSSQL, ODBC, PostgreSQL connectors not linked | 39 | 34 |
+| Phase 3 — UI Forms | ✅ Complete (runtime tested, 5 bug-fix rounds) | 54 | 54 |
 | Phase 4 — SynEdit | ✅ Complete | 22 | 22 |
-| Phase 5 — Plugins & Extras | ✅ Complete (compile) | 27 | 25 |
-| Final — Testing & Cleanup | 🔧 In progress | 30 | 10 |
-| **Total** | | **230** | **205** |
+| Phase 5 — Plugins & Extras | ✅ Complete (plugins runtime tested; PDF export untested) | 27 | 26 |
+| Final — Testing & Cleanup | 🟡 In progress | 35 | 25 |
+| **Total** | | **240** | **224** |
+
+Last recount: September 2026.
 
 > Update the "Done" column and status as you progress:
 > - ⬜ Not started
-> - 🟡 In progress
+> - 🟡 In progress / partly done
 > - ✅ Complete
