@@ -1925,3 +1925,27 @@ navigation (`Down`x4 `Right` for File > Open Recent). Shots: `fix13-*`.
   or sed argument) - use `pkill -f 'bin/DBDesigner[F]ork'` or run the script alone.
   `flow.sh` here (no palette undock) lands on the Indices page directly; the
   add-index button is at (280,332) of the Table Editor window.
+
+## Fix: model-edit #17, #18 - Table Editor RAID Type combo clipped, page tree with permanent scrollbars
+
+- **#17 cause:** `RaidTypeLU` had the Delphi `Width = 90`; the GTK2 combo button
+  plus padding leaves ~48 px for text, `STRIPED` needs ~55 (`STRIPEI` shown).
+  **Fix:** `Width = 106` in `src/EditorTable.lfm` (ends at 292 of the 298 px
+  RAID group, flush with the `kB` label; the Chunks edits stay 90).
+- **#18 cause:** not the size at all. `PageControlTreeView` had no `ScrollBars`
+  in the `.lfm`, so the LCL default `ssBoth` applied, and
+  `TCustomTreeView.UpdateScrollbars` (`lcl/include/treeview.inc`) calls
+  `SetShowScrollBar(..., true)` unconditionally for the non-auto values; only
+  `ssAutoBoth`/`ssAutoVertical`/`ssAutoHorizontal` hide a bar when the content
+  fits. Delphi's `ssBoth` was effectively auto. **Fix:** `ScrollBars = ssAutoBoth`
+  plus an explicit `Width = 124` (default was 121; the page control begins at 143).
+  Rule of thumb: any ported `TTreeView` without `ScrollBars` in its `.lfm` will
+  show both bars under the LCL - grep for it when a tree looks like that.
+- **Neighbours checked:** Row format, Table Prefix, Table Type combos show their
+  current item completely; Table Type's long items are clipped in the closed
+  combo as in the original (241 px design width) - not touched.
+- **Verification:** `shots/fix17-18/` before/after crops (`before-adv.png` /
+  `after-adv.png`, `before-tree.png` / `after-trees.png`); `flow.sh` there opens
+  round6.xml, closes Tips, double-clicks `Table_03` at (300,258) of the (now
+  600x426) main window, then clicks Table Options / Advanced in the tree at
+  y=312 / y=325 of the editor. No new stderr lines.
