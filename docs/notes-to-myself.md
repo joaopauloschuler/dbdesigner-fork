@@ -1926,6 +1926,43 @@ navigation (`Down`x4 `Right` for File > Open Recent). Shots: `fix13-*`.
   `flow.sh` here (no palette undock) lands on the Indices page directly; the
   add-index button is at (280,332) of the Table Editor window.
 
+## Fix: model-edit #16 - datatype palette drag cannot reach the modal Table Editor; "Set Datatype" popup submenu instead
+
+- **Cause (confirmed by the first attempt):** the Table Editor runs in `ShowModal`;
+  the LCL disables every other form and GTK2 adds an input grab, so the Datatypes
+  palette (floating or docked in the main window) never sees the mouse-down that
+  would start `BeginDrag`. Re-enabling the palette from the editor did not help
+  (mutter restacks it below the main window, docked panels inherit the parent's
+  insensitivity). Not fixable without making the editor non-modal.
+- **Workaround (src/EditorTable.pas, .lfm):** `ColPopupMenu` gets a leading
+  `SetDatatypeMI` ("Set Datatype") whose children are built in `BuildSetDatatypeMenu`
+  (called from `SetTable`): one `TMenuItem` per `EERModel.DatatypeGroups` entry with
+  one child per datatype of that group (`Tag` = datatype id, `OnClick` =
+  `SetDatatypeMIClick`); empty groups are skipped. The assignment code of
+  `ColumnGridDragDrop` was factored into `ApplyDatatype(theDatatype, ARow)` and the
+  drop handler now calls it, so drop and menu stay identical (single row or
+  `ParamRequired` type -> that row, params cleared, option defaults, in-place combo
+  opened for parameter types; multi-row selection + parameter-free type -> all
+  selected non-FK rows). `ColPopupMenuPopup` selects the right-clicked row when it
+  is outside the current selection (`Mouse.CursorPos` -> `MouseToCell`; doing this in
+  `OnMouseDown` for `mbRight` did not work - the popup is raised before/without that
+  handler under GTK2) and enables the submenu only for existing rows of a writable
+  table. The drag handlers stay for a future non-modal editor.
+- **Already there:** the DataType cell has a drop-down editor
+  (`EditorTableFieldDatatypeInplace.pas`, `TComboBox` with all type names, sorted,
+  autocomplete) opened by double-click or Return on the cell - round 6 missed it
+  because a single click/Tab opens the plain text editor.
+- **Verification:** `shots/fix16b/` - `popup.png`, `sub1.png` (groups), `sub2b.png`
+  / `sub3.png` / `sub4.png` (Date and Time / Numeric / String lists),
+  `after1-c.png` .. `after7-c.png`, `m-multi.png`, `m-final.png`, saved `t.xml`.
+  Driving: `flow.sh` there launches on `t.xml` (copy of round6.xml), closes Tips,
+  Ctrl+Tab to design mode; `Table_03` header double-click at abs (366,325); popup
+  windows are found by diffing `xwininfo -root -children` before/after the
+  right-click, submenu items are 26 px apart starting 13 px below the submenu's
+  top; third-level submenus open at x=837 aligned with the hovered group item.
+  Shift+click through xdotool lost the modifier - use `xdotool key
+  --clearmodifiers shift+Down` to extend the selection.
+
 ## Fix: model-edit #17, #18 - Table Editor RAID Type combo clipped, page tree with permanent scrollbars
 
 - **#17 cause:** `RaidTypeLU` had the Delphi `Width = 90`; the GTK2 combo button

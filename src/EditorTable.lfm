@@ -1403,8 +1403,15 @@ object EditorTableForm: TEditorTableForm
       FF00FFFFFF00FFFFFF00FFFFFF00}
   end
   object ColPopupMenu: TPopupMenu
+    OnPopup = ColPopupMenuPopup
     Left = 368
     Top = 174
+    object SetDatatypeMI: TMenuItem
+      Caption = 'Set Datatype'
+    end
+    object N6: TMenuItem
+      Caption = '-'
+    end
     object MoveRowupMI: TMenuItem
       Caption = 'Move Row up'
       OnClick = MoveRowupMIClick
