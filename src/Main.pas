@@ -1426,17 +1426,19 @@ end;
 procedure TMainForm.PasteMIClick(Sender: TObject);
 var f: TextFile;
   ctext, s: string;
-  i, j, anz: integer;
-  theTbl: TEERTable;
+  i, j, anz, maxOrderPos: integer;
+  theObj: TEERObj;
 
-  function TableNameUsedByOther(theTable: TEERTable; const theName: string): Boolean;
+  //True if another object of the same kind (table/region/note/image)
+  //already carries theName
+  function NameUsedByOther(theObj: TEERObj; const theName: string): Boolean;
   var k: integer;
   begin
     Result:=False;
     with TEERForm(FActiveEERForm).EERModel do
       for k:=0 to ComponentCount-1 do
-        if(Components[k] is TEERTable)and(Components[k]<>theTable)then
-          if(CompareText(TEERTable(Components[k]).ObjName, theName)=0)then
+        if(Components[k].ClassType=theObj.ClassType)and(Components[k]<>theObj)then
+          if(CompareText(TEERObj(Components[k]).ObjName, theName)=0)then
           begin
             Result:=True;
             Exit;
@@ -1476,28 +1478,43 @@ begin
               inc(anz);
         end;
 
-        //The pasted objects (the selected ones) keep the names of the
-        //originals - give tables that collide with an existing table a
-        //unique name (name_1, name_2, ...)
+        //The pasted objects (the selected ones) keep the names and the
+        //OrderPos of the originals - give tables, regions, notes and
+        //images that collide with an existing object of the same kind a
+        //unique name (name_1, name_2, ...) and append them to the
+        //OrderPos sequence (the DB Model palette sorts by OrderPos)
         with TEERForm(FActiveEERForm).EERModel do
+        begin
+          maxOrderPos:=0;
           for i:=0 to ComponentCount-1 do
-            if(Components[i] is TEERTable)then
-              if(TEERTable(Components[i]).Selected)then
+            if(Components[i].ClassParent=TEERObj)then
+              if(Not(TEERObj(Components[i]).Selected))then
+                if(TEERObj(Components[i]).OrderPos>maxOrderPos)then
+                  maxOrderPos:=TEERObj(Components[i]).OrderPos;
+
+          for i:=0 to ComponentCount-1 do
+            if(Components[i] is TEERTable)or(Components[i] is TEERRegion)or
+              (Components[i] is TEERNote)or(Components[i] is TEERImage)then
+              if(TEERObj(Components[i]).Selected)then
               begin
-                theTbl:=TEERTable(Components[i]);
-                s:=theTbl.ObjName;
+                theObj:=TEERObj(Components[i]);
+                s:=theObj.ObjName;
                 j:=0;
-                while(TableNameUsedByOther(theTbl, s))do
+                while(NameUsedByOther(theObj, s))do
                 begin
                   inc(j);
-                  s:=theTbl.ObjName+'_'+IntToStr(j);
+                  s:=theObj.ObjName+'_'+IntToStr(j);
                 end;
-                if(s<>theTbl.ObjName)then
+                if(s<>theObj.ObjName)then
                 begin
-                  theTbl.ObjName:=s;
-                  theTbl.RefreshObj;
+                  theObj.ObjName:=s;
+                  theObj.RefreshObj;
                 end;
+
+                inc(maxOrderPos);
+                theObj.OrderPos:=maxOrderPos;
               end;
+        end;
 
         //Log the paste as one undoable action: a sub action per pasted
         //object with the object's XML, so that Undo removes and Redo

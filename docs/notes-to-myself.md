@@ -2369,3 +2369,32 @@ Driving notes: the earlier "tips window not shown in `import -window <main>`" is
   `sel.png`, crops, `run.log`). GTK message boxes: `xwininfo` "Absolute upper-left" is
   the client origin (821,455 here), `xdotool getwindowgeometry` reported the frame
   (835,504) - clicks computed from the latter missed the Yes button twice.
+
+## Fix: model-edit #40, #41 - paste renames regions/notes/images, Image Editor buttons
+
+- **#40**: the rename loop of `PasteMIClick` (`src/Main.pas`) covered only `TEERTable`;
+  the original Delphi `PasteMIClick` (8b2b15f) renamed nothing, the table rename came
+  with #26-#28. Now `NameUsedByOther(theObj, name)` compares against every component of
+  the *same class* (`ClassType`), and the loop runs over tables, regions, notes and images
+  (relations skipped - their names are not unique in the model anyway). Same `_1` scheme
+  for all kinds (`OnlineStore_1`, `Note_03_1`, `Image_03_1`); the `NewNote`/`NewImage`
+  counters are not touched, so a later Note tool still gives `Note_06` etc. Notes carry
+  their `NoteName` only in the XML and the DB Model palette, the canvas shows the text.
+- **OrderPos** is not the z-order (that is plain `BringToFront`/`SendToBack` of the
+  `TPaintBox`es): it is the sort key of the DB Model palette (`SortEERObjectListByOrderPos`,
+  drag reorder in `src/PaletteModel.pas:564-590`) and a saved attribute; `TEERObj.Create`
+  sets `GetEERObjectCount+1`, `LoadFromFile` restores the saved value - so pasted copies
+  carried their originals' values. `PasteMIClick` now takes max `OrderPos` of the
+  non-selected objects and numbers the pasted ones from there in component order. The
+  `at_PasteObj` sub-action log is still written *after* both loops, so redo reloads the
+  final names and positions (undo deletes by id, unaffected).
+- **#41**: `src/EditorImage.lfm` `TBitBtn` Height 25 -> 30, Top 80 -> 82, form
+  `ClientHeight` 122 -> 130. GTK2 draws the label from the requisition (~28 px) and the
+  LCL clips the top when the allocation is smaller; 26 px was enough for the Options
+  button of ui-bug #16, 30 leaves a margin. No Escape/OK on this tool window (inherited,
+  `FormKeyDown` = F1 help only); the WM close button closes it (`FormClose` -> free).
+- Verification: `shots/fix40/` (`h.sh` = fix42 helper, `after-paste.xml`, `after-undo.xml`,
+  `03-imged.png`, `run.log` = canberra line only). Band (80,103)-(532,792) with five
+  `mousemove` steps; paste 21/4/5/4 objects with unique names and OrderPos 37-48, undo
+  back to 14/3/3/2/11. The Image Editor client origin was (80,177) while
+  `getwindowgeometry` said (94,226): the WM close button is at client `(x+w-16, y-18)`.

@@ -4,7 +4,7 @@ object EditorImageForm: TEditorImageForm
   ActiveControl = ImagNameEd
   BorderStyle = bsToolWindow
   Caption = 'Image Editor'
-  ClientHeight = 122
+  ClientHeight = 130
   ClientWidth = 459
   Color = clBtnFace
   KeyPreview = True
@@ -102,9 +102,9 @@ object EditorImageForm: TEditorImageForm
   end
   object ClearImgBtn: TBitBtn
     Left = 308
-    Top = 80
+    Top = 82
     Width = 131
-    Height = 25
+    Height = 30
     Anchors = [akRight, akBottom]
     Caption = 'Clear Image'
     TabOrder = 3
@@ -112,9 +112,9 @@ object EditorImageForm: TEditorImageForm
   end
   object RestoreAspectRationBtn: TBitBtn
     Left = 162
-    Top = 80
+    Top = 82
     Width = 131
-    Height = 25
+    Height = 30
     Anchors = [akLeft, akBottom]
     Caption = 'Restore Aspect Ratio'
     TabOrder = 4
@@ -122,9 +122,9 @@ object EditorImageForm: TEditorImageForm
   end
   object RestoreSizeBtn: TBitBtn
     Left = 16
-    Top = 80
+    Top = 82
     Width = 131
-    Height = 25
+    Height = 30
     Anchors = [akLeft, akBottom]
     Caption = 'Restore Size'
     TabOrder = 5

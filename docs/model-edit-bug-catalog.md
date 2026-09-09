@@ -609,6 +609,7 @@ Expected: unique names for all pasted objects (`Note_06`, `Image_05`, `OnlineSto
 What the code says: `src/Main.pas:1479-1500` (`PasteMIClick`) renames only `TEERTable` instances ("give tables that collide with an existing table a unique name") - the pasted objects are loaded by `LoadFromFile(..., Select)` with their saved names and `OrderPos`. Whether the original DBDesigner 4 renamed notes/regions on paste was not checked.
 Evidence: `order-before-mixed.xml`, `order-pasted.xml`, `17-c.png` (selection), `18-c.png`.
 Suspected files: `src/Main.pas:1426-1530`, `src/EERModel.pas` `LoadFromFile` (OrderPos handling on paste).
+Status: fixed - `PasteMIClick` (`src/Main.pas`) now runs the unique-name loop over every pasted `TEERTable`, `TEERRegion`, `TEERNote` and `TEERImage` (`NameUsedByOther` compares against objects of the same class, same `_1`, `_2` scheme; relations are left alone) and gives each pasted object a fresh `OrderPos` (largest `OrderPos` of the non-pasted objects + 1, +2, ... in component order); the paste log (`at_PasteObj` sub actions) is still written after the rename, so undo/redo carry the final names. `OrderPos` is not the z-order: it is only the sort key of the DB Model palette tree (`SortEERObjectListByOrderPos`, drag reorder in `src/PaletteModel.pas`) and a saved attribute, so no repaint order changes. The original Delphi `PasteMIClick` (8b2b15f) renamed nothing at all - the table rename is the port's (#26-#28), now extended. Verified on DISPLAY=:0 (`fix40/`, same band (80,103)-(532,792), Ctrl+C, Ctrl+V, Ctrl+S): `after-paste.xml` = 21/4/5/4 with `OnlineStore_1` (OrderPos 37), `product_1` ... `creditcard_1` (38-44), `Note_03_1`/`Note_05_1` (45/46), `Image_03_1`/`Image_04_1` (47/48), originals unchanged; Ctrl+Z, Ctrl+S: `after-undo.xml` = 14/3/3/2/11, no `_1` name left.
 
 ### 41. Image Editor: the three TBitBtn captions are clipped at the top
 
@@ -618,6 +619,7 @@ Observed (`25-imged.png`, window 459x122): "Restore Size", "Restore Aspect Ratio
 Expected: full captions.
 Suspected: `src/EditorImage.lfm:103-130` (TBitBtn with `Height = 25` and a glyph/layout setting that shifts the caption - not verified); compare with the Note Editor buttons which render correctly.
 Evidence: `25-imged.png`.
+Status: fixed - `src/EditorImage.lfm`: the three `TBitBtn`s 25 -> 30 px high (Top 82), `ClientHeight` 122 -> 130. A GTK2 button needs ~28 px for the `Sans -11` label and the LCL clips the requisition at the top when the allocation is smaller (same cause as the Options "Reset Personal Settings" button of ui-bug #16). Verified on DISPLAY=:0 (`fix40/03-imged.png`, 459x130): "Restore Size", "Restore Aspect Ratio", "Clear Image" complete, name edit / folder button / "Enable Image streching" unchanged and inside the form; closed through the WM close button (the tool window has no OK/Cancel and `FormKeyDown` handles F1 only - inherited).
 
 ### 42. Undo of a multi-object delete loses every relation whose two tables were both deleted (and their FK columns)
 
