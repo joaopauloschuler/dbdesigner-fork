@@ -1176,6 +1176,10 @@ type
 
     at_EditObj=60;
 
+    //Paste: one sub action per pasted object, Params holds the object's
+    //XML (GetObjAsXMLModel) - undo deletes the object, redo reloads it
+    at_PasteObj=70;
+
     //SQLCmdType
     ct_SQLCmd=1;
     ct_SQLScript=2;
@@ -5571,6 +5575,14 @@ begin
           //theObj:=nil;
         end;
 
+        at_PasteObj:
+        begin
+          //a pasted relation is already gone when its table was deleted
+          theObj:=GetEERObjectByID(theSubAction.Obj_id);
+          if(theObj<>nil)then
+            theObj.DeleteObj;
+        end;
+
         at_DeleteObj:
         begin
           AssignFile(f, DMMain.SettingsPath+'undo.xml');
@@ -5814,6 +5826,24 @@ begin
             theObj.DeleteObj;
         end;
 
+        at_PasteObj:
+        begin
+          //Reload the pasted object from its XML (same id, final name)
+          AssignFile(f, DMMain.SettingsPath+'undo.xml');
+          try
+            Rewrite(f);
+
+            Write(f, theSubAction.Params.Text);
+          finally
+            CloseFile(f);
+          end;
+
+          LoadFromFile(DMMain.SettingsPath+'undo.xml',
+            False, True);
+
+          DeleteFile(DMMain.SettingsPath+'undo.xml');
+        end;
+
         at_RenameObj:
         begin
           theObj:=GetEERObjectByID(theSubAction.Obj_id);
@@ -5949,6 +5979,8 @@ begin
       GetActionName:=DMMain.GetTranslatedMessage('Scale Object(s)', 53);
     at_EditObj:
       GetActionName:=DMMain.GetTranslatedMessage('Edit Object', 54);
+    at_PasteObj:
+      GetActionName:=DMMain.GetTranslatedMessage('Paste Object(s)', -1);
   end;
 end;
 
@@ -7419,6 +7451,10 @@ procedure TEERObj.DoDblClick(Sender: TObject);
 begin
   MouseIsDown:=False;
   EditorIsCalled:=True;
+
+  //The mouse down of the second click opened a Move action; the mouse up
+  //that would discard it goes to the modal editor, so discard it here
+  ParentEERModel.DeleteOpenAction;
 
   ShowEditor(Sender);
 end;

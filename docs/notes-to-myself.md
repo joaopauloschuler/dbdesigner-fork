@@ -2196,3 +2196,58 @@ navigation (`Down`x4 `Right` for File > Open Recent). Shots: `fix13-*`.
   In Query mode a double-click on a table opens the connection selector, not the Table
   Editor: single click on the mode button at client (18,49) first and check the bottom
   panel is gone (two clicks toggle back).
+
+## Fix: model-edit #26-#28 - paste: FK index/relation ids, undoable paste, DB Model tree names
+
+- **#26, the real cause was `ReplaceText`** (`src/MainDM.pas:600`): it upper-cases both
+  strings, so in `TDMEER.AssignNewIDsToEERObjects` the replacement of `ID="1296"` also hit
+  `FKRefDef_Obj_id="1296"` and produced `FKRefDef_Obj_ID="1307"` - the attribute *name*
+  changed case, the XML parser's `CurAttr.Value('FKRefDef_Obj_id')` returned '' and the
+  `StrToInt` except branch stored -1. Same for `FKRefDefIndex_Obj_id` on the relation. The
+  tell-tale in the saved file: the relation's new id (1307) sits between the pasted
+  columns and the pasted PRIMARY index, because the loop met "1296" inside the child's
+  index before it reached the `<RELATION>` tag. The remap now uses `StringReplace` (case
+  sensitive) through a local `ReplaceId(Attr)` and covers `ID`, `idColumn`, `SrcTable`,
+  `DestTable`, `FKRefDefIndex_Obj_id`, `FKRefDef_Obj_id` and ` Obj_id` (leading blank:
+  plugin data records only). Not remapped on purpose: `idDatatype` (datatypes are not in
+  the clipboard - they live inside the SETTINGS block that `SaveToFile(..., WriteSettings=
+  False, OnlySelected=True)` skips), `IDLinkedModel`/`Obj_id_Linked` (ids of another
+  model). An id whose object is not in the clipboard stays as it is (original behaviour):
+  a `child` copied without its relation keeps `FKRefDef_Obj_id` of the original relation.
+- **#28, paste as one undo action**: `at_PasteObj=70` in `TEERModel`; `PasteMIClick` logs
+  `StartSubActionLog(at_PasteObj)` + one `LogSubAction(at_PasteObj, Obj_id,
+  GetObjAsXMLModel)` per selected (= pasted) object *after* the rename loop, so the redo
+  XML has the final names and the same ids. Undo (`UndoActions`) deletes by id with a nil
+  guard - deleting a table deletes its relations, whose own sub action then finds nothing.
+  Redo writes the XML to `undo.xml` and `LoadFromFile(..., False, True)`s it, exactly the
+  delete-undo path. Two traps: `RedoActions` iterates `SubActions.Count-1 downto 0`, so the
+  objects are logged in reverse component order (relations first) or the relation is
+  reloaded before its tables, `GetRELATIONS` skips it, and the model-wide "Clear obsolete
+  FKs" pass (`src/EERModel.pas` ~3245) then removes the pasted `parent_id` because no
+  relation claims it. And `at_NewObj` cannot be reused: its redo calls `NewTable` /
+  `NewRelation`, which would recreate an empty `Table_n`.
+- **The stray "Undo Move Object(s)"** of round 9 was the double-click that opened the Table
+  Editor: `TEERObj.DoMouseDown` starts `at_MoveObj` on every left press in design mode,
+  `DoMouseUp` discards it if nothing moved (`DeleteOpenAction`) - but after `DoDblClick`
+  the mouse up lands in the modal editor, so the open move action survived as the current
+  action. `DoDblClick` now calls `DeleteOpenAction` before `ShowEditor`. The paste's own
+  +30/+30 shift is a text rewrite of `XPos`/`YPos` in the clipboard XML and never logged
+  anything.
+- **#27**: `DMEER.RefreshPalettes` after the rename loop (`LoadFromFile2` had already
+  posted one with the old names).
+- Verified on DISPLAY=:0 (`shots/fix26/`, model `f26.xml` = round8.xml, WorkMode=0 during
+  the session, restored from `settings.bak`): 3-object rubber band, Ctrl+C/V -> "3 Object(s)
+  pasted", tree `parent_1, parent, child_1, child`, `f26-after-paste.xml` with
+  `FKRefDef_Obj_id="1307"` / `FKRefDefIndex_Obj_id="1315"`; Edit menu `Undo Paste
+  Object(s)`; Ctrl+Z removes the three, menu `Redo Paste Object(s)`; Ctrl+Y restores them
+  with FK column, index and line, `f26-after-redo.xml` identical in every TABLE/COLUMN/
+  INDEX/RELATION line; single paste `parent_2`; Ctrl+X (Confirmation dialog, Return) then
+  Ctrl+V re-pastes `parent_2`; double-click on `child` + Escape keeps `Undo Paste
+  Object(s)`. Self-test: see the commit message.
+- Driving notes: the GTK menu popup is a separate viewable window of the app's pid named
+  `DBDesignerFork` (300x241) - `import -window` it while the menu is open; the main window
+  came back at 1878x886 on the second launch (saved geometry), so crops taken from the
+  first 1287x758 window were empty - re-read `xwininfo` after every launch; `xdotool search
+  --name 'DBDesigner Fork -'` also returns unmapped windows, filter on `IsViewable`. A
+  "DBDesigner Fork Tips" window is viewable but not modal and does not swallow keys.
+

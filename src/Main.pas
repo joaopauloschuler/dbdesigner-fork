@@ -1499,6 +1499,29 @@ begin
                 end;
               end;
 
+        //Log the paste as one undoable action: a sub action per pasted
+        //object with the object's XML, so that Undo removes and Redo
+        //reloads the group. RedoActions walks the sub actions backwards,
+        //so log in reverse component order (relations before tables) -
+        //the redo then re-creates the tables before their relations
+        with TEERForm(FActiveEERForm).EERModel do
+        begin
+          StartSubActionLog(at_PasteObj);
+          try
+            for i:=ComponentCount-1 downto 0 do
+              if(Components[i].ClassParent=TEERObj)then
+                if(TEERObj(Components[i]).Selected)then
+                  LogSubAction(at_PasteObj, TEERObj(Components[i]).Obj_id,
+                    TEERObj(Components[i]).GetObjAsXMLModel);
+          finally
+            EndSubAction;
+          end;
+        end;
+
+        //The DB Model palette was filled by LoadFromFile with the names
+        //before the rename
+        DMEER.RefreshPalettes;
+
         DeleteFile(DMMain.SettingsPath+'clipboard.xml');
 
         DMGUI.SetStatusCaption(DMMain.GetTranslatedMessage('%s Object(s) pasted from clipboard.', -1, IntToStr(anz)));
