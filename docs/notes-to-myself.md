@@ -2251,3 +2251,13 @@ navigation (`Down`x4 `Right` for File > Open Recent). Shots: `fix13-*`.
   --name 'DBDesigner Fork -'` also returns unmapped windows, filter on `IsViewable`. A
   "DBDesigner Fork Tips" window is viewable but not modal and does not swallow keys.
 
+
+## Fix: model-edit #31 - undo/redo after a save did not mark the model as changed
+
+`TEERForm.FormCloseQuery` (`src/EER.pas`) asks "save before closing?" only when `EERModel.IsChanged` is set. Every ordinary edit sets it through `TEERModel.ModelHasChanged`, and a save clears it - but `TEERModel.UndoActions` and `RedoActions` (`src/EERModel.pas`) restored objects without ever calling it. Save, Ctrl+Z, Close therefore discarded the undone state silently.
+
+Both routines now call `ModelHasChanged` before they move `CurrentAction`, provided the loop actually processed an action (`CurrentAction>=TillAction` for undo, `TillAction>CurrentAction` for redo). `ModelHasChanged` also refreshes the toolbar saved-indicator (`DMEER.RefreshSavedImg`); there is no "modified" marker in the window title or the Windows menu, so nothing else needed to follow.
+
+Not done on purpose: the action log has no notion of "position at last save", so undoing back to exactly the saved state still prompts. Adding that would mean inventing state the original never had; one prompt too many is harmless.
+
+Side observation while testing (not touched): after the last model is closed the main title keeps `DBDesigner Fork - <name>` instead of resetting.

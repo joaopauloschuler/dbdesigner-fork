@@ -5719,6 +5719,10 @@ begin
     end;
   end;
 
+  //Undoing changes the model away from what is on disk (model-edit #31)
+  if(CurrentAction>=TillAction)and(CurrentAction>=0)then
+    ModelHasChanged;
+
   CurrentAction:=TillAction-1;
 end;
 
@@ -5960,6 +5964,10 @@ begin
       DMEER.RefreshNavImg;
     end;
   end;
+
+  //Redoing changes the model away from what is on disk (model-edit #31)
+  if(TillAction>CurrentAction)then
+    ModelHasChanged;
 
   CurrentAction:=TillAction;
 end;
