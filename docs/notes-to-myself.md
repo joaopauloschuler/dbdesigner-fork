@@ -2398,3 +2398,45 @@ Driving notes: the earlier "tips window not shown in `import -window <main>`" is
   `mousemove` steps; paste 21/4/5/4 objects with unique names and OrderPos 37-48, undo
   back to 14/3/3/2/11. The Image Editor client origin was (80,177) while
   `getwindowgeometry` said (94,226): the WM close button is at client `(x+w-16, y-18)`.
+
+## Fix: model-edit #43, #44, #46 (#47) - query-mode result grid: empty editor, no editing, phantom row
+
+- **#44 / #46 (one cause)**: `TEditorQueryForm.FormCreate` added `dgAlwaysShowEditor`
+  under `{$IFDEF LINUX}` - inherited from the CLX source, where the Qt grid needed it.
+  On the LCL `TDBGrid` the always-shown `TStringCellEditor` came up empty over the
+  current cell after every Open, swallowed the keys (so nothing could be edited, #43a),
+  and `EditorIsReadOnly` -> `FDataLink.Edit` put an *empty* result into Insert, which is
+  the phantom row. Option removed; F2 / second click / typed character open the editor.
+  The LCL grid still allocates one placeholder row for an empty dataset
+  (`TCustomDBGrid.UpdateGridCounts`, `RecCount<1 -> 1`); `SizeGridCols` drops
+  `dgIndicator` for 0 records and `DBGridDrawColumnCell` paints that row blank.
+- **#43b (Apply Changes)**: the `TClientDataSet` shim (`src/clx_shims/dbclient.pas`)
+  is a `TBufDataset`; `TCustomBufDataset.ApplyRecUpdate` raises "not supported", and
+  `CopyFromDataset` (FPC 3.2.2) leaves every appended row in the change log, so the
+  first working apply tried to INSERT the whole result again ("Duplicate entry '1' for
+  key 'product.PRIMARY'"). Now: `MergeChangeLog` after the copy; `CopyProviderFlags`
+  takes the source `TSQLQuery`'s `TableName` (protected - `TSQLQueryAccess` cast) and
+  per-field `ProviderFlags` (`pfInKey` is set by `UsePrimaryKeyAsKey` on Open);
+  `ApplyRecUpdate` builds `update/insert/delete` with `:"field"` / `:"OLD_field"`
+  params (same scheme as `TSQLConnection.ConstructUpdateSQL`), runs it through a
+  temporary `TSQLQuery` on the source connection/transaction and `CommitRetaining`s
+  (dbExpress auto-commit, see the sqlexpr shim). No table name / no key field ->
+  `EDatabaseError` "Cannot apply changes: ...". `SubmitBtnClick` posts a pending edit,
+  `ApplyUpdates(0)` in try/except + `MessageDlg`, status "Changes applied. N pending".
+- Gotcha: the shim unit `Provider` (implementation `uses`) redefines `TUpdateKind`, so
+  the override must be spelled `DB.TUpdateKind` / `DB.ukModify` or FPC reports
+  "function header doesn't match any method of this class".
+- Driving: the "Apply Changes to DB" speed button is `GridFuncPnl` Top=3 -> screen
+  (1892,667) with the main window at client (42,69); (1892,699) is "Discard Changes"
+  (`CancelBtn`, Close+Open, cursor back to row 1) - round 11 clicked that one.
+  `import -window` between keystrokes can close the inplace editor (focus out); type
+  the value right after the double click. After `pkill` the next start came up
+  600x426: `xdotool windowmove 42 69` + `windowsize 1878 886` restores the layout.
+  The stored `OrderMySQL` connection has no password: type `bpsa` into the Password
+  field of the Select Database Connection dialog (screen 1172,538) before Connect.
+- #47 not reproduced in 5 error->valid cycles (3 MySQL, 2 SQLite); one first-Execute-
+  after-reconnect oddity noted in the catalog entry.
+- Verification: `shots/fix43/` (`h.sh`, `q.sh`, `c.sh`, scratch MySQL `dbdfix43` from
+  `order_mysql.sql`, `order.sqlite` copy): `51-52-stack.png` + `mysql` `2 ZZ`,
+  `60-72-stack.png` + `sqlite3` `2|YY`, `20-22-stack.png` zero rows, `24-29-stack.png`
+  four ways to open the editor. Not exercised: DBNavigator insert/delete write-back.

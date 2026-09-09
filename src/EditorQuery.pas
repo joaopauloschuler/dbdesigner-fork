@@ -376,9 +376,12 @@ begin
   // StoredSQLTreeView header caption (Columns not available in LCL TTreeView)
   // DMMain.GetTranslatedMessage('Stored SQL Commands', 84);
 
-{$IFDEF LINUX}
-  DBGrid.Options:=DBGrid.Options + [dgAlwaysShowEditor];
-{$ENDIF}
+  // CLX on Linux needed dgAlwaysShowEditor to get an editable grid; the LCL
+  // TDBGrid with it shows an empty inplace editor over the current cell after
+  // every Open and puts an empty result into Insert (a phantom row) - so
+  // editing starts on a keypress / F2 / double click instead
+  // (model-edit-bug-catalog #44, #46).
+  DBGrid.Options:=DBGrid.Options - [dgAlwaysShowEditor];
 
 {$IFDEF USE_SYNEDIT}
   SQLSynEditHighlighter:=TSynSQLSyn.Create(self);
@@ -578,6 +581,14 @@ begin
       theColumn.Width:=theSize.Cx+5;
   end;
 
+  //The LCL TDBGrid always shows one data row, even for an empty result;
+  //without the indicator and with the blank painting in DBGridDrawColumnCell
+  //it reads as an empty grid (model-edit-bug-catalog #46)
+  if(OutputClientDataSet.Active)and(OutputClientDataSet.RecordCount=0)then
+    DBGrid.Options:=DBGrid.Options-[dgIndicator]
+  else
+    DBGrid.Options:=DBGrid.Options+[dgIndicator];
+
   DBGridColEnter(self);
 end;
 
@@ -603,8 +614,28 @@ end;
 procedure TEditorQueryForm.SubmitBtnClick(Sender: TObject);
 begin
   if(OutputClientDataSet.Active)then
+  begin
+    //Post the cell that is still being edited
+    if(OutputClientDataSet.State in [dsEdit, dsInsert])then
+      OutputClientDataSet.Post;
+
     if(OutputClientDataSet.ChangeCount>0)then
-      OutputClientDataSet.ApplyUpdates(-1);
+    begin
+      try
+        //the DBClient shim resolves the change log into UPDATE/INSERT/DELETE
+        //statements (model-edit-bug-catalog #43); the first error aborts
+        OutputClientDataSet.ApplyUpdates(0);
+      except
+        on x: Exception do
+          MessageDlg('ERROR while applying the changes to the database: '+#13#10#13#10+
+            x.Message, mtError, [mbOk], 0);
+      end;
+      DMGUI.SetStatusCaption('Changes applied. '+
+        FormatFloat('##,###,##0', OutputClientDataSet.ChangeCount)+' pending change(s).');
+    end
+    else
+      DMGUI.SetStatusCaption('No changes to apply.');
+  end;
 end;
 
 procedure TEditorQueryForm.CancelBtnClick(Sender: TObject);
@@ -2943,6 +2974,16 @@ var theTextRect: TRect;
 begin
   with DBGrid.Canvas do
   begin
+    //Empty result: the LCL grid's single placeholder row is painted blank
+    if(OutputClientDataSet.Active)and(OutputClientDataSet.RecordCount=0)then
+    begin
+      Brush.Color:=clWhite;
+      Pen.Style:=psClear;
+      Rectangle(Rect);
+      Pen.Style:=psSolid;
+      Exit;
+    end;
+
     if(gdSelected in State)then
     begin
       Brush.Color:=$00AAAAAA;

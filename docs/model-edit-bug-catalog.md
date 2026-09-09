@@ -639,3 +639,111 @@ Round 10b OK (not entries): Region Editor (`01-regioned.png`): all controls read
 Proposed grouping for this pass: (A) undo/paste bookkeeping of multi-object actions - #42 (relations lost on undo) and #40 (names/OrderPos on paste), both in the `LoadFromFile`-based replay; (B) image export handle sharing - #39; (C) selection - #36; (D) cosmetic - #41. Recommended order: #42, #39, #36, #40, #41.
 
 Exercised / not reached (round 10b): exercised - Region Editor open/edit/OK and XML, region move with contents + undo, pointer rubber band around a note (twice) and around a whole region, mixed copy/paste + undo, Ctrl+Del of the mixed selection with Confirmation + undo (XML diff, #42), Export Model as Image (twice, once under gdb), Export selected Objects as Image, Image Editor opened. Not reached - Region Editor Cancel; region resize; z-order (click on a table inside a region, region popup menu); region-only Ctrl+Del + undo/redo; note move/resize and persistence; Image Editor change picture / Stretch / OK; image move, delete + undo; redo after the #42 undo; Copy selected Object(s) as Image / clipboard targets (no `xclip` installed); Navigator thumbnail; Display menu toggles.
+
+## Round 11 (2026-09-09): query mode against MySQL and SQLite
+
+30-minute time box, binary rebuilt with `lazbuild --build-all` from b3da86b (branch a3). Display rules as in round 10 (WorkMode=2 / ShowTipsOnStartup=0 during the run, settings and `DBConn.ini` restored afterwards; the stored connection `OrderMySQL` pointed at a scratch database `dbdround11` built with `tests/mysql-roundtrip.sh` from `order_mysql.sql`, an earlier MySQL export of `order.xml`; `OrderSQLite` pointed at `order.sqlite`, a copy of the round-8 verification database; `dbdround11` dropped at the end). All work on `<scratchpad>/shots/round11/order.xml`, a copy of `bin/Examples/order.xml`; drivers `h.sh` (round-10 helpers) and `q.sh` (type a statement into the SQL memo, execute, capture grid + status bar). `run.log` = only the canberra line for the whole run (both launches), no exception text. `git status` clean apart from this file. Screen = client (42,69) + control position; SQL memo click point (442,689), Execute button (1814,675), Store SQL button (1814,723), grid rows at screen y 841/861/881.
+
+### Stage table
+
+| Stage | MySQL 8.0 (`dbdround11`) | SQLite (`order.sqlite`) |
+|---|---|---|
+| 1 Query mode layout | works: palette SELECT/FROM/WHERE/GROUP/HAVING/ORDER/SET buttons, stored-SQL tree (SQL Commands / Scripts / Table Selects / History), SQL memo, grid, two button columns all readable, no clipped captions (`01-main-s.png`, `01-palette-c.png`) | same window |
+| 2 Connect + build + execute | works: Connect dialog lists both connections (`03-connsel-s.png`), status "Connected to Database bpsa@dbdround11"; dragging a table shows the "Query Drag Target" form (SELECT / Add Table(s) / JOIN Table(s) / LEFT OUTER JOIN / UPDATE / INSERT / DELETE, `07-dt-4200045.png`), drop on SELECT writes `SELECT *\nFROM product product`; Execute -> 3 rows, 7 columns, "Query opened. 3 Record(s) fetched. Time: 00:00:030" (`09-combo.png`, `09-bl-c.png`); JOIN + WHERE string literal + ORDER BY DESC correct (`10-join-c.png`), zero rows -> "0 Record(s)" but see #46, syntax error -> error box with the server message, app continues (`16-dlg-4205327.png`); NULL TEXT/BLOB columns empty; DECIMAL 14.20 shown as `14.2`; DATETIME/DATE see #45; first cell see #44; one bogus "1 Record(s)" result see #47 | works the same way: 3 rows, JOIN/WHERE/ORDER correct, 0 rows (#46), error box `TSQLite3Connection : near "SELEC": syntax error`-style dialog (`54-dlg-s.png`), same #44/#45 (`55-combo.png`) |
+| 3 Result grid | click selects a row (indicator moves), Down key / typing do not edit (#43); right-click popup Copy to Clipboard / Export Records / Print Records to PDF present (`29-combo.png`); Ctrl+C not verifiable (no `xclip`/`xsel` on this machine); column resize / header sort not reached | not repeated |
+| 4 Stored SQL | Store SQL button -> "Name:" dialog, `Round11/prod` creates folder + node (`32-combo.png`, `34-combo.png`); rename via the node's inline dialog works in the tree (`39-combo.png`; dialog title see #49); persisted by File > Save as `<QUERYRECORD SQLCmdType="1" StoredPosition="Round11/prod" ...>` together with the 6 History entries of the session (`order.xml`); Ctrl+S does not save (#48); popup Execute / Delete Item(s): not confirmed (#50); reopened model shows the node again (`62-combo.png`) | not repeated |
+| 5 SQL editor | Ctrl+A + typing replaces the text (all `q.sh` runs); plain TMemo, no syntax highlighting; multi-statement / paste / history navigation not reached | not repeated |
+| 6 Mode switch | Display > Design Mode shows the design palettes, Display > Query Mode restores tree state, memo and grid, no exception (`48-combo.png`); Disconnect -> "Not connected to a Database"; connect to `OrderSQLite` works | (this is the other backend) |
+
+### 43. Result grid: a selected cell cannot be edited and "Apply Changes to DB" does nothing
+
+Severity: functional (no live editing of the result; no message either).
+Backend: MySQL (SQLite not repeated, same code path).
+Steps: `SELECT * FROM product`, Execute; click the `name` cell of row 2 (screen 480,861) twice; End; type `Z`; click the "Apply Changes to DB" button (screen 1892,699).
+Observed (`28-combo.png`): the indicator moves to row 2 but no inplace editor opens and the `Z` is neither shown in the cell nor in the SQL memo (`27-memo-c.png`); after "Apply Changes" the indicator jumps back to row 1, the grid is unchanged, `SELECT name FROM product WHERE idproduct=2` in the CLI still returns `Lord of the Rings - Part I`; `run.log` empty. Whether the "Discard Changes" button or a Post via cursor movement behaves differently was not tried.
+Expected (original DBDesigner 4): the grid is editable (`dgEditing` in `src/EditorQuery.lfm` DBGrid options) and `SubmitBtnClick` (`src/EditorQuery.pas:603`) posts the changes with `OutputClientDataSet.ApplyUpdates(-1)`.
+What the code says (not verified): `OutputClientDataSet` is the port's `TClientDataSet` shim (`src/clx_shims/dbclient.pas`, a `TBufDataset` filled by `CopyFromDataset` from `OutputQry`, `:91-99`); the shim publishes `ReadOnly` and toggles it around the copy. Whether the buffer is left read-only, whether the LCL grid refuses editing because `DefaultDrawing=False` / `OnDrawColumnCell`, or whether the key never reaches the grid, was not determined; a `TBufDataset.ApplyUpdates` without update SQL would also need `OutputDataSetProviderUpdateError`-style handling. Next step: `writeln` of `OutputClientDataSet.CanModify` / `ReadOnly` / `State` after Open and in `DBGrid.OnKeyPress`.
+Evidence: `27-edit-c.png`, `28-combo.png`, `27-memo-c.png`.
+Suspected files: `src/clx_shims/dbclient.pas`, `src/EditorQuery.pas:603-608` (`SubmitBtnClick`), `src/EditorQuery.lfm` (DBGrid `Options`, `ReadOnly` not set).
+Status: fixed - two causes. (1) The grid could not be edited because of `dgAlwaysShowEditor` (see #44): the always-shown LCL editor was empty and swallowed the keys; without it F2, a second click, or typing a character opens the inplace editor with the value (verified `fix43/24-29-stack.png`). (2) `ApplyUpdates` never reached the database: the port's `TClientDataSet` is a `TBufDataset` whose `ApplyRecUpdate` only raises "not supported", and worse, `CopyFromDataset` had left every fetched row in the change log as a pending *insert* (first apply attempt: `Duplicate entry '1' for key 'product.PRIMARY'`, `fix43/14-err-c.png`). `src/clx_shims/dbclient.pas` now calls `MergeChangeLog` after the copy, copies the source `TSQLQuery`'s `ProviderFlags` (`pfInKey` from `UsePrimaryKeyAsKey`) and table name, and implements `ApplyRecUpdate` as parameterised `UPDATE ... WHERE <pk>=:OLD_pk` / `INSERT` / `DELETE` statements on the source connection with `CommitRetaining` (like the Delphi `TDataSetProvider`; a JOIN or a table without primary key gives a clear "Cannot apply changes" error). `SubmitBtnClick` posts a pending edit, uses `ApplyUpdates(0)` inside a try/except with an error dialog and reports "Changes applied. N pending change(s)." / "No changes to apply." in the status bar. Note: round 11 clicked (1892,699), which is `CancelBtn` ("Discard Changes", Top=33); the Apply button is at (1892,667) - that is why the indicator jumped back to row 1. Verified on DISPLAY=:0 (`fix43/`): MySQL `product` row 2 name -> `ZZ` via double click + typing + Apply, `mysql` CLI returns `2 ZZ` (`51-52-stack.png`); SQLite row 2 -> `YY`, `sqlite3` returns `2|YY` (`60-72-stack.png`). Insert/delete through the DBNavigator buttons not exercised.
+
+### 44. After every Execute the current cell is drawn as an empty inplace editor (a caret "I") that hides the value
+
+Severity: unreadable (first value of every result hidden until the user clicks another cell).
+Backend: both.
+Steps: any query, Execute, look at row 1 / column 1.
+Observed (`10-cell-c.png`, `11-combo.png`, `55-combo.png`): the first cell shows a white box with a text caret and no text - for the JOIN query the cell should read `Lord of the Rings - Part I`; clicking a cell in the grid (`13-combo.png`) paints the value with a focus rectangle. Same on SQLite (`55-combo.png`, all four queries).
+Expected: the value.
+What the code says (not verified): `DBGrid.Options` has `dgEditing` and `dgAlwaysShowSelection` (`src/EditorQuery.lfm`), the cells are painted by `DBGridDrawColumnCell` (`src/EditorQuery.pas:DBGridDrawColumnCell`, `DefaultDrawing=False`); the LCL `TDBGrid` shows its inplace editor for the focused cell when `dgEditing` is set and the grid has focus, and that editor apparently carries no text here (consistent with #43: the editor is empty and typing does not edit). Not compared with the original Delphi/CLX behaviour.
+Evidence: `10-cell-c.png`, `11-combo.png`, `13-combo.png`, `55-combo.png`.
+Suspected files: `src/EditorQuery.lfm` (DBGrid options), `src/EditorQuery.pas` (`DBGridDrawColumnCell`, `SizeGridCols`), `src/clx_shims/qdbgrids.pas`.
+Status: fixed - `FormCreate` (`src/EditorQuery.pas`) added `dgAlwaysShowEditor` under `{$IFDEF LINUX}` (inherited from the CLX source, where the Qt grid needed it to be editable); the LCL `TDBGrid` then shows an empty `TStringCellEditor` over the focused cell after every Open (and `EditorIsReadOnly` puts the dataset into Edit/Insert straight away). The option is now removed at FormCreate; editing starts with F2 / a second click / a typed character. Verified on DISPLAY=:0 (`fix43/03-prod-c.png`, `30-43-stack.png`, `60-72-stack.png`): after every Execute all cells show their values, the current cell has the grey selection only; both backends.
+
+### 45. DATE / DATETIME values are shown as `23-4-03` (day-month-two-digit-year, no zero padding, time dropped)
+
+Severity: wrong data (a `2004-03-01` DATE reads as `1-3-04`; the DATETIME `2003-04-23 00:00:00` reads as `23-4-03`).
+Backend: both (MySQL `15-combo.png` third row; SQLite `55-combo.png` third grid).
+Steps: `SELECT o.*, c.name, c.creditcardnr, c.creditcarddate FROM onlineorder o LEFT JOIN onlinecustomer c ON c.idonlinecustomer=o.idonlinecustomer`, Execute.
+Observed: `date` = `23-4-03`, `creditcarddate` = `1-3-04`; the CLI returns `2003-04-23 00:00:00` and `2004-03-01`.
+Expected: ISO (or at least four-digit-year, zero-padded) display; the original DBDesigner 4 used the Windows/Qt locale.
+What the code says: `DoFieldGetText` (`src/EditorQuery.pas`) sets the display text to `TField(Sender).AsString`, i.e. `DateTimeToStr` with `DefaultFormatSettings`; the port sets `DefaultFormatSettings.DecimalSeparator` in places (`src/DBEERDM.pas:2564`, `:3297`) but never `ShortDateFormat`/`LongTimeFormat` (grep over `src/`), so the FPC defaults apply. Not verified which FPC default produces `d-m-yy`.
+Evidence: `15-combo.png`, `55-combo.png`.
+Suspected files: `src/EditorQuery.pas` (`DoFieldGetText`, `OutputClientDataSetAfterOpen`), `src/DBDM.pas` (connection setup, format settings).
+
+### 46. A query that returns no rows shows one phantom empty row (with the #44 editor) in the grid
+
+Severity: functional/low (the status bar is right, the grid is not).
+Backend: both.
+Steps: `SELECT * FROM product WHERE name='zzz'`, Execute.
+Observed (`15-combo.png` first block, `55-combo.png` fourth block): status "Query opened. 0 Record(s) fetched", the grid shows the 7 column titles and one row with the indicator and the empty inplace editor in column 1, as if an insert row existed.
+Expected: an empty grid below the titles.
+Suspected files: same as #44 (`dgEditing` on an empty `TBufDataset` - the LCL grid may show an append row); not verified.
+Status: fixed - the LCL `TCustomDBGrid.UpdateGridCounts` always allocates one data row (`if RecCount<1 then RecCount := 1`), so an empty dataset shows a placeholder row; with `dgAlwaysShowEditor` (#44) that row also went into Insert. `SizeGridCols` now drops `dgIndicator` while the result has 0 records (restored on the next non-empty result) and `DBGridDrawColumnCell` paints the placeholder row blank, so the grid shows only the column titles. Verified on DISPLAY=:0 (`fix43/20-22-stack.png` MySQL, `60-72-stack.png` SQLite): titles, empty area, status "0 Record(s) fetched".
+
+### 47. (unconfirmed, intermittent) One `SELECT * FROM product` right after a syntax-error dialog returned "1 Record(s) fetched" with an empty one-column grid
+
+Severity: wrong data if reproducible.
+Backend: MySQL.
+Steps: `SELEC * FROM product` -> error dialog, OK; click the SQL memo, Ctrl+A, type `SELECT * FROM product`, Execute.
+Observed (`17-prod.png`, `19-main.png`, `19-q-combo.png`): memo text `SELECT * FROM product`, status "Query opened. 1 Record(s) fetched. Time: 00:00:017", grid with one untitled column and one empty row. The same sequence repeated later (`22-err` -> `23-after`, `24-after2`) gave the correct 3 rows every time (`24-all.png`), and the SQLite run (`54-serr` -> `55-safter`) too. `run.log` empty. Possibly a lost keystroke (the 19 screenshot was taken after a further click/typing attempt, `19-q-combo.png` shows `productXX` in the memo), so the executed text is not certain.
+Next step: repeat with a `writeln` of `OutputQry.SQL.Text` and `RecordCount` in `ExecSQLBtnClick`.
+Suspected files: `src/EditorQuery.pas:963-1128` (`ExecSQLBtnClick`, the `except` branch leaves `OutputClientDataSet` in whatever state the failed `Open` left it), `src/clx_shims/dbclient.pas`.
+Status: not reproduced in 5 attempts (3 on MySQL `41-43-ok`, 2 on SQLite `71-72-sok`, `fix43/30-43-stack.png`, `60-72-stack.png`): `SELEC * FROM product` -> error dialog -> OK -> `SELECT * FROM product` gave the full 3x7 result and "3 Record(s) fetched" every time, with the #43/#44/#46 changes in place. One different oddity seen once (`fix43/60-sprod.png`): the first Execute right after switching the connection from MySQL to SQLite left the grid in its inactive look (indicator + one untitled cell) and the status bar unchanged (still "Changes applied ..."), no error dialog, memo text intact; the second Execute worked. Not chased within the time box - if it recurs, `writeln` the branch taken in `ExecSQLBtnClick` (`DMDB.CurrentDBConn`, `GetSQLMemoText`) right after a reconnect.
+
+### 48. Ctrl+S in Query mode does not save the model (File > Save does)
+
+Severity: functional (the user thinks the stored SQL / history is saved).
+Backend: n/a (model file).
+Steps: in Query mode, with the last click in the SQL memo or the stored-SQL tree, press Ctrl+S; check the file.
+Observed: `order.xml` mtime unchanged (19:03:59, the copy time) after two Ctrl+S presses at 19:11-19:12 while the model had changed (new stored SQL, history entries; `31-tree-c.png`); File > Save at 19:12:39 wrote the file with the `Round11/prod` record and the six `SQLCmdType="4"` history records of the session, status "The model was successfully saved to ..." (`36-combo.png` bottom line). Ctrl+S in Design mode worked in every earlier round.
+Expected: Ctrl+S saves from any focused control, as the menu shortcut of `SaveMI`.
+What the code says (not verified): `SaveMI` (`src/Main.pas:106`, `SaveMIClick` `:742`) is a main-menu item; the docked `TEditorQueryForm` has its own `FormKeyDown` (`src/EditorQuery.pas:2511`, F1 only) and a `TMemo` that swallows Ctrl+S under GTK2 (`gtk_text_view` binds nothing to it, but the LCL delivers the key to the focused widget first). Whether the shortcut is registered on the main form's menu under the LCL when a docked form owns the focus was not read.
+Evidence: `order.xml` mtime, `31-tree-c.png`, `36-combo.png`.
+Suspected files: `src/Main.pas` (`SaveMI` shortcut, `FormKeyDown` `:3615`), `src/EditorQuery.pas` (`FormKeyDown`, `SQLMemo`).
+
+### 49. Renaming a stored SQL command opens a dialog titled "Connecion Name"
+
+Severity: cosmetic (wrong, misspelt title; the dialog itself works).
+Backend: n/a.
+Steps: select the stored node `Round11/prod` in the tree and click it again (or double-click).
+Observed (`36-combo.png`, `65-combo.png`, window title in `wins`: "Connecion Name", 313x61): a "Name:" string editor prefilled with `prod`; Return with `prod2` renames the node (`39-combo.png`). Escape does not close this dialog (only the red cross / Return do; `66`-`67` attempts), which blocked the popup-menu retry of #50.
+Expected: a title like "Rename SQL Command", closable with Escape.
+Cause (confirmed by reading): `src/EditorQuery.pas:1572` (`StoredSQLTreeViewEditing`) calls `DMMain.ShowStringEditor('Connecion Name', 'Name:', s)` - the literal was copied from `src/DBConnSelect.pas:521` (translated message 109). Escape handling is the string editor's (`DMMain.ShowStringEditor`, not read).
+Evidence: `36-combo.png`, `65-combo.png`.
+Suspected files: `src/EditorQuery.pas:1561-1583`, `src/MainDM.pas` (`ShowStringEditor`).
+
+### 50. (unconfirmed) Stored-SQL tree popup "Execute SQL Command" / "Delete Item(s)" did nothing in three attempts
+
+Severity: functional if confirmed.
+Backend: MySQL (Execute), none needed (Delete).
+Steps: right-click the node `Round11/prod2` (screen 150,740), popup `Execute SQL Command / Edit SQL Command / Delete Item(s) / Refresh Tree` (`39-combo.png`, 211x110 at 150,740); click Execute (250,755) with an empty SQL memo; later click Delete Item(s) (250,807 / 230,806).
+Observed: after Execute the memo stayed empty and the status bar kept "The model was successfully saved ..." (`40-combo.png`, `41-query-c.png`), i.e. `StoredSQLExecuteBtnClick` (`src/EditorQuery.pas:1512`, which first copies the node's SQL into the memo via `StoredSQLEditBtnClick`) did not run or found `StoredSQLTreeView.Selected=nil`; after Delete the node was still there in the fresh session both without (`61-tree-c.png`) and with (`62-combo.png` right) a prior left click on the node; the last two retries were blocked by the modal #49 dialog, so a click landing outside the popup items cannot be excluded (the popup was never captured after the click).
+What the code says: `DeleteSQLCommandMIClick` (`:1593`) deletes only nodes with `Selected=True` and `Data<>nil`, `DeleteSQLCommandMIShow` (`:1584`) disables the item when nothing is selected; `RefreshStoredSQLTreeView` rebuilds the tree after a rename/store, which drops the selection - so a right-click on an unselected node (LCL `TTreeView` does not select on right click unless `RightClickSelect`) gives a disabled/no-op Delete. Whether that is the whole story needs a retry with a verified popup capture and a `writeln` in both handlers.
+Evidence: `40-combo.png`, `41-combo.png`, `61-tree-c.png`, `62-combo.png`.
+Suspected files: `src/EditorQuery.pas:1504-1520`, `:1584-1620`, `RefreshStoredSQLTreeView` (`:1341`), `src/EditorQuery.lfm` (StoredSQLTreeView `RightClickSelect`).
+
+Round 11 OK (not entries): the Query Drag Target form and its seven drop zones render completely (`07-dt-4200045.png`); JOIN with alias + WHERE string literal + ORDER BY DESC returns the CLI's rows in the CLI's order on both backends; NULL TEXT/BLOB (`info`, `pic`) shown as empty cells; wide result scrolls horizontally (horizontal scrollbar under the grid); the error dialog shows the statement and the driver message and the connection survives on both backends; the grid popup and the "Copy to Clipboard" submenu exist; stored SQL, its folder and the History entries (`SQLCmdType="4"`, `DD.MM HH:NN:SS` names, 20-entry cap in `ExecSQLBtnClick`) round-trip through File > Save and reopen; Design/Query mode switch keeps tree, memo and grid; disconnect and reconnect to the other backend work without restart. Observations without entry: DECIMAL(10,2) `14.20` is displayed as `14.2` (float conversion in the shim; SQLite stores it as `real` anyway); once, after `Execute SQL Command` from the popup, row 1 of the grid was painted in a smaller font than rows 2-3 (`41-combo.png` - a repaint artefact after focus changes, seen only once); `Store SQL Command` dialog has no visible title text in the capture (WM frame only).
+
+Exercised / not reached: exercised - stages 1, 2, 6 on both backends, 3-5 on MySQL as listed in the stage table. Not reached - column resize, header-click sort, Ctrl+C from the grid (no clipboard tool on the machine), "Export Records" / "Print Records to PDF", BLOB viewer / Load-Store BLOB buttons (all BLOB values NULL in the example data), UPDATE/INSERT/DELETE statements through the memo (`ExecuteSQLCmdScript` branch), multi-statement scripts, "Scripts" and "Table Selects" nodes, the temporary SQL store buttons, layout switch button, SQL history navigation (`PrevCmdClick`), Load SQL Script from File, Cut/Paste in the memo, stored-SQL rename persistence (renamed `prod2` was not saved again: the reopened model shows `prod`, as expected).
+
+Proposed grouping for this pass: (A) result grid inplace editing - #43, #44, #46 (one LCL `TDBGrid` + `TBufDataset` shim issue: `dgEditing` with an editor that neither shows the value nor accepts input, phantom row on empty sets); (B) field display - #45 (date format) plus the DECIMAL trailing-zero note; (C) stored-SQL tree - #50, #49; (D) shortcut routing - #48; (E) unconfirmed result-state bug - #47. Recommended order: #47 (verify first: wrong data if real), #43/#44/#46 together, #45, #48, #50, #49.
