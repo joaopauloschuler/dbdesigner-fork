@@ -2492,51 +2492,59 @@ begin
 end;
 
 procedure TEERModel.DoSelectionRectPaint(Sender: TObject);
+var w, h: integer;
 begin
-  with SelectionRect do
-    with SelectionRect.Canvas do
-    begin
-      Pen.Color:=clWhite;
-      MoveTo(0, 0);
-      LineTo(0, height-1);
-      LineTo(width-1, height-1);
-      LineTo(width-1, 0);
-      LineTo(0, 0);
+  //Take the size from the paintbox, not from the canvas: inside
+  //"with SelectionRect.Canvas do" the LCL TCanvas has its own Width/Height
+  //(the size of the parent's device context, CLX had none), so the right and
+  //bottom edges were drawn outside the paintbox and clipped away.
+  w:=SelectionRect.Width;
+  h:=SelectionRect.Height;
+  with SelectionRect.Canvas do
+  begin
+    Pen.Color:=clWhite;
+    MoveTo(0, 0);
+    LineTo(0, h-1);
+    LineTo(w-1, h-1);
+    LineTo(w-1, 0);
+    LineTo(0, 0);
 
-      Pen.Color:=clBlack;
-      Pen.Style:=psDot;
-      MoveTo(0, 0);
-      LineTo(0, height-1);
-      LineTo(width-1, height-1);
-      LineTo(width-1, 0);
-      LineTo(0, 0);
+    Pen.Color:=clBlack;
+    Pen.Style:=psDot;
+    MoveTo(0, 0);
+    LineTo(0, h-1);
+    LineTo(w-1, h-1);
+    LineTo(w-1, 0);
+    LineTo(0, 0);
 
-      Pen.Style:=psSolid;
-    end;
+    Pen.Style:=psSolid;
+  end;
 end;
 
 
 procedure TEERModel.DoGridPaintBoxPaint(Sender: TObject);
-var i: integer;
+var i, w, h: integer;
 begin
-  with GridPaintBox do
-    with GridPaintBox.Canvas do
+  //Same as DoSelectionRectPaint: use the paintbox size, not TCanvas.Width/Height
+  w:=GridPaintBox.Width;
+  h:=GridPaintBox.Height;
+  with GridPaintBox.Canvas do
+  begin
+    Pen.Style:=psDot;
+    Pen.Color:=clSilver;
+    for i:=0 to w div 21 do
     begin
-      Pen.Style:=psDot;
-      Pen.Color:=clSilver;
-      for i:=0 to width div 21 do
-      begin
-        MoveTo(EvalZoomFac(Round(EERModel_Width/HPageCount)*(i+1)), 0);
-        LineTo(EvalZoomFac(Round(EERModel_Width/HPageCount)*(i+1)), height-1);
-      end;
-
-      for i:=0 to height div 16 do
-      begin
-        MoveTo(0, EvalZoomFac(Round(EERModel_Height/VPageCount)*(i+1)));
-        LineTo(width-1, EvalZoomFac(Round(EERModel_Height/VPageCount)*(i+1)));
-      end;
-      Pen.Style:=psSolid;
+      MoveTo(EvalZoomFac(Round(EERModel_Width/HPageCount)*(i+1)), 0);
+      LineTo(EvalZoomFac(Round(EERModel_Width/HPageCount)*(i+1)), h-1);
     end;
+
+    for i:=0 to h div 16 do
+    begin
+      MoveTo(0, EvalZoomFac(Round(EERModel_Height/VPageCount)*(i+1)));
+      LineTo(w-1, EvalZoomFac(Round(EERModel_Height/VPageCount)*(i+1)));
+    end;
+    Pen.Style:=psSolid;
+  end;
 end;
 
 procedure TEERModel.SetSelectionRectPos(l, t, w, h: integer);
