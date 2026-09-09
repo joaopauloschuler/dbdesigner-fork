@@ -1416,8 +1416,12 @@ begin
       for i:=0 to EERModel.ComponentCount-1 do
         if(EERModel.Components[i].ClassnameIs('TEERTable'))then
         begin
+          //Skip the editor's working copy and the model's own table
+          //(model-edit #19: renaming back to the original name must not
+          //count the table being edited as a clash)
           if(TEERTable(EERModel.Components[i]).ObjName=TableNameEd.Text)and
-            (TEERTable(EERModel.Components[i])<>EERTable)then
+            (TEERTable(EERModel.Components[i])<>EERTable)and
+            (TEERTable(EERModel.Components[i])<>SourceEERTable)then
           begin
             try
               TableNameEd.Text:=LeftStr(TableNameEd.Text, Length(TableNameEd.Text)-1)+IntToStr(StrToInt(RightStr(TableNameEd.Text, 1))+1)

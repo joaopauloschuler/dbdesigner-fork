@@ -265,7 +265,7 @@ Severity: functional (silent rename; a table cannot get its original name back i
 Steps: open the Table Editor of `Table_01` (a `Table_02` exists), change Table Name to `id`, Tab (leaves the edit), change it back to `Table_01`, Tab.
 Observed: the edit shows `Table_03` (`07-te-c.png`); repeating the rename keeps `Table_03` (`08-te-c.png`); the saved model has `Tablename="Table_03"`. Same effect as round 6 observation (a), now reproduced deliberately.
 Cause (confirmed by reading): the editor works on a copy - `SetTable` creates `EERTable` with `TEERTable.Create(self, ...)` and `EERTable.Assign(SourceEERTable)` (`src/EditorTable.pas:397-407`); `TableNameEdExit` (`src/EditorTable.pas:1401-1436`) walks `EERModel.Components` and skips only `<>EERTable`, i.e. the copy, so the model's own `SourceEERTable` (still `Table_01` until OK) counts as "another table" once the edit text was changed away and back, and the last digit is bumped past `Table_02` to `Table_03`. Fix scope: trivial (also skip `SourceEERTable` in the comparison).
-Status: open.
+Status: fixed - `TableNameEdExit` now skips both the working copy and `SourceEERTable` (see notes-to-myself "Fix: model-edit #19"). Verified on the real display: `Table_03` -> `foo` -> `Table_03` stays `Table_03` (Return and Tab), `Table_01` -> `foo` -> `Table_01` + OK gives `Table_01` on the canvas and in the DB Model tree (`shots/fix19/1013-c.png`); a real clash (`Table_02` typed while `Table_02` exists) is still bumped to the next free number (`0507-c.png`).
 
 ### 20. Table Editor: a comment typed into a cell while the new-row Column Name editor is open keeps only its first character
 

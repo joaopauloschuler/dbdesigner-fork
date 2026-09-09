@@ -2021,3 +2021,22 @@ navigation (`Down`x4 `Right` for File > Open Recent). Shots: `fix13-*`.
   "Select Database Connection" dialog instead of the Table Editor - set `WorkMode=1` (and
   `ShowTipsOnStartup=0`) for driving, restored afterwards.
 
+
+## Fix: model-edit #19 - renaming a table back to its original name yields the next free number
+
+- **Cause:** the Table Editor edits a copy (`EERTable`, created in `SetTable` from
+  `SourceEERTable`). `TableNameEdExit` (`src/EditorTable.pas`) walks `EERModel.Components`
+  for name clashes and skipped only the copy, so the model's own table (still carrying the
+  original name until OK) counted as a clash as soon as the name was changed away and back,
+  and the trailing digit was bumped (`Table_01` -> `Table_03`). Inherited from the original
+  Delphi source (same comparison in the first commit).
+- **Fix:** the clash loop also skips `SourceEERTable`. Nothing else changed; a real clash
+  with another table is still renamed to the next free number.
+- **Verification** (`shots/fix19/`, real display, `round6.xml` copy): `foo` -> original name
+  with Return and with Tab keeps the original name; OK shows it on the canvas and in the
+  DB Model tree; `Table_02` typed while `Table_02` exists is bumped to `Table_03`.
+  Zero GLib-CRITICAL lines.
+- **Driving note:** `xdotool search --name 'Table Editor'` also returns stale window ids
+  (~10514xxx) from a dead instance on this display; filter by id (`awk '$1>12000000'`).
+  `--pid` filtering did not work. A mis-targeted `ctrl+a` + typing landed in the column
+  grid once and renamed a column - that was the driver, not the fix.
