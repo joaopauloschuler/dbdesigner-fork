@@ -2152,3 +2152,32 @@ navigation (`Down`x4 `Right` for File > Open Recent). Shots: `fix13-*`.
   Close (1124,766). `xdotool windowactivate --sync` can hang forever on a window that is
   not viewable - wrap every xdotool call in `timeout 5`; and `pkill -f drive2.sh` kills
   the calling shell too (its command line contains the pattern).
+
+## Fix: model-edit #24 - MySQL reverse engineering lost column and table comments
+
+- **Cause**: `EERMySQLReverseEngineer` (`src/DBEERDM.pas`) used `show fields`, whose
+  result has no `Comment` column, and never assigned `TEERColumn.Comments` or
+  `TEERTable.Comments`; the sync path (`show full fields`, mysql #9) already read them.
+  Inherited from DBDesigner 4, not a port regression.
+- **Fix**: `show full fields` + `theColumn.Comments:=FieldByName('Comment')` (guarded
+  by `FindField`, so a driver that drops the column is fine); per table
+  `show table status like '<name>'` -> `Comments` through `StripMySQLTableStatusComment`,
+  which cuts the `; InnoDB free: NNN kB` suffix MySQL < 5.5 appends (and a bare
+  `InnoDB free:` comment on comment-less InnoDB tables). The status query is in
+  try/except so an odd server cannot abort the whole reverse engineering. The
+  `information_schema` FK relations now store the FK column's comment in
+  `FKFieldsComments` (was always `''`). SQLite reverse engineering not touched (no
+  comments there).
+- **Not done**: `show table status` also has `Engine`/`Auto_increment`/`Row_format`;
+  the table type still defaults to MyISAM in the model (Table Editor shows MYISAM for an
+  InnoDB table). Cheap to add next to the comment read if wanted.
+- **Driving** (`shots/fix24/`): main client origin +42+69; Database menu opens with one
+  click at (227,81) after `windowactivate`, popup 234x135 at +189+95, Reverse Engineering
+  at abs (269,195) - move the pointer in steps (x=260, y 120..191) before the click, a jump
+  straight onto the item lost the click twice. File popup 212x399 at +42+95, Save As at
+  abs (122,267); approach it horizontally from x=320 so the pointer never crosses the
+  Open Recent / Add-Link submenu rows. Connection selector rows y 271+104 (3rd) / +124
+  (4th), Connect (1290,508). The Reverse Engineering dialog closes itself after Execute.
+  In Query mode a double-click on a table opens the connection selector, not the Table
+  Editor: single click on the mode button at client (18,49) first and check the bottom
+  panel is gone (two clicks toggle back).

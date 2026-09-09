@@ -86,6 +86,7 @@ type
     procedure DataModuleDestroy(Sender: TObject);
 
     function RemoveCommentsFromSQLCmd(cmd: string): string;
+    function StripMySQLTableStatusComment(const s: string): string;
     function GetSQLiteDatatype(theModel: Pointer; DeclType: string; DatatypeSubst: TStringList; var DatatypeParams: string): Pointer;
     function SQLiteRefActionCode(action: string): string;
   private
@@ -493,10 +494,30 @@ begin
         Application.ProcessMessages;
       end;
 
-      //SHOW FIELDS: Field, Type, Null, Key, Default, Extra (MySQL 4 .. 8).
-      //Read by name: NULL-typed columns can vanish from the field list
-      //(mysql-bug-catalog #2), which would shift positional reads.
-      DMDB.SchemaSQLQuery.SQL.Text:='show fields from '+TEERTable(DbTables[i]).GetSQLTableName;
+      //Table comment from SHOW TABLE STATUS (column Comment); old servers
+      //append "; InnoDB free: NNN kB" to it (model-edit-bug-catalog #24).
+      //Not fatal when it fails (e.g. a non-MySQL server behind the driver).
+      try
+        DMDB.SchemaSQLQuery.SQL.Text:='show table status like '+
+          QuotedStr(TEERTable(DbTables[i]).ObjName);
+        DMDB.SchemaSQLQuery.Open;
+        try
+          if(Not(DMDB.SchemaSQLQuery.EOF))and
+            (DMDB.SchemaSQLQuery.FindField('Comment')<>nil)then
+            TEERTable(DbTables[i]).Comments:=
+              StripMySQLTableStatusComment(DMDB.SchemaSQLQuery.FieldByName('Comment').AsString);
+        finally
+          DMDB.SchemaSQLQuery.Close;
+        end;
+      except
+        TEERTable(DbTables[i]).Comments:='';
+      end;
+
+      //SHOW FULL FIELDS: Field, Type, Collation, Null, Key, Default, Extra,
+      //Privileges, Comment (MySQL 4 .. 8). Read by name: NULL-typed columns
+      //can vanish from the field list (mysql-bug-catalog #2), which would
+      //shift positional reads. FULL for the column comment (#24).
+      DMDB.SchemaSQLQuery.SQL.Text:='show full fields from '+TEERTable(DbTables[i]).GetSQLTableName;
       DMDB.SchemaSQLQuery.Open;
       while(Not(DMDB.SchemaSQLQuery.EOF))do
       begin
@@ -505,6 +526,8 @@ begin
         TEERTable(DbTables[i]).Columns.Add(theColumn);
 
         theColumn.ColName:=DMDB.SchemaSQLQuery.FieldByName('Field').AsString;
+        if(DMDB.SchemaSQLQuery.FindField('Comment')<>nil)then
+          theColumn.Comments:=DMDB.SchemaSQLQuery.FieldByName('Comment').AsString;
         theColumn.Obj_id:=DMMain.GetNextGlobalID;
         theColumn.Pos:=TEERTable(DbTables[i]).Columns.Count;
         //theColumn.idDatatype:=-1;
@@ -700,9 +723,13 @@ begin
             pkColName:=DMDB.SchemaSQLQuery.FieldByName('refcol').AsString;
 
             theRel.FKFields.Add(pkColName+'='+fkColName);
-            theRel.FKFieldsComments.Add('');
 
             theColumn:=TEERColumn(theTable.GetColumnByName(fkColName));
+            //FK column comment (model-edit-bug-catalog #24)
+            if(theColumn<>nil)then
+              theRel.FKFieldsComments.Add(theColumn.Comments)
+            else
+              theRel.FKFieldsComments.Add('');
             if(theColumn<>nil)then
             begin
               theColumn.IsForeignKey:=True;
@@ -3321,6 +3348,21 @@ begin
       theTable.ObjName));
   end;
 
+end;
+
+//SHOW TABLE STATUS on MySQL < 5.5 appends "; InnoDB free: 4096 kB" (and, for
+//InnoDB tables without a comment, just "InnoDB free: ...") to the table
+//comment; strip it so it does not end up in the model (model-edit #24).
+function TDMDBEER.StripMySQLTableStatusComment(const s: string): string;
+var p: integer;
+begin
+  Result:=s;
+  p:=Pos('InnoDB free:', Result);
+  if(p>0)then
+    Result:=Copy(Result, 1, p-1);
+  Result:=Trim(Result);
+  if(Result<>'')and(Result[Length(Result)]=';')then
+    Result:=Trim(Copy(Result, 1, Length(Result)-1));
 end;
 
 function TDMDBEER.RemoveCommentsFromSQLCmd(cmd: string): string;
