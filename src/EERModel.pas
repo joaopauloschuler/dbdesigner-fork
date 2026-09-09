@@ -89,6 +89,7 @@ uses
   EERModel_XML,
   {$ENDIF}
   Contnrs,
+  IntfGraphics, GraphType, FPImage, FPReadBMP, FPReadPNG,
   LibXmlParser;
 
 type
@@ -913,6 +914,7 @@ type
     procedure DeleteObj; override;
 
     procedure LoadImageFromFile;
+    procedure LoadImgFromStream(theStream: TStream);
 
     function GetXML: string; override;
 {$IFDEF USE_IXMLDBMODELType}
@@ -13868,10 +13870,31 @@ begin
 end;
 
 
+//Load a PNG or BMP stream into Img as a 24-bit bitmap.
+//Under the LCL a TBitmap loaded from a 1-bpp BMP (a two-colour picture as
+//exported by most tools) gets a monochrome widgetset handle whose palette is
+//lost - every pixel reads back white, and that white bitmap is what got
+//drawn and saved to the XML (model-edit-bug-catalog #37). Going through a
+//TLazIntfImage with an RGB description keeps the colours whatever the depth
+//of the source; the XML format is unchanged (Img.SaveToStream writes the
+//same 24-bit BMP as before).
+procedure TEERImage.LoadImgFromStream(theStream: TStream);
+var theIntfImg: TLazIntfImage;
+begin
+  theIntfImg:=TLazIntfImage.Create(0, 0, [riqfRGB]);
+  try
+    theStream.Position:=0;
+    theIntfImg.LoadFromStream(theStream);
+    Img.LoadFromIntfImage(theIntfImg);
+  finally
+    theIntfImg.Free;
+  end;
+end;
+
 procedure TEERImage.LoadImageFromFile;
 var theOpenDialog: TOpenDialog;
   RecentOpenImageDir: string;
-  thePic: TPicture;
+  theFile: TFileStream;
 begin
   theOpenDialog:=TOpenDialog.Create(nil);
   try
@@ -13904,16 +13927,11 @@ begin
     begin
       RecentOpenImageDir:=ExtractFilePath(theOpenDialog.Filename);
 
-      // Use TPicture to auto-detect format (PNG, BMP, etc.)
-      // since TBitmap.LoadFromFile only supports BMP in LCL
-      thePic := TPicture.Create;
+      theFile:=TFileStream.Create(theOpenDialog.Filename, fmOpenRead or fmShareDenyWrite);
       try
-        thePic.LoadFromFile(theOpenDialog.Filename);
-        Img.Width := thePic.Width;
-        Img.Height := thePic.Height;
-        Img.Canvas.Draw(0, 0, thePic.Graphic);
+        LoadImgFromStream(theFile);
       finally
-        thePic.Free;
+        theFile.Free;
       end;
 
       if(Obj_W<2)then
@@ -13982,7 +14000,6 @@ end;
 procedure TEERImage.SetXML(theXMLImage: IXMLIMAGEType);
 var imgdata: string;
   theImgFile: TMemoryStream;
-  thePic: TPicture;
 begin
   try
     Obj_id:=theXMLImage.ID;
@@ -14012,18 +14029,7 @@ begin
     theImgFile:=TMemoryStream.Create;
     try
       DMMain.DecodeStreamFromXML(imgdata, theImgFile);
-      // Use TPicture to auto-detect format (PNG, BMP, etc.)
-      // since TBitmap.LoadFromStream only supports BMP in LCL
-      thePic := TPicture.Create;
-      try
-        theImgFile.Position := 0;
-        thePic.LoadFromStream(theImgFile);
-        Img.Width := thePic.Width;
-        Img.Height := thePic.Height;
-        Img.Canvas.Draw(0, 0, thePic.Graphic);
-      finally
-        thePic.Free;
-      end;
+      LoadImgFromStream(theImgFile);
     finally
       FreeAndNil(theImgFile);
     end;
@@ -14047,7 +14053,6 @@ end;
 procedure TEERImage.SetXML2(theXMLParser: TXmlParser);
 var imgdata: string;
   theImgFile: TMemoryStream;
-  thePic: TPicture;
 begin
   try
     Obj_id:=StrToInt(theXMLParser.CurAttr.Value('ID'));
@@ -14077,18 +14082,7 @@ begin
     theImgFile:=TMemoryStream.Create;
     try
       DMMain.DecodeStreamFromXML(imgdata, theImgFile);
-      // Use TPicture to auto-detect format (PNG, BMP, etc.)
-      // since TBitmap.LoadFromStream only supports BMP in LCL
-      thePic := TPicture.Create;
-      try
-        theImgFile.Position := 0;
-        thePic.LoadFromStream(theImgFile);
-        Img.Width := thePic.Width;
-        Img.Height := thePic.Height;
-        Img.Canvas.Draw(0, 0, thePic.Graphic);
-      finally
-        thePic.Free;
-      end;
+      LoadImgFromStream(theImgFile);
     finally
       FreeAndNil(theImgFile);
     end;
