@@ -9,8 +9,8 @@ object TipsForm: TTipsForm
   BorderStyle = bsToolWindow
   Caption = 'DBDesigner Fork Tips'
   Color = clBtnFace
-  FormStyle = fsStayOnTop
-  Position = poMainFormCenter
+  FormStyle = fsNormal
+  Position = poDesigned
   Scaled = False
   OnClose = FormClose
   OnCreate = FormCreate

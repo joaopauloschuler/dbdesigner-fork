@@ -146,6 +146,8 @@ type
     MoveRowupMI: TMenuItem;
     MoveRowdownMI: TMenuItem;
     N5: TMenuItem;
+    SetDatatypeMI: TMenuItem;
+    N6: TMenuItem;
 
     procedure FormClose(Sender: TObject; var Action: TCloseAction);
     procedure ApplyChanges;
@@ -192,6 +194,8 @@ type
     procedure DelIndexBtnClick(Sender: TObject);
 
     procedure EditDatatype;
+    procedure ApplyDatatype(theDatatype: TEERDatatype; ARow: integer);
+    procedure BuildSetDatatypeMenu;
     procedure EditCellStr(NewName: string = '');
     procedure ColumnGridDblClick(Sender: TObject);
     procedure PasteSQLInsertMIClick(Sender: TObject);
@@ -216,6 +220,8 @@ type
     procedure InsertColumn;
     procedure MoveRowupMIClick(Sender: TObject);
     procedure MoveRowdownMIClick(Sender: TObject);
+    procedure ColPopupMenuPopup(Sender: TObject);
+    procedure SetDatatypeMIClick(Sender: TObject);
   private
     { Private declarations }
     //True for linked objects and read-only models: the editor shows the
@@ -247,6 +253,12 @@ var
 implementation
 
 uses MainDM, EERDM, GUIDM, EditorTableField;
+
+type
+  //Gives access to the protected SelectActive of the column grid
+  //(model-edit #22: the LCL keeps it True after a Shift+click / Shift+Down
+  //range, and every later Row:= would re-extend the range from the pivot)
+  TColumnGridAccess = class(TDrawGrid);
 
 {$R *.lfm}
 
@@ -405,6 +417,8 @@ begin
 
   TablePrefixComboBox.Items.Assign(EERModel.TablePrefix);
   TablePrefixComboBox.ItemIndex:=EERModel.DefaultTablePrefix;
+
+  BuildSetDatatypeMenu;
 
   PageControlTreeView.Selected:=PageControlTreeView.Items[EERModel.LastTableEditorPage];
   TablePageControl.ActivePageIndex:=EERModel.LastTableEditorPage;
@@ -956,55 +970,7 @@ begin
     end;
 
     if(Assigned(DropedDataType))then
-    begin
-      //If not ParamRequired, assign datatype to all selected
-      if(DropedDataType.ParamRequired)or
-        (ColumnGrid.Selection.Top=ColumnGrid.Selection.Bottom)then
-      begin
-        //Assign Datatype to the Column
-        TEERColumn(EERTable.Columns[ARow-1]).idDatatype:=
-          DropedDataType.id;
-
-        //Clear DatatypeParams
-        TEERColumn(EERTable.Columns[ARow-1]).DatatypeParams:='';
-
-        //Get Option Defaults
-        for i:=0 to DropedDataType.OptionCount-1 do
-          TEERColumn(EERTable.Columns[ARow-1]).OptionSelected[i]:=
-            DropedDataType.OptionDefaults[i];
-      end
-      else
-      begin
-        for i:=ColumnGrid.Selection.Top-1 to ColumnGrid.Selection.Bottom-1 do
-        begin
-          if(i>=EERTable.Columns.Count)then
-            break;
-
-          theCol:=TEERColumn(EERTable.GetColumnByIndex(i));
-
-          if(theCol=nil)then
-            continue;
-
-          if(theCol.IsForeignKey)then
-            continue;
-
-          theCol.idDatatype:=DropedDataType.id;
-          theCol.DatatypeParams:='';
-
-          for j:=0 to DropedDataType.OptionCount-1 do
-            theCol.OptionSelected[j]:=
-              DropedDataType.OptionDefaults[j];
-        end;
-      end;
-
-      ColumnGrid.Col:=3;
-      ColumnGrid.Row:=ARow;
-
-      ColumnGrid.Invalidate;
-
-      if(DropedDataType.ParamRequired)then
-        EditDatatype;
-    end
+      ApplyDatatype(DropedDataType, ARow)
     else if(Source=Sender)then
     begin
       if(ARow<>DragStartRow)then
@@ -1212,6 +1178,146 @@ begin
   end;
 end;
 
+// Assigns theDatatype to the column in grid row ARow, or - when the
+// datatype needs no parameters and several rows are selected - to all
+// selected (non-FK) columns. Shared by the palette drop (ColumnGridDragDrop)
+// and the "Set Datatype" popup submenu (SetDatatypeMIClick), so both paths
+// behave identically.
+procedure TEditorTableForm.ApplyDatatype(theDatatype: TEERDatatype; ARow: integer);
+var i, j: integer;
+  theCol: TEERColumn;
+begin
+  if(TableReadOnly)or(theDatatype=nil)then
+    Exit;
+
+  if(ARow<1)or(ARow>EERTable.Columns.Count)then
+    Exit;
+
+  //If not ParamRequired, assign datatype to all selected
+  if(theDatatype.ParamRequired)or
+    (ColumnGrid.Selection.Top=ColumnGrid.Selection.Bottom)then
+  begin
+    //Assign Datatype to the Column
+    TEERColumn(EERTable.Columns[ARow-1]).idDatatype:=
+      theDatatype.id;
+
+    //Clear DatatypeParams
+    TEERColumn(EERTable.Columns[ARow-1]).DatatypeParams:='';
+
+    //Get Option Defaults
+    for i:=0 to theDatatype.OptionCount-1 do
+      TEERColumn(EERTable.Columns[ARow-1]).OptionSelected[i]:=
+        theDatatype.OptionDefaults[i];
+  end
+  else
+  begin
+    for i:=ColumnGrid.Selection.Top-1 to ColumnGrid.Selection.Bottom-1 do
+    begin
+      if(i>=EERTable.Columns.Count)then
+        break;
+
+      theCol:=TEERColumn(EERTable.GetColumnByIndex(i));
+
+      if(theCol=nil)then
+        continue;
+
+      if(theCol.IsForeignKey)then
+        continue;
+
+      theCol.idDatatype:=theDatatype.id;
+      theCol.DatatypeParams:='';
+
+      for j:=0 to theDatatype.OptionCount-1 do
+        theCol.OptionSelected[j]:=
+          theDatatype.OptionDefaults[j];
+    end;
+  end;
+
+  ColumnGrid.Col:=3;
+  ColumnGrid.Row:=ARow;
+
+  ColumnGrid.Invalidate;
+
+  if(theDatatype.ParamRequired)then
+    EditDatatype;
+end;
+
+// Fills the "Set Datatype" submenu of the column grid popup with one
+// submenu per datatype group of the model (same source as the Datatypes
+// palette). Item.Tag carries the datatype id. Replacement for the palette
+// drag, which cannot reach the modal Table Editor under LCL/GTK2.
+procedure TEditorTableForm.BuildSetDatatypeMenu;
+var i, j: integer;
+  theGroupMI, theMI: TMenuItem;
+  theDatatype: TEERDatatype;
+begin
+  SetDatatypeMI.Clear;
+
+  if(EERModel=nil)then
+    Exit;
+
+  for i:=0 to EERModel.DatatypeGroups.Count-1 do
+  begin
+    theGroupMI:=TMenuItem.Create(SetDatatypeMI);
+    theGroupMI.Caption:=TEERDatatypeGroup(EERModel.DatatypeGroups[i]).GroupName;
+
+    for j:=0 to EERModel.Datatypes.Count-1 do
+    begin
+      theDatatype:=TEERDatatype(EERModel.Datatypes[j]);
+      if(theDatatype.group<>i)then
+        continue;
+
+      theMI:=TMenuItem.Create(theGroupMI);
+      theMI.Caption:=theDatatype.TypeName;
+      theMI.Tag:=theDatatype.id;
+      theMI.OnClick:=SetDatatypeMIClick;
+      theGroupMI.Add(theMI);
+    end;
+
+    //Skip empty groups (e.g. User defined Types)
+    if(theGroupMI.Count>0)then
+      SetDatatypeMI.Add(theGroupMI)
+    else
+      theGroupMI.Free;
+  end;
+end;
+
+procedure TEditorTableForm.ColPopupMenuPopup(Sender: TObject);
+var ACol, ARow: Longint;
+  thePos: TPoint;
+  theRect: TGridRect;
+begin
+  //A right click on a row outside the selection selects that row, so the
+  //popup items (Set Datatype, Delete, ...) act on the clicked row
+  thePos:=ColumnGrid.ScreenToClient(Mouse.CursorPos);
+  ColumnGrid.MouseToCell(thePos.X, thePos.Y, ACol, ARow);
+  if(ARow>0)and(ARow<=EERTable.Columns.Count)and
+    ((ARow<ColumnGrid.Selection.Top)or(ARow>ColumnGrid.Selection.Bottom))then
+  begin
+    theRect.Left := 1;
+    theRect.Top := ARow;
+    theRect.Right := 1;
+    theRect.Bottom := ARow;
+
+    //Row first (a keyboard range leaves SelectActive on, so Row:= may
+    //extend the range), then the single-row Selection wins
+    TColumnGridAccess(ColumnGrid).SelectActive:=False;
+    ColumnGrid.Row:=ARow;
+    ColumnGrid.Selection:=theRect;
+  end;
+
+  SetDatatypeMI.Enabled:=(Not(TableReadOnly))and
+    (ColumnGrid.Row>0)and(ColumnGrid.Row<=EERTable.Columns.Count)and
+    (SetDatatypeMI.Count>0);
+end;
+
+procedure TEditorTableForm.SetDatatypeMIClick(Sender: TObject);
+begin
+  if(Sender is TMenuItem)then
+    ApplyDatatype(TEERDatatype(EERModel.GetDataType(TMenuItem(Sender).Tag)),
+      ColumnGrid.Row);
+end;
+
 procedure TEditorTableForm.EditCellStr(NewName: string = '');
 var doIt: Boolean;
 begin
@@ -1292,7 +1398,12 @@ begin
       //DragShiftState:=Shift;
       ColumnGrid.BeginDrag(False, 5);
 
-      ColumnGrid.Options:=ColumnGrid.Options-[goRangeSelect];
+      //Drop goRangeSelect so a mouse drag moves rows instead of selecting a
+      //range - but not on a Shift+click: the LCL TCustomGrid.MouseDown runs
+      //OnMouseDown before it evaluates the Shift range and would find the
+      //option gone (model-edit #22). MouseUp restores it either way.
+      if(Not(ssShift in Shift))then
+        ColumnGrid.Options:=ColumnGrid.Options-[goRangeSelect];
 
       //Activate Windows like edit of cell > DISABLED
       //MouseEditTmr.Enabled:=True;
@@ -1319,8 +1430,12 @@ begin
       for i:=0 to EERModel.ComponentCount-1 do
         if(EERModel.Components[i].ClassnameIs('TEERTable'))then
         begin
+          //Skip the editor's working copy and the model's own table
+          //(model-edit #19: renaming back to the original name must not
+          //count the table being edited as a clash)
           if(TEERTable(EERModel.Components[i]).ObjName=TableNameEd.Text)and
-            (TEERTable(EERModel.Components[i])<>EERTable)then
+            (TEERTable(EERModel.Components[i])<>EERTable)and
+            (TEERTable(EERModel.Components[i])<>SourceEERTable)then
           begin
             try
               TableNameEd.Text:=LeftStr(TableNameEd.Text, Length(TableNameEd.Text)-1)+IntToStr(StrToInt(RightStr(TableNameEd.Text, 1))+1)
@@ -1356,6 +1471,10 @@ var ACol, ARow: Longint;
 begin
   if(Not(goRangeSelect in ColumnGrid.Options))then
     ColumnGrid.Options:=ColumnGrid.Options+[goRangeSelect];
+
+  //The range (if any) is final now - stop the grid's range mode so that
+  //a later Row:= (popup on another row, keyboard) does not extend it again
+  TColumnGridAccess(ColumnGrid).SelectActive:=False;
 
   ColumnGrid.MouseToCell(X, Y, ACol, ARow);
 

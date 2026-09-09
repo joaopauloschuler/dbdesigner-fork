@@ -127,6 +127,7 @@ object PaletteDataTypesForm: TPaletteDataTypesForm
           ParentFont = False
           PopupMenu = DatatypesPopupMenu
           ReadOnly = True
+          ScrollBars = ssAutoBoth
           TabOrder = 0
           OnCustomDrawItem = AllDataTypesTVCustomDrawItem
           OnDblClick = CommonDataTypesListViewDblClick

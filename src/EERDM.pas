@@ -750,6 +750,14 @@ end;
 function TDMEER.AssignNewIDsToEERObjects(themodel: string; shiftObjectPositions: Boolean): string;
 var s, id, newid, SearchStr, OldPos, NewPos: string;
   i: integer;
+
+  //Case sensitive replacement: DMMain.ReplaceText ignores the case, so
+  //ID="1296" also matched FKRefDef_Obj_id="1296" and turned the attribute
+  //into FKRefDef_Obj_ID="..." - which the loader no longer found (-1)
+  procedure ReplaceId(const Attr: string);
+  begin
+    themodel:=StringReplace(themodel, Attr+'="'+id+'"', Attr+'="'+newid+'"', [rfReplaceAll]);
+  end;
 begin
   //Assign new ids
   s:=themodel;
@@ -759,18 +767,25 @@ begin
     id:=Copy(s, Pos('ID="', s)+4, 25);
     id:=Copy(id, 1, Pos('"', id)-1);
 
-    s:=DMMain.ReplaceText(s, 'ID="'+id+'"', 'XX="XX"');
+    s:=StringReplace(s, 'ID="'+id+'"', 'XX="XX"', [rfReplaceAll]);
 
     //Replace with new id
     newid:=IntToStr(DMMain.GetNextGlobalID);
 
-    themodel:=DMMain.ReplaceText(themodel, 'ID="'+id+'"', 'ID="'+newid+'"');
+    ReplaceId('ID');
 
     //for indices
-    themodel:=DMMain.ReplaceText(themodel, 'idColumn="'+id+'"', 'idColumn="'+newid+'"');
+    ReplaceId('idColumn');
     //for relations
-    themodel:=DMMain.ReplaceText(themodel, 'SrcTable="'+id+'"', 'SrcTable="'+newid+'"');
-    themodel:=DMMain.ReplaceText(themodel, 'DestTable="'+id+'"', 'DestTable="'+newid+'"');
+    ReplaceId('SrcTable');
+    ReplaceId('DestTable');
+    //relation -> its FK index in the destination table, and
+    //FK index -> its relation (only when the other object is pasted too;
+    //otherwise the value is left as it is, like the attributes above)
+    ReplaceId('FKRefDefIndex_Obj_id');
+    ReplaceId('FKRefDef_Obj_id');
+    //plugin data records (the leading blank keeps the *_Obj_id attributes out)
+    ReplaceId(' Obj_id');
   end;
 
   if(shiftObjectPositions)then

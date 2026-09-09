@@ -496,7 +496,7 @@ uses MainDM, ZoomSel, IniFiles,
   EERReverseEngineering, EERSynchronisation, EERStoreInDatabase, Splash,
   EERDM, EditorTable, EditorRelation, EditorRegion, EditorNote,
   EditorImage, GUIDM, DBDM, EditorQuery, EditorQueryDragTarget,
-  Tips, EERPlaceModel, DBEERDM, EERExportImportDM,
+  Tips, EERPlaceModel, DBEERDM, EERExportImportDM, Math,
   UITestRunner;
 
 procedure TMainForm.AppException(Sender: TObject; E: Exception);
@@ -522,6 +522,9 @@ begin
     Dlg.BorderStyle:=bsDialog;
     Dlg.BorderIcons:=[biSystemMenu];
     Dlg.Position:=poDesigned;
+    //Transient for the active (possibly modal) form, so the window manager
+    //stacks it above that form instead of behind it (model-edit-bug-catalog #25)
+    Dlg.PopupMode:=pmAuto;
 
     //Measure the wrapped message with the dialog's font
     Dlg.Canvas.Font:=Dlg.Font;
@@ -1246,7 +1249,7 @@ begin
             TEERForm(FActiveEERForm).EERModel.PaintModelToImage(ModelBmp, (TMenuItem(Sender).Tag=2));
 
             //Use this function to save PNGs, too
-            DMMain.SaveBitmap(ModelBmp.Handle, theSaveDialog.Filename, ExtractFileExt(theSaveDialog.Filename));
+            DMMain.SaveBitmap({$IFDEF FPC}ModelBmp{$ELSE}ModelBmp.Handle{$ENDIF}, theSaveDialog.Filename, ExtractFileExt(theSaveDialog.Filename));
           finally
             ModelBmp.Free;
           end;
@@ -1423,17 +1426,19 @@ end;
 procedure TMainForm.PasteMIClick(Sender: TObject);
 var f: TextFile;
   ctext, s: string;
-  i, j, anz: integer;
-  theTbl: TEERTable;
+  i, j, anz, maxOrderPos: integer;
+  theObj: TEERObj;
 
-  function TableNameUsedByOther(theTable: TEERTable; const theName: string): Boolean;
+  //True if another object of the same kind (table/region/note/image)
+  //already carries theName
+  function NameUsedByOther(theObj: TEERObj; const theName: string): Boolean;
   var k: integer;
   begin
     Result:=False;
     with TEERForm(FActiveEERForm).EERModel do
       for k:=0 to ComponentCount-1 do
-        if(Components[k] is TEERTable)and(Components[k]<>theTable)then
-          if(CompareText(TEERTable(Components[k]).ObjName, theName)=0)then
+        if(Components[k].ClassType=theObj.ClassType)and(Components[k]<>theObj)then
+          if(CompareText(TEERObj(Components[k]).ObjName, theName)=0)then
           begin
             Result:=True;
             Exit;
@@ -1473,28 +1478,66 @@ begin
               inc(anz);
         end;
 
-        //The pasted objects (the selected ones) keep the names of the
-        //originals - give tables that collide with an existing table a
-        //unique name (name_1, name_2, ...)
+        //The pasted objects (the selected ones) keep the names and the
+        //OrderPos of the originals - give tables, regions, notes and
+        //images that collide with an existing object of the same kind a
+        //unique name (name_1, name_2, ...) and append them to the
+        //OrderPos sequence (the DB Model palette sorts by OrderPos)
         with TEERForm(FActiveEERForm).EERModel do
+        begin
+          maxOrderPos:=0;
           for i:=0 to ComponentCount-1 do
-            if(Components[i] is TEERTable)then
-              if(TEERTable(Components[i]).Selected)then
+            if(Components[i].ClassParent=TEERObj)then
+              if(Not(TEERObj(Components[i]).Selected))then
+                if(TEERObj(Components[i]).OrderPos>maxOrderPos)then
+                  maxOrderPos:=TEERObj(Components[i]).OrderPos;
+
+          for i:=0 to ComponentCount-1 do
+            if(Components[i] is TEERTable)or(Components[i] is TEERRegion)or
+              (Components[i] is TEERNote)or(Components[i] is TEERImage)then
+              if(TEERObj(Components[i]).Selected)then
               begin
-                theTbl:=TEERTable(Components[i]);
-                s:=theTbl.ObjName;
+                theObj:=TEERObj(Components[i]);
+                s:=theObj.ObjName;
                 j:=0;
-                while(TableNameUsedByOther(theTbl, s))do
+                while(NameUsedByOther(theObj, s))do
                 begin
                   inc(j);
-                  s:=theTbl.ObjName+'_'+IntToStr(j);
+                  s:=theObj.ObjName+'_'+IntToStr(j);
                 end;
-                if(s<>theTbl.ObjName)then
+                if(s<>theObj.ObjName)then
                 begin
-                  theTbl.ObjName:=s;
-                  theTbl.RefreshObj;
+                  theObj.ObjName:=s;
+                  theObj.RefreshObj;
                 end;
+
+                inc(maxOrderPos);
+                theObj.OrderPos:=maxOrderPos;
               end;
+        end;
+
+        //Log the paste as one undoable action: a sub action per pasted
+        //object with the object's XML, so that Undo removes and Redo
+        //reloads the group. RedoActions walks the sub actions backwards,
+        //so log in reverse component order (relations before tables) -
+        //the redo then re-creates the tables before their relations
+        with TEERForm(FActiveEERForm).EERModel do
+        begin
+          StartSubActionLog(at_PasteObj);
+          try
+            for i:=ComponentCount-1 downto 0 do
+              if(Components[i].ClassParent=TEERObj)then
+                if(TEERObj(Components[i]).Selected)then
+                  LogSubAction(at_PasteObj, TEERObj(Components[i]).Obj_id,
+                    TEERObj(Components[i]).GetObjAsXMLModel);
+          finally
+            EndSubAction;
+          end;
+        end;
+
+        //The DB Model palette was filled by LoadFromFile with the names
+        //before the rename
+        DMEER.RefreshPalettes;
 
         DeleteFile(DMMain.SettingsPath+'clipboard.xml');
 
@@ -1763,7 +1806,20 @@ begin
       try
         TipsForm:=TTipsForm.Create(self);
         TipsForm.TipMemo.Text:=#13#10+TipText;
+        //model-edit #29: the tips window used to be fsStayOnTop + poMainFormCenter,
+        //i.e. it sat over the middle of the canvas, above the main window even
+        //after a click on it, and swallowed every click on the tables under it.
+        //Keep it modeless (as in the original) but park it in the lower right
+        //corner of the main window, above the main window as its popup child
+        //(a plain fsNormal window is pushed behind the maximized main form by
+        //GNOME Shell's focus-stealing prevention and never seen).
+        TipsForm.PopupMode:=pmExplicit;
+        TipsForm.PopupParent:=self;
         TipsForm.Show;
+        //(after Show: mutter centres a transient window over its parent when
+        //it is mapped and only honours the position once it is on screen)
+        TipsForm.Left:=Max(Left, Left+Width-TipsForm.Width-24);
+        TipsForm.Top:=Max(Top, Top+Height-TipsForm.Height-48);
       except
         on E: Exception do
         begin
@@ -3225,6 +3281,16 @@ begin
     begin
       DMEER.SetWorkTool(wtPointer);
       Handled:=True;
+    end
+
+    // S: Save in both modes, also while the SQL memo has the focus
+    // (model-edit #48: the query-mode block bound Ctrl+S to the SQL SELECT
+    // work tool, so Ctrl+S never saved in query mode)
+    else if(Key=Key_S)and
+      (theShiftState=[ssCtrl])then
+    begin
+      SaveMIClick(self);
+      Handled:=True;
     end;
 
     // -------------------------------------------------------
@@ -3284,13 +3350,8 @@ begin
         Handled:=True;
       end
 
-      // S
-      else if(Key=Key_S)and
-        (theShiftState=[ssCtrl])then
-      begin
-        SaveMIClick(self);
-        Handled:=True;
-      end
+      // Ctrl+S (Save) is handled for both modes above
+      // Shift+Ctrl+S
       else if(Key=Key_S)and
         (theShiftState=[ssCtrl, ssShift])then
       begin
@@ -3431,13 +3492,8 @@ begin
         Handled:=True;
       end
 
-      // S
-      else if(Key=Key_S)and
-        (theShiftState=[ssCtrl])then
-      begin
-        DMEER.SetWorkTool(wtSQLSelect);
-        Handled:=True;
-      end
+      // S: Ctrl+S saves the model in both modes (handled above); the
+      // SQL SELECT tool is reached through its palette button
 
       // O
       else if(Key=Key_O)and

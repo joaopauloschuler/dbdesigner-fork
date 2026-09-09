@@ -618,8 +618,9 @@ begin
       //Meta Information is stored in the table sqlite_master
       SchemaSQLQuery.SetSchemaInfo(stNoSchema, '', '');
 
+      //sqlite_sequence and other internal tables are not user tables
       SchemaSQLQuery.SQL.Text:='SELECT name FROM sqlite_master '+
-        'WHERE type=''table'' '+
+        'WHERE type=''table'' AND name NOT LIKE ''sqlite_%'' '+
         'ORDER BY name';
       SchemaSQLQuery.Open;
       try

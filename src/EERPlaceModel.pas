@@ -57,6 +57,8 @@ type
     procedure FormClose(Sender: TObject; var Action: TCloseAction);
 
     procedure FormShow(Sender: TObject);
+    procedure FormKeyDown(Sender: TObject; var Key: Word; Shift: TShiftState);
+    procedure FormCloseQuery(Sender: TObject; var CanClose: Boolean);
 
     function SetData(EERModel: TEERModel; P: TPoint; PlaceFrom: integer): Boolean;
 
@@ -208,31 +210,51 @@ begin
 
   if(fname<>'')then
   begin
+    //One must not add a model to itself (compare the expanded names,
+    //the active model may have been opened through a relative path)
+    if(ExpandFileName(fname)=ExpandFileName(EERModel.ModelFilename))then
+    begin
+      MessageDlg(DMMain.GetTranslatedMessage('You must not place a Model on itself.', -1),
+        mtError, [mbOK], 0);
+      Exit;
+    end;
+
+    //The GTK file dialog hands back whatever was typed into its Location
+    //entry, so the file may not exist; report it instead of opening an
+    //empty placement dialog (model-edit #32)
+    if(Not(FileExists(fname)))then
+    begin
+      MessageDlg(DMMain.GetTranslatedMessage('File not found:', 11)+#13#10+fname,
+        mtError, [mbOK], 0);
+      Exit;
+    end;
+
     if(Model2Place<>nil)then
       Model2Place.Free;
 
     Model2Place:=TEERModel.Create(self);
-    Model2Place.LoadFromFile2(fname);
+    try
+      //The source model lives in this dialog only; it is never registered
+      //as a document window of the main form
+      Model2Place.LoadFromFile2(fname);
+    except
+      on E: Exception do
+      begin
+        MessageDlg(DMMain.GetTranslatedMessage('An Error occurred while reading the Model from XML File:', -1)+
+          #13#10+fname+#13#10#13#10+E.Message, mtError, [mbOK], 0);
+        Model2Place.Free;
+        Model2Place:=nil;
+        Exit;
+      end;
+    end;
 
     Model2Place.ReadOnly:=True;
 
-    //One must not add a model to itself
-    if(Model2Place.ModelFilename=EERModel.ModelFilename)then
-    begin
-      MessageDlg('You must not place a Model on itself.',
-        mtError, [mbOK], 0);
+    IsStoredInDB:=False;
 
-      Model2Place.Free;
-      Model2Place:=nil;
-    end
-    else
-    begin
-      IsStoredInDB:=False;
+    RefreshModel;
 
-      RefreshModel;
-
-      DMGUI.RecentOpenFileDir:=ExtractFilePath(fname);
-    end;
+    DMGUI.RecentOpenFileDir:=ExtractFilePath(fname);
 
     if(Visible)then
       SetFocus;
@@ -361,6 +383,26 @@ end;
 procedure TEERPlaceModelForm.AbortMIClick(Sender: TObject);
 begin
   ModalResult:=mrAbort;
+end;
+
+//Escape aborts like File > Abort (model-edit #33)
+procedure TEERPlaceModelForm.FormKeyDown(Sender: TObject; var Key: Word;
+  Shift: TShiftState);
+begin
+  if(Key=VK_ESCAPE)and(Shift=[])then
+  begin
+    Key:=0;
+    ModalResult:=mrAbort;
+  end;
+end;
+
+//The window-manager close (Alt+F4, close button) aborts as well; the
+//caller frees the form after ShowModal returns, so never caFree here
+procedure TEERPlaceModelForm.FormCloseQuery(Sender: TObject; var CanClose: Boolean);
+begin
+  CanClose:=True;
+  if(fsModal in FormState)and(ModalResult=mrNone)then
+    ModalResult:=mrAbort;
 end;
 
 procedure TEERPlaceModelForm.AddModelMIClick(Sender: TObject);

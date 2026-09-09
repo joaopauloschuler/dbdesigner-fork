@@ -3328,6 +3328,7 @@ object MainForm: TMainForm
 
     ReadOnly = True
 
+    ScrollBars = ssAutoBoth
     TabOrder = 1
 
     OnChange = PageControlTreeViewChange

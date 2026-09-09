@@ -1897,3 +1897,643 @@ navigation (`Down`x4 `Right` for File > Open Recent). Shots: `fix13-*`.
   (x+67), not the text; the Read view of a wide crop is downscaled, so measure line positions
   with PIL (`sum(px)<500` per row) rather than by eye (cost three misplaced clicks on a
   relation line); an appended popup screenshot shifts every y of the image below it.
+
+## Fix: model-edit #15 - string-input dialog hid its prompt behind the edit panel
+
+- **Cause (confirmed):** `TEditorStringForm.SetParams` (`src/EditorString.pas`) set
+  the label caption and immediately used `PromtLbl.Width` to place `InputPnl`. Under
+  the LCL an `AutoSize` label is not re-measured until its parent has a handle
+  (`AutoSizeDelayed`), so at that point `Width` was still the design-time width of
+  `Promt:` (32 px) and the panel was placed on top of the real "Name of Index:" /
+  "Prefix:" text - only the first letter survived. The `.lfm` also had the label
+  at `Left = 64` (a leftover), which made the form 64 px wider than needed.
+- **Fix:** new private `LayoutControls` - `PromtLbl.AdjustSize`, width = max(label
+  width, `Canvas.TextWidth(Caption)` with the label font when the handle exists),
+  `InputPnl.Left := PromtLbl.Left + w + 4`, `ClientWidth := InputPnl.Left +
+  InputPnl.Width + PromtLbl.Left`. Called from `SetParams` (harmless early pass)
+  and from an overridden `DoShow` (the pass that counts: handle and font metrics
+  exist, form not yet mapped so no visible jump). Label `Left = 8` in the `.lfm`.
+- **Verification** (real display, `shots/fix15/`, round6.xml, Table_02): index
+  dialog 354x61 with "Name of Index:" readable and the edit + OK/Cancel to its right
+  (`after-index.png`); `idx1` + Return creates the index (`m1.png`); grid popup >
+  Add Prefix shows "Prefix:" (312x61, `after-prefix.png`), `p_` + Return renames
+  `d1` to `p_d1` (`m2.png` = round-6 before / after / grid). No stderr output.
+  All 20 `ShowStringEditor` callers pass a short prompt (`Name:`, `Hostname/IP:`,
+  `Database Name:`, `New Table Prefix:` ...); the long questions go into the title.
+- **Driving note:** `pkill -f bin/DBDesignerFork` inside a Bash-tool command kills
+  the tool's own shell when the pattern text appears in the command line (heredoc
+  or sed argument) - use `pkill -f 'bin/DBDesigner[F]ork'` or run the script alone.
+  `flow.sh` here (no palette undock) lands on the Indices page directly; the
+  add-index button is at (280,332) of the Table Editor window.
+
+## Fix: model-edit #16 - datatype palette drag cannot reach the modal Table Editor; "Set Datatype" popup submenu instead
+
+- **Cause (confirmed by the first attempt):** the Table Editor runs in `ShowModal`;
+  the LCL disables every other form and GTK2 adds an input grab, so the Datatypes
+  palette (floating or docked in the main window) never sees the mouse-down that
+  would start `BeginDrag`. Re-enabling the palette from the editor did not help
+  (mutter restacks it below the main window, docked panels inherit the parent's
+  insensitivity). Not fixable without making the editor non-modal.
+- **Workaround (src/EditorTable.pas, .lfm):** `ColPopupMenu` gets a leading
+  `SetDatatypeMI` ("Set Datatype") whose children are built in `BuildSetDatatypeMenu`
+  (called from `SetTable`): one `TMenuItem` per `EERModel.DatatypeGroups` entry with
+  one child per datatype of that group (`Tag` = datatype id, `OnClick` =
+  `SetDatatypeMIClick`); empty groups are skipped. The assignment code of
+  `ColumnGridDragDrop` was factored into `ApplyDatatype(theDatatype, ARow)` and the
+  drop handler now calls it, so drop and menu stay identical (single row or
+  `ParamRequired` type -> that row, params cleared, option defaults, in-place combo
+  opened for parameter types; multi-row selection + parameter-free type -> all
+  selected non-FK rows). `ColPopupMenuPopup` selects the right-clicked row when it
+  is outside the current selection (`Mouse.CursorPos` -> `MouseToCell`; doing this in
+  `OnMouseDown` for `mbRight` did not work - the popup is raised before/without that
+  handler under GTK2) and enables the submenu only for existing rows of a writable
+  table. The drag handlers stay for a future non-modal editor.
+- **Already there:** the DataType cell has a drop-down editor
+  (`EditorTableFieldDatatypeInplace.pas`, `TComboBox` with all type names, sorted,
+  autocomplete) opened by double-click or Return on the cell - round 6 missed it
+  because a single click/Tab opens the plain text editor.
+- **Verification:** `shots/fix16b/` - `popup.png`, `sub1.png` (groups), `sub2b.png`
+  / `sub3.png` / `sub4.png` (Date and Time / Numeric / String lists),
+  `after1-c.png` .. `after7-c.png`, `m-multi.png`, `m-final.png`, saved `t.xml`.
+  Driving: `flow.sh` there launches on `t.xml` (copy of round6.xml), closes Tips,
+  Ctrl+Tab to design mode; `Table_03` header double-click at abs (366,325); popup
+  windows are found by diffing `xwininfo -root -children` before/after the
+  right-click, submenu items are 26 px apart starting 13 px below the submenu's
+  top; third-level submenus open at x=837 aligned with the hovered group item.
+  Shift+click through xdotool lost the modifier - use `xdotool key
+  --clearmodifiers shift+Down` to extend the selection.
+
+## Fix: model-edit #17, #18 - Table Editor RAID Type combo clipped, page tree with permanent scrollbars
+
+- **#17 cause:** `RaidTypeLU` had the Delphi `Width = 90`; the GTK2 combo button
+  plus padding leaves ~48 px for text, `STRIPED` needs ~55 (`STRIPEI` shown).
+  **Fix:** `Width = 106` in `src/EditorTable.lfm` (ends at 292 of the 298 px
+  RAID group, flush with the `kB` label; the Chunks edits stay 90).
+- **#18 cause:** not the size at all. `PageControlTreeView` had no `ScrollBars`
+  in the `.lfm`, so the LCL default `ssBoth` applied, and
+  `TCustomTreeView.UpdateScrollbars` (`lcl/include/treeview.inc`) calls
+  `SetShowScrollBar(..., true)` unconditionally for the non-auto values; only
+  `ssAutoBoth`/`ssAutoVertical`/`ssAutoHorizontal` hide a bar when the content
+  fits. Delphi's `ssBoth` was effectively auto. **Fix:** `ScrollBars = ssAutoBoth`
+  plus an explicit `Width = 124` (default was 121; the page control begins at 143).
+  Rule of thumb: any ported `TTreeView` without `ScrollBars` in its `.lfm` will
+  show both bars under the LCL - grep for it when a tree looks like that.
+- **Neighbours checked:** Row format, Table Prefix, Table Type combos show their
+  current item completely; Table Type's long items are clipped in the closed
+  combo as in the original (241 px design width) - not touched.
+- **Verification:** `shots/fix17-18/` before/after crops (`before-adv.png` /
+  `after-adv.png`, `before-tree.png` / `after-trees.png`); `flow.sh` there opens
+  round6.xml, closes Tips, double-clicks `Table_03` at (300,258) of the (now
+  600x426) main window, then clicks Table Options / Advanced in the tree at
+  y=312 / y=325 of the editor. No new stderr lines.
+
+## Fix: model-edit #22 - Shift+click does not extend the column grid selection
+
+- **Cause:** `ColumnGridMouseDown` (unchanged from the Delphi original) drops
+  `goRangeSelect` on every left click so that a mouse drag moves rows instead of
+  range-selecting; `ColumnGridMouseUp` puts it back. Under the LCL,
+  `TCustomGrid.MouseDown` (`lcl/grids.pas`) calls `inherited` - and with it
+  `OnMouseDown` - *before* `if ssShift in Shift then SelectActive:=(goRangeSelect in
+  Options)`, so the option was already gone and no range was built. Delphi evaluates
+  the range first, then fires the event.
+- **Second finding:** after a Shift range (click or Shift+Down) the LCL leaves the
+  protected `SelectActive` on until the next plain click. Any programmatic
+  `ColumnGrid.Row:=` then goes through `MoveExtend` and re-extends the range from
+  `FPivot` - the #16 popup handler did exactly that (`Selection:=theRect; Row:=ARow`),
+  so a right-click on a row outside a Shift+click range deleted the whole range plus
+  that row.
+- **Fix (src/EditorTable.pas):** the `Options-[goRangeSelect]` line runs only when
+  `ssShift` is not in `Shift`; `TColumnGridAccess = class(TDrawGrid)` (implementation
+  section) exposes `SelectActive`; `ColumnGridMouseUp` resets it right after restoring
+  `goRangeSelect`, and `ColPopupMenuPopup` resets it, sets `Row` and then `Selection`
+  (single row wins). Plain click and Ctrl+click paths unchanged.
+- **Not changed:** `ApplyDatatype` ends with `ColumnGrid.Col:=3; Row:=ARow` (original),
+  which collapses a multi-row selection to the target cell after Set Datatype - the
+  lingering `SelectActive` used to mask that. Delphi collapses too.
+- **Verification (`shots/fix22/`, real display, `fix22.xml` = round6.xml):**
+  `v1-click-c.png`/`v2-shiftclick-c.png` (one, then three rows), `v3-setdt-c.png`
+  (BIGINT on exactly `notes`, `p_born`, `active`), `w1-range-c.png`/`w2-del-c.png`
+  (three-row Delete), `w3-collapse-c.png`, `w4-del16-c.png` (#16 holds),
+  `w5-type-c.png` (#20 holds). `s9-c.png` is the failed #16 check of the first attempt
+  (without the SelectActive reset). Zero GLib-CRITICAL lines.
+- **Driving notes:** `xdotool keydown shift; click 1; keyup shift` does carry the
+  modifier into the grid (the #16 note about the lost modifier was the lost first
+  click after `windowactivate`, not the modifier - click the row twice, or once after a
+  throw-away click). The main window on this display is 1878x886; `Table_03` header at
+  abs (375,324), editor grid rows at abs y = 291 + 19*(row-1), Column Name at x=354.
+  Popup: Set Datatype y+13, Delete Row(s) y+91 relative to the popup top; the group
+  submenu opens at x=626, the type list at x=847, items 26 px apart from y+13.
+
+## Fix: model-edit #23 - empty index exported as `FULLTEXT INDEX idx7()`; FULLTEXT for SQLite
+
+- **Cause:** `TEERTable.GetSQLCreateCode` (`src/EERModel.pas`, index loop) wrote every
+  non-PRIMARY index regardless of `Columns.Count`, and the `ik_FULLTEXT_INDEX` case had
+  no per-target translation (the SQLite branches of that loop only covered the AUTOINCREMENT
+  PK, the indent and the `(n)` prefix length). Inherited from the original.
+- **Fix:** `continue` when `TEERIndex(Indices[i]).Columns.Count=0` (placed with the other
+  skip checks, before the indent is appended, so both the inline list and the portable
+  `CREATE INDEX` variant drop it); the FULLTEXT case writes `INDEX` when
+  `DatabaseType = 'SQLite'`, else `FULLTEXT INDEX` as before. No DROP INDEX counterpart
+  exists in the exporter. PRIMARY KEY handling untouched.
+- **Verification (`shots/fix23/`):** `fix23.xml` (round7 model, `idx7` FULLTEXT without
+  columns): `after-mysql.sql` differs from `round7-mysql.sql` only by the dropped
+  `FULLTEXT INDEX idx7())`; `after-sqlite.sql` has no `idx7` and loads with `sqlite3`.
+  `fix23b.xml` (same, `idx7` on `name`, edited in the XML): SQLite export
+  `CREATE INDEX idx7 ON Table_03 (name);`, loads. My SQL export of fix23b not repeated.
+  Driving notes: `./bin/DBDesignerFork <model.xml>` opens the model directly; the GTK
+  save dialog opens in "Recently Used" and ignores Save/Return until a folder row is
+  double-clicked (`xdotool click --repeat 2`), then a bare file name + Return works;
+  `xdotool getwindowgeometry` positions are stale for the client windows, use
+  `xwininfo -id` absolute coordinates; the Target Data Base dropdown is a separate
+  `DBDesignerFork` popup (140x184) - hover the item ~0.5 s before clicking.
+
+## Fix: model-edit #21 - permanent scrollbars on all ported tree views
+
+- **Cause:** the #18 rule of thumb applied everywhere: ten `TTreeView` blocks in the
+  ported `.lfm` files had no `ScrollBars` line, so the LCL default `ssBoth` showed both
+  bars unconditionally (`TCustomTreeView.UpdateScrollbars`).
+- **Fix:** `ScrollBars = ssAutoBoth` inserted (before `TabOrder`) in `src/PaletteModel.lfm`
+  (2 trees), `src/PaletteDatatypes.lfm`, `src/EditorQuery.lfm`, `src/Options.lfm`,
+  `src/OptionsModel.lfm`, `src/DBConnSelect.lfm`, `src/EERStoreInDatabase.lfm`,
+  `src/EERPlaceModel.lfm`, `Plugins/SimpleWebFront/Main.lfm`. The `Plugins/*/lib/x86_64-linux/*.lfm`
+  copies are build output (gitignored), regenerated by `lazbuild`. Grep to re-check:
+  `grep -rn -A40 ': TTreeView' --include=*.lfm src Plugins | grep -c ScrollBars`.
+- **Verification (`shots/fix-trees/`):** bars appear only on overflow - DB Model tree
+  (13 tables collapsed vs. expanded), Datatypes "All types" (collapsed vs. expanded);
+  no bars on the stored-SQL tree, the Select Database Connection tree, and both Options
+  page trees. Not reached: `TablesTreeView`, `SavedModelsTV`, `LMTreeView`, the
+  SimpleWebFront page tree. Driving notes: the Options dialogs are modal and ignore
+  Escape - close DBDesigner Options with the red X at (770,348) of the 800x372 dialog;
+  the Database/Options menu popups are separate `DBDesignerFork`-class windows that
+  `import -window` can capture (Connect to Database is the first item, Model Options /
+  DBDesigner Options at y+14 / y+42 of the popup).
+
+## Fix: model-edit #20 - comment truncated to its first character after clicking out of an open in-place editor
+
+- **Cause:** not a focus race but a stuck mouse capture. When a cell is clicked while an
+  in-place `TEditorTableFieldEdit` is open, the GTK button press first takes the focus
+  away from the editor; its `OnExit` -> `ApplyChanges` -> `HideEdit` called
+  `Application.ProcessMessages` (the original "unoff. CLX fixes" workaround) *inside the
+  grid's button-press handling*. That pumped the button *release* through the grid before
+  the LCL had taken the mouse capture for the press (`TControl` LM_LBUTTONDOWN ->
+  `MouseCapture:=True` -> `OnMouseDown`), so the release that normally frees the capture
+  was already gone and the grid kept its GTK grab (`gtk_grab_get_current` = grid core
+  widget, `GetCaptureControl` = `ColumnGrid`). Under gtk2 a key press goes to the grab
+  widget instead of the toplevel; `HandleGtkKeyUpDown` still redirected the LM_KEYDOWN to
+  the focused editor (its `OnKeyDown` saw every key), then tried to stop the emission on the
+  toplevel - the "no emission of signal key-press-event to stop" GLib-CRITICAL - and the
+  GtkEntry never got the key. Only the first character survived because it went through
+  `ColumnGridKeyDown` -> `EditCellStr('c')`; Return worked because it is handled in
+  `OnKeyDown`. Round 6's stray `c` and probably most of the #14 CRITICALs were the same
+  thing.
+- **Fix:** `HideEdit` (`src/EditorTableField.pas`) no longer calls
+  `Application.ProcessMessages`; `Invalidate` is enough for the repaint. Nothing else changed.
+- **Verification** (`shots/fix20/`, real display, `verify6.xml` copy): exact repro (new
+  column `zz1`, `VARCHAR(7)` typed into the datatype combo, Return -> new-row name editor
+  open, click `name` Comments, `c-extra` + Return) keeps `c-extra` (`a12.png`); Tab from an
+  existing row's name -> DataType -> Default Value -> Comments then `via-tab` (`b012.png`);
+  names and datatypes typed without doubling or loss; OK + Ctrl+S + reopen shows everything
+  (`c1-reopened-c.png`, `fix20.xml`). Zero GLib-CRITICAL lines in the whole run.
+- **Probe lessons:** `writeln` to stdout is block-buffered when redirected - use
+  `writeln(StdErr, ...)`; a probe that dereferences `TableEditor` before `SetData` ran (the
+  `ApplyChanges` call from `ColumnGridMouseDown`) throws inside the mouse handler and
+  silently breaks the rest of the click. `~/.DBDesigner4/DBDesignerFork_Settings.ini` had
+  `WorkMode=2` (query mode, from `--selftest`): a double-click on a table then opens the
+  "Select Database Connection" dialog instead of the Table Editor - set `WorkMode=1` (and
+  `ShowTipsOnStartup=0`) for driving, restored afterwards.
+
+
+## Fix: model-edit #19 - renaming a table back to its original name yields the next free number
+
+- **Cause:** the Table Editor edits a copy (`EERTable`, created in `SetTable` from
+  `SourceEERTable`). `TableNameEdExit` (`src/EditorTable.pas`) walks `EERModel.Components`
+  for name clashes and skipped only the copy, so the model's own table (still carrying the
+  original name until OK) counted as a clash as soon as the name was changed away and back,
+  and the trailing digit was bumped (`Table_01` -> `Table_03`). Inherited from the original
+  Delphi source (same comparison in the first commit).
+- **Fix:** the clash loop also skips `SourceEERTable`. Nothing else changed; a real clash
+  with another table is still renamed to the next free number.
+- **Verification** (`shots/fix19/`, real display, `round6.xml` copy): `foo` -> original name
+  with Return and with Tab keeps the original name; OK shows it on the canvas and in the
+  DB Model tree; `Table_02` typed while `Table_02` exists is bumped to `Table_03`.
+  Zero GLib-CRITICAL lines.
+- **Driving note:** `xdotool search --name 'Table Editor'` also returns stale window ids
+  (~10514xxx) from a dead instance on this display; filter by id (`awk '$1>12000000'`).
+  `--pid` filtering did not work. A mis-targeted `ctrl+a` + typing landed in the column
+  grid once and renamed a column - that was the driver, not the fix.
+
+## Fix: model-edit #25 - sync exception behind the modal dialog, SQLite table listing
+
+- **Cause of the stuck dialog** (confirmed with probes appended to a file - `writeln` to
+  stdout/stderr showed nothing here): the SQLite `near "show": syntax error` escaped
+  `EERMySQLSyncDB` and `SubmitBtnClick` into `TMainForm.AppException`. Its dialog
+  (`TForm.CreateNew(nil)`, no popup parent) opened behind the modal sync form: the GTK
+  modal grab stays with the sync form, so Execute still worked, while Close set
+  `ModalResult` on a form whose `ShowModal` loop was suspended by the second modal loop,
+  and Escape/Alt+F4 closed the *hidden* exception dialog - which is why the diagnosis saw
+  no window afterwards. `import -window` on that hidden window hangs with Bad Drawable.
+- **Fix**: `TEERSynchronisationForm.SubmitBtnClick` wraps the sync in try/except, logs
+  `ERROR: <msg>` + `Synchronisation aborted.` into the memo and shows a `MessageDlg`
+  (owned by the dialog, stacks on top); holds for MySQL failures too. `AppException`
+  sets `Dlg.PopupMode:=pmAuto` (transient for the active form). `FormKeyDown` maps Escape
+  to `ModalResult:=mrAbort` - no button in that dialog has `Cancel=True`, so Escape never
+  worked, even with MySQL.
+- **SQLite**: `EERMySQLSyncDB` has an `IsSQLite` flag (`TDBConn.DriverName`): no
+  `SET FOREIGN_KEY_CHECKS`, tables from `sqlite_master ... NOT LIKE 'sqlite_%'`, then a
+  `raise Exception` with the limitation text right before "Create non existing table" -
+  everything after that is MySQL DDL (`GetSQLCreateCode` for the model's `DatabaseType`,
+  `show full fields`, `ALTER TABLE ... MODIFY/CHANGE`, `show index`). Real SQLite sync
+  (sqlite #8) would need a `PRAGMA table_info` diff and SQLite's limited ALTER; not done.
+  `TDMDB.GetDBTables` also filters `sqlite_%`, so the header no longer counts
+  `sqlite_sequence`.
+- **Driving**: connection selector (frame 774x366 at +594+222): OrderSQLite row abs
+  (902,335), OrderMySQL (902,355), Password box (1152,539) - (1160,509) is the Username
+  box -, Connect (1294,509). Sync dialog frame 423x584 at +769+259: Execute abs (1041,766),
+  Close (1124,766). `xdotool windowactivate --sync` can hang forever on a window that is
+  not viewable - wrap every xdotool call in `timeout 5`; and `pkill -f drive2.sh` kills
+  the calling shell too (its command line contains the pattern).
+
+## Fix: model-edit #24 - MySQL reverse engineering lost column and table comments
+
+- **Cause**: `EERMySQLReverseEngineer` (`src/DBEERDM.pas`) used `show fields`, whose
+  result has no `Comment` column, and never assigned `TEERColumn.Comments` or
+  `TEERTable.Comments`; the sync path (`show full fields`, mysql #9) already read them.
+  Inherited from DBDesigner 4, not a port regression.
+- **Fix**: `show full fields` + `theColumn.Comments:=FieldByName('Comment')` (guarded
+  by `FindField`, so a driver that drops the column is fine); per table
+  `show table status like '<name>'` -> `Comments` through `StripMySQLTableStatusComment`,
+  which cuts the `; InnoDB free: NNN kB` suffix MySQL < 5.5 appends (and a bare
+  `InnoDB free:` comment on comment-less InnoDB tables). The status query is in
+  try/except so an odd server cannot abort the whole reverse engineering. The
+  `information_schema` FK relations now store the FK column's comment in
+  `FKFieldsComments` (was always `''`). SQLite reverse engineering not touched (no
+  comments there).
+- **Engine (second commit)**: the same `show table status` row's `Engine` column (`Type`
+  on MySQL < 4.1.2) now sets `TEERTable.TableType` through `MySQLEngineToTableType`
+  (MyISAM 0, InnoDB 1, MEMORY/HEAP 2, BDB/BerkeleyDB 3, ISAM 4, MERGE/MRG_MYISAM 5; -1 =
+  unknown engine such as CSV/ARCHIVE/NDB -> the model default stays), the inverse of the
+  `ENGINE=` case in `GetSQLCreateCode`. Verified on the display (`shots/fix24b/`): XML
+  `TableType` 1/1/0 for parent/child/logtab, Table Editor combo InnoDB, re-export has
+  `ENGINE=InnoDB` on the two InnoDB tables only. Loading that export into MySQL 8 turns
+  `logtab` into InnoDB because type 0 emits no clause and the server default is InnoDB
+  since 5.5 - an export question (emit `ENGINE=MyISAM` for 0?), left as is. Still not
+  read: `Auto_increment`/`Row_format`.
+- **Driving addendum**: `xdotool getwindowgeometry` reports managed windows 37 px too
+  low (frame offset); `xwininfo -id <xid>` "Absolute upper-left" is right (connection
+  selector at +608+271, rows y +63/+83, password field +559+268, Connect +683+237; Export
+  SQL Script client +713+222, target combo arrow +347+250, Save Script +410+534). The
+  File > Export submenu opens on hover only after small pointer motions inside the item
+  (a click on Export closes the menu); SQL Create Script at abs (342,374). `xdotool
+  search --name` may return the mutter frame - activate the client xid from
+  `xwininfo -root -tree`.
+- **Driving** (`shots/fix24/`): main client origin +42+69; Database menu opens with one
+  click at (227,81) after `windowactivate`, popup 234x135 at +189+95, Reverse Engineering
+  at abs (269,195) - move the pointer in steps (x=260, y 120..191) before the click, a jump
+  straight onto the item lost the click twice. File popup 212x399 at +42+95, Save As at
+  abs (122,267); approach it horizontally from x=320 so the pointer never crosses the
+  Open Recent / Add-Link submenu rows. Connection selector rows y 271+104 (3rd) / +124
+  (4th), Connect (1290,508). The Reverse Engineering dialog closes itself after Execute.
+  In Query mode a double-click on a table opens the connection selector, not the Table
+  Editor: single click on the mode button at client (18,49) first and check the bottom
+  panel is gone (two clicks toggle back).
+
+## Fix: model-edit #26-#28 - paste: FK index/relation ids, undoable paste, DB Model tree names
+
+- **#26, the real cause was `ReplaceText`** (`src/MainDM.pas:600`): it upper-cases both
+  strings, so in `TDMEER.AssignNewIDsToEERObjects` the replacement of `ID="1296"` also hit
+  `FKRefDef_Obj_id="1296"` and produced `FKRefDef_Obj_ID="1307"` - the attribute *name*
+  changed case, the XML parser's `CurAttr.Value('FKRefDef_Obj_id')` returned '' and the
+  `StrToInt` except branch stored -1. Same for `FKRefDefIndex_Obj_id` on the relation. The
+  tell-tale in the saved file: the relation's new id (1307) sits between the pasted
+  columns and the pasted PRIMARY index, because the loop met "1296" inside the child's
+  index before it reached the `<RELATION>` tag. The remap now uses `StringReplace` (case
+  sensitive) through a local `ReplaceId(Attr)` and covers `ID`, `idColumn`, `SrcTable`,
+  `DestTable`, `FKRefDefIndex_Obj_id`, `FKRefDef_Obj_id` and ` Obj_id` (leading blank:
+  plugin data records only). Not remapped on purpose: `idDatatype` (datatypes are not in
+  the clipboard - they live inside the SETTINGS block that `SaveToFile(..., WriteSettings=
+  False, OnlySelected=True)` skips), `IDLinkedModel`/`Obj_id_Linked` (ids of another
+  model). An id whose object is not in the clipboard stays as it is (original behaviour):
+  a `child` copied without its relation keeps `FKRefDef_Obj_id` of the original relation.
+- **#28, paste as one undo action**: `at_PasteObj=70` in `TEERModel`; `PasteMIClick` logs
+  `StartSubActionLog(at_PasteObj)` + one `LogSubAction(at_PasteObj, Obj_id,
+  GetObjAsXMLModel)` per selected (= pasted) object *after* the rename loop, so the redo
+  XML has the final names and the same ids. Undo (`UndoActions`) deletes by id with a nil
+  guard - deleting a table deletes its relations, whose own sub action then finds nothing.
+  Redo writes the XML to `undo.xml` and `LoadFromFile(..., False, True)`s it, exactly the
+  delete-undo path. Two traps: `RedoActions` iterates `SubActions.Count-1 downto 0`, so the
+  objects are logged in reverse component order (relations first) or the relation is
+  reloaded before its tables, `GetRELATIONS` skips it, and the model-wide "Clear obsolete
+  FKs" pass (`src/EERModel.pas` ~3245) then removes the pasted `parent_id` because no
+  relation claims it. And `at_NewObj` cannot be reused: its redo calls `NewTable` /
+  `NewRelation`, which would recreate an empty `Table_n`.
+- **The stray "Undo Move Object(s)"** of round 9 was the double-click that opened the Table
+  Editor: `TEERObj.DoMouseDown` starts `at_MoveObj` on every left press in design mode,
+  `DoMouseUp` discards it if nothing moved (`DeleteOpenAction`) - but after `DoDblClick`
+  the mouse up lands in the modal editor, so the open move action survived as the current
+  action. `DoDblClick` now calls `DeleteOpenAction` before `ShowEditor`. The paste's own
+  +30/+30 shift is a text rewrite of `XPos`/`YPos` in the clipboard XML and never logged
+  anything.
+- **#27**: `DMEER.RefreshPalettes` after the rename loop (`LoadFromFile2` had already
+  posted one with the old names).
+- Verified on DISPLAY=:0 (`shots/fix26/`, model `f26.xml` = round8.xml, WorkMode=0 during
+  the session, restored from `settings.bak`): 3-object rubber band, Ctrl+C/V -> "3 Object(s)
+  pasted", tree `parent_1, parent, child_1, child`, `f26-after-paste.xml` with
+  `FKRefDef_Obj_id="1307"` / `FKRefDefIndex_Obj_id="1315"`; Edit menu `Undo Paste
+  Object(s)`; Ctrl+Z removes the three, menu `Redo Paste Object(s)`; Ctrl+Y restores them
+  with FK column, index and line, `f26-after-redo.xml` identical in every TABLE/COLUMN/
+  INDEX/RELATION line; single paste `parent_2`; Ctrl+X (Confirmation dialog, Return) then
+  Ctrl+V re-pastes `parent_2`; double-click on `child` + Escape keeps `Undo Paste
+  Object(s)`. Self-test: see the commit message.
+- Driving notes: the GTK menu popup is a separate viewable window of the app's pid named
+  `DBDesignerFork` (300x241) - `import -window` it while the menu is open; the main window
+  came back at 1878x886 on the second launch (saved geometry), so crops taken from the
+  first 1287x758 window were empty - re-read `xwininfo` after every launch; `xdotool search
+  --name 'DBDesigner Fork -'` also returns unmapped windows, filter on `IsViewable`. A
+  "DBDesigner Fork Tips" window is viewable but not modal and does not swallow keys.
+
+
+## Fix: model-edit #31 - undo/redo after a save did not mark the model as changed
+
+`TEERForm.FormCloseQuery` (`src/EER.pas`) asks "save before closing?" only when `EERModel.IsChanged` is set. Every ordinary edit sets it through `TEERModel.ModelHasChanged`, and a save clears it - but `TEERModel.UndoActions` and `RedoActions` (`src/EERModel.pas`) restored objects without ever calling it. Save, Ctrl+Z, Close therefore discarded the undone state silently.
+
+Both routines now call `ModelHasChanged` before they move `CurrentAction`, provided the loop actually processed an action (`CurrentAction>=TillAction` for undo, `TillAction>CurrentAction` for redo). `ModelHasChanged` also refreshes the toolbar saved-indicator (`DMEER.RefreshSavedImg`); there is no "modified" marker in the window title or the Windows menu, so nothing else needed to follow.
+
+Not done on purpose: the action log has no notion of "position at last save", so undoing back to exactly the saved state still prompts. Adding that would mean inventing state the original never had; one prompt too many is harmless.
+
+Side observation while testing (not touched): after the last model is closed the main title keeps `DBDesigner Fork - <name>` instead of resetting.
+
+## Fix: model-edit #37 - image from a 1-bpp BMP is white (placed, saved and reopened)
+
+The catalog blamed the drag size / the stretch path; both were fine (`RefreshObj` builds `StrechedImg` 60x200 from a 120x80 `Img`, `PaintObj2Canvas` draws it). The saved `ImgData` of the invisible image was all white - the blob has the same length as the good one but is not byte-identical - so the bitmap was white from the moment it was loaded from the file. The file was `test.bmp`, a 1-bpp BMP (2-entry palette, orange + white, all pixels index 0). `TPicture.LoadFromFile` gives a `TBitmap` with `PixelFormat = pf1bit`; under GTK2 that is a monochrome bitmap handle and the palette is dropped, so `Canvas.Draw` onto the 24-bit `Img`, `Canvas.Pixels` and `CreateIntfImage` all yield white. The same file through `TLazIntfImage.Create(0, 0, [riqfRGB])` + `LoadFromStream` (fcl-image readers, no handle involved) gives the right colours; `TBitmap.LoadFromIntfImage` then produces a `pf24bit` bitmap. The 1-bit PNG used for the first image went through the PNG reader, which always builds 32-bit data, hence "the first image survives".
+
+Fix: `TEERImage.LoadImgFromStream` (`src/EERModel.pas`, uses `IntfGraphics`, `GraphType`, `FPImage`, `FPReadBMP`, `FPReadPNG`) does exactly that; `LoadImageFromFile` opens the picked file as a `TFileStream`, `SetXML`/`SetXML2` pass the decoded XML stream. `Img.SaveToStream` still writes a 24-bit BMP (28854 bytes for 120x80, same as before), so the XML format did not change; PNG data in old files (`order.xml`, `ImgFormat="PNG"`) is detected by the fcl-image reader lookup like it was by `TPicture`.
+
+Driving notes: the Image tool button is at window y ~481 (`wtImageSBtn` Top 414 + ~67), the Size tool at y ~122 (Top 51 + ~71); a drag that starts on a table moves the table whatever the tool. A 1-bpp test BMP: `convert -size 120x80 xc:orange -type bilevel -colors 2 test.bmp` or similar (`file` says `120 x 80 x 1`). The double-click on the `order.xml` images (round 5) opened the Image Editor at once here.
+
+## Fix: model-edit #35 - Region tool "creates nothing" and the two-edge rubber band
+
+#35 did not reproduce: with `SetWorkTool 7` really logged, the drag reaches `NewRegion` with the full rectangle (`w=120 h=210`) and the region is created, undone, redone, saved and opens its editor. The round-10 drags ran with the Pointer tool - the Region button click had missed. Two driver lessons: (1) the tool-bar `TSpeedButton`s sit about 60 px below their `.lfm` `Top` in window coordinates (the Design/Query mode images are above the button panel; `Top = 196` for Region gives screen y = window y + 69 + ~263), and a click 20 px too high lands on the Design/Query images and toggles the work mode (`SetWorkMode`, the whole X window is replaced - captures fail with "Resource temporarily unavailable"); (2) a Down speed button is nearly indistinguishable from an Up one in a scaled crop - probe `TDMEER.SetWorkTool` (or read the status-bar text) before trusting the tool state. Probing note: `writeln` to a redirected stdout is buffered; add `Flush(Output)` after each probe or the last lines are missing when the process is killed.
+
+The real bug behind observation (b): `DoSelectionRectPaint` and `DoGridPaintBoxPaint` (`src/EERModel.pas`) read `width`/`height` inside `with <paintbox>.Canvas do`. Under CLX `TCanvas` had no such properties, so they resolved to the enclosing `with <paintbox> do`; the LCL `TCanvas` inherits `Width`/`Height` from `TFPCustomCanvas` (`GetDeviceSize` of the DC, i.e. the parent's size for a `TGraphicControl` painting on the parent's DC), so the right and bottom edges were drawn at the model's far edges and clipped by `TWinControl.PaintControls`' `IntersectClipRect(0,0,Width,Height)`. Both handlers now take the size from the paintbox into locals. Grep for the pattern when something painted with `with X.Canvas do` looks truncated: `grep -n "with .*\.Canvas do" src/*.pas`.
+
+Not touched: the redo of a region picks the next colour (`NewRegion` advances `LastRegionColor`, same as the original); the Region Editor was only opened and closed with Escape.
+
+## Fix: model-edit #36 - pointer rubber band "started on a region body" that misses a note
+
+Not a bug, no code change. The press of the failing band landed on `Rel_02_RelMiddle`, the invisible hit box of the relation's middle segment: `TEERRel` owns four extra `TPaintBox`es (`RelEnd`, `RelMiddle`, `RelCaption`, `Rel*Interval`) whose mouse handlers are the relation's own; `RelMiddle` is `RelIconSize+1` px wide and as long as the middle segment (`TEERRel.RefreshObj`), so a press up to ~7 px beside a vertical relation line selects the relation and drags its `MidOffset` - it never reaches the region below it, and no rubber band starts. Identical to the original (the region and relation handlers diff clean against the first commit). A band that really starts on the region body goes through `TEERRegion.DoMouseDown` (`SetSelectionRectPos(Left+X, Top+Y, 1, 1)` in model-control coordinates), `DoMouseMove` (grows it from `Mouse.CursorPos` deltas) and `DoMouseUp` -> `ParentEERModel.SelectObjsInSelectionRect`, and it selects the note (verified with copy/paste on the real display, `shots/fix36/`).
+
+Driving notes: `order.xml` opens at zoom 75 %; `SelectionRect` and `Obj_X/Y` differ by `ReEvalZoomFac`, so compare the probe output in one space. `writeln` to stdout is block-buffered when redirected and `stderr` is buffered too - `Flush(stderr)` after each probe, or the lines arrive only with the next batch. Under the region there are relation hit boxes everywhere between connected tables; start bands from a spot that logs `region down` (or from empty canvas) before concluding anything about `SelectObjsInSelectionRect`. `lazbuild` skipped `EERModel.pas` once after an in-place edit (mtime older than the `.ppu` by a second) - `touch` it when the `strings | grep` count of a probe does not change.
+
+## Fix: model-edit #32, #33 - Place / Link Model from File: failed loads, Escape and WM close
+
+#32 did not reproduce: `TEERPlaceModelForm.LoadModelfromFile` (`src/EERPlaceModel.pas`) loads the picked file into the dialog-owned `Model2Place` (`TEERModel.Create(self)`, parent = the dialog) and nothing on that path registers a document window - probes showed source = picked file, target = active model, no `OpenFile`. The "second model" of round 9c was the driver: the GTK open dialog pre-fills its Location entry with the active model's file name, `xdotool type` without Ctrl+A appends to it, and the dialog returns the nonexistent name (`round8.xmlorder.xml` here). `LoadFromFile2` then raised inside `SetData`; the exception vanished (the LCL application handler swallowed it) and the empty dialog was shown. Rule for future runs: click the Location entry, Ctrl+A, then type the path.
+
+Changes: the on-itself check is done first on `ExpandFileName` of the picked name against `EERModel.ModelFilename` (the loaded model would report the same name anyway; comparing before loading avoids the create/free round trip) and now returns False; `FileExists` is checked; `LoadFromFile2` is wrapped in try/except with a message that names the file, `Model2Place` freed on failure, False returned. `SetData` already turns False into "do not show the dialog", and the dialog's own File > Load Model from File keeps the previous model on a failed pick. `GetTranslatedMessage(s, -1)` returns `s` unchanged; `0` would index `MessageCaptions[-1]`.
+
+#33: `KeyPreview` + `FormKeyDown` (plain Escape -> `ModalResult:=mrAbort`) and `FormCloseQuery` (modal form without a result -> `mrAbort`). `FormClose` still runs `ApplyLinkedModelSettings` (unchanged, it tolerates `Model2Place=nil`). Not verified: the WM close, because `xdotool key alt+F4` is not acted on by GNOME Shell for this utility-type window (same result as round 9c before the change; `xprop` lists `_NET_WM_ACTION_CLOSE`). A real close button click or `wmctrl -c` (not installed) would exercise it.
+
+Driving notes: the placement tool only fires on a click on *empty* canvas (a click on a table does nothing visible and keeps the tool armed); the from-file path never shows `LMTreeView`/`LMPnl` (those belong to the Linked Models view), so #21 stays unverified for that tree.
+
+## Fix: model-edit #29 - the start-up Tips window covered the canvas centre and swallowed clicks
+
+The original was already like this: `Tips.xfm` in the first commit has `FormStyle = fsStayOnTop`, `Position = poMainFormCenter`, and `Main.pas` shows it with `Show` - modeless, always above, dead centre. So there was no "modal original" to return to, and `ShowModal` would in any case block `ShowPalettesTmrTimer`, from whose return the `--selftest` idle start waits (ui-bug #5 was exactly that hang).
+
+What GNOME Shell (mutter) does with the alternatives, measured with `xprop -root _NET_CLIENT_LIST_STACKING` and `xdotool getmouselocation`:
+- `fsNormal` alone (no transient parent): the window is created while the maximized main form has the focus, focus-stealing prevention gives it `_NET_WM_STATE_DEMANDS_ATTENTION` and puts it at the *bottom* of the stack - the tips are never seen. The "goes behind on the first click" idea therefore does not exist on this desktop: it is behind from the start.
+- transient child (`PopupMode = pmExplicit`, `PopupParent = MainForm` -> `gtk_window_set_transient_for`): always above its parent, so a click in its rectangle can never reach the canvas; and mutter centres it over the parent when it is mapped and ignores the pre-map `Left/Top` - a move *after* `Show` is honoured (`xdotool windowmove` proved it, then the code does the same).
+
+Fix: `fsNormal` + `poDesigned` in the .lfm, popup child of the main form in `ShowPalettesTmrTimer`, and after `Show` park it at the lower-right corner of the main window (`Left+Width-TipsForm.Width-24`, `Top+Height-TipsForm.Height-48`, `Max`-clamped to the main form's origin). It ends up at about `1172,683` on the 1878x886 main window, i.e. over the bottom of the palette column and the canvas edge, not over a freshly loaded model. `FormClose` (`caFree`, writes `ShowTipsOnStartup` from the check box) is unchanged, so Phase 0 of the self-test closes it as before (PASS 93 / FAIL 0).
+
+Driving notes: the earlier "tips window not shown in `import -window <main>`" is just the capture reading the main window's own pixels; use `getmouselocation` or the stacking list to know what is on top. The main window came up once at 1287x810 instead of the saved 1878x886 between two launches (WM state, not the app) - re-read `xwininfo` before reusing canvas coordinates.
+
+
+## Fix: model-edit #42 - undo of a multi-object delete lost the relations between deleted tables
+
+- The undo of `at_DeleteObj` is one `LoadFromFile(undo.xml)` per sub action, replayed
+  forwards (`UndoActions` iterates `j:=0 to Count-1`; it is `RedoActions` that walks
+  backwards). `GetRELATIONS` silently drops a `<RELATION>` whose `SrcTable`/`DestTable` id
+  is not in the model. So the order in which `DeleteSelectedObjs` *logged* the objects was
+  the whole story: it walked `Components` downwards and let every `DeleteObj` log itself,
+  and in a loaded model the relations sit above the tables, so a rubber band that had
+  selected the relations logged them first. Two consequences: the relation XML was
+  replayed before its tables existed (dropped), and `TEERRel.DeleteObj` ->
+  `CheckAllRelations` had already removed the FK columns from the destination tables
+  before those tables were logged (the "7 FK columns lost"). The single-table case only
+  worked because `TEERTable.DeleteObj` logs itself before deleting its relations.
+- Fix in `TEERModel.DeleteSelectedObjs` (`src/EERModel.pas`): when `AddToLog` is set, the
+  routine writes all sub actions itself before anything is deleted - tables first, then
+  notes/images/regions (same reverse component order as before, so the region's z-order
+  restore of #5 is unchanged), then every relation involved: selected relations plus the
+  `RelStart`/`RelEnd` of every selected table, deduplicated through a local `TList`. The
+  deletion pass then runs with `LogActions` still False, so the per-object `DeleteObj`
+  logging (kept for `PopupMenuDeleteObj`, the single-object path) does not double up.
+  `UndoActions`/`RedoActions` untouched; redo walks the log backwards, i.e. relations
+  are deleted first by id (nil-guarded), tables last.
+- Considered and not done: a two-pass replay in `UndoActions` (tables, then relations)
+  would have fixed the dropped relations but not the FK columns, because those are gone
+  from the logged XML by then; a single combined undo document would need the wrappers of
+  `GetObjAsXMLModel` stripped and merged per section - more code for the same result.
+- Inherited: the original Delphi `DeleteSelectedObjs` / `TEERTable.DeleteObj` (8b2b15f)
+  have exactly this ordering.
+- What still differs after an undo (ids only, as before): an FK column of a *surviving*
+  destination table is recreated by the final `CheckAllRelations` with a new id (and its
+  index column follows). Side observation, not touched: a deleted-and-undone image comes
+  back as `ImgFormat="BMP"` with a larger `ImgData` (`TEERImage.GetXML` writes the
+  in-memory bitmap), the placement is identical.
+- Verification and driving notes: `shots/fix42/` (`h.sh` = round-10b helper, `f-*.xml`
+  snapshots, `diff-*.txt`/`setdiff-*.txt`, `run.log` with the probe order). The main window
+  came up 600x426 on the second launch of the session (saved geometry not applied, see
+  round 9c (e)), the band (80,103)-(532,792) still selected the same 12 objects.
+
+## Fix: model-edit #39 - "Division by zero" dialog after every image export
+
+- Not arithmetic: the LCL's `RaiseGDBException` raises SIGFPE on purpose, so any
+  `TGtk2WidgetSet.DeleteObject invalid GdiObject` shows up as "Division by zero" in the
+  exception dialog. Whenever that text appears, look for a GDI handle freed twice before
+  hunting for a `div`.
+- `TDMMain.SaveBitmap` wrapped the caller's `TBitmap.Handle` in a second `TBitmap`
+  (`Bmp.Handle := Handle` ... `Bmp.Handle := 0; Bmp.Free`, "Don't free the handle -
+  caller owns it"). That comment was a Delphi/QPixmap assumption. In the LCL
+  `TRasterImage.SetHandle` puts the handle into the wrapper's `TSharedRasterImage`, and
+  the following `Png.Assign` (`RawImageNeeded`) / `Handle := 0` re-create the image and
+  delete the old handle, so `ModelBmp.Free` in the caller deleted it a second time.
+- Fix: `SaveBitmap` takes the `TBitmap` itself under FPC (`{$IFDEF FPC}TBitmap{$ELSE}
+  QPixmapH{$ENDIF}`) and assigns PNG / JPEG straight from it; `SaveModelasImageMIClick`
+  passes `ModelBmp`. `CopyselectedObjectsasImageMIClick` already used
+  `Clipboard.Assign(ModelBmp)` and was fine. Rule: never give one GDI handle to two
+  `TBitmap`s under the LCL; pass the object, `Assign`, or `ReleaseHandle` first.
+- Left as is: the selection export paints from the model origin (a 730x860 image for two
+  small tables at the top-left), inherited from `PaintModelToImage`; the dialog title
+  "Save Model As ..." for the image export (translated message 12).
+- Verification: `shots/fix39/` (`h.sh` = round-10b helper, `model.png`, `model2.jpg`,
+  `sel.png`, crops, `run.log`). GTK message boxes: `xwininfo` "Absolute upper-left" is
+  the client origin (821,455 here), `xdotool getwindowgeometry` reported the frame
+  (835,504) - clicks computed from the latter missed the Yes button twice.
+
+## Fix: model-edit #40, #41 - paste renames regions/notes/images, Image Editor buttons
+
+- **#40**: the rename loop of `PasteMIClick` (`src/Main.pas`) covered only `TEERTable`;
+  the original Delphi `PasteMIClick` (8b2b15f) renamed nothing, the table rename came
+  with #26-#28. Now `NameUsedByOther(theObj, name)` compares against every component of
+  the *same class* (`ClassType`), and the loop runs over tables, regions, notes and images
+  (relations skipped - their names are not unique in the model anyway). Same `_1` scheme
+  for all kinds (`OnlineStore_1`, `Note_03_1`, `Image_03_1`); the `NewNote`/`NewImage`
+  counters are not touched, so a later Note tool still gives `Note_06` etc. Notes carry
+  their `NoteName` only in the XML and the DB Model palette, the canvas shows the text.
+- **OrderPos** is not the z-order (that is plain `BringToFront`/`SendToBack` of the
+  `TPaintBox`es): it is the sort key of the DB Model palette (`SortEERObjectListByOrderPos`,
+  drag reorder in `src/PaletteModel.pas:564-590`) and a saved attribute; `TEERObj.Create`
+  sets `GetEERObjectCount+1`, `LoadFromFile` restores the saved value - so pasted copies
+  carried their originals' values. `PasteMIClick` now takes max `OrderPos` of the
+  non-selected objects and numbers the pasted ones from there in component order. The
+  `at_PasteObj` sub-action log is still written *after* both loops, so redo reloads the
+  final names and positions (undo deletes by id, unaffected).
+- **#41**: `src/EditorImage.lfm` `TBitBtn` Height 25 -> 30, Top 80 -> 82, form
+  `ClientHeight` 122 -> 130. GTK2 draws the label from the requisition (~28 px) and the
+  LCL clips the top when the allocation is smaller; 26 px was enough for the Options
+  button of ui-bug #16, 30 leaves a margin. No Escape/OK on this tool window (inherited,
+  `FormKeyDown` = F1 help only); the WM close button closes it (`FormClose` -> free).
+- Verification: `shots/fix40/` (`h.sh` = fix42 helper, `after-paste.xml`, `after-undo.xml`,
+  `03-imged.png`, `run.log` = canberra line only). Band (80,103)-(532,792) with five
+  `mousemove` steps; paste 21/4/5/4 objects with unique names and OrderPos 37-48, undo
+  back to 14/3/3/2/11. The Image Editor client origin was (80,177) while
+  `getwindowgeometry` said (94,226): the WM close button is at client `(x+w-16, y-18)`.
+
+## Fix: model-edit #43, #44, #46 (#47) - query-mode result grid: empty editor, no editing, phantom row
+
+- **#44 / #46 (one cause)**: `TEditorQueryForm.FormCreate` added `dgAlwaysShowEditor`
+  under `{$IFDEF LINUX}` - inherited from the CLX source, where the Qt grid needed it.
+  On the LCL `TDBGrid` the always-shown `TStringCellEditor` came up empty over the
+  current cell after every Open, swallowed the keys (so nothing could be edited, #43a),
+  and `EditorIsReadOnly` -> `FDataLink.Edit` put an *empty* result into Insert, which is
+  the phantom row. Option removed; F2 / second click / typed character open the editor.
+  The LCL grid still allocates one placeholder row for an empty dataset
+  (`TCustomDBGrid.UpdateGridCounts`, `RecCount<1 -> 1`); `SizeGridCols` drops
+  `dgIndicator` for 0 records and `DBGridDrawColumnCell` paints that row blank.
+- **#43b (Apply Changes)**: the `TClientDataSet` shim (`src/clx_shims/dbclient.pas`)
+  is a `TBufDataset`; `TCustomBufDataset.ApplyRecUpdate` raises "not supported", and
+  `CopyFromDataset` (FPC 3.2.2) leaves every appended row in the change log, so the
+  first working apply tried to INSERT the whole result again ("Duplicate entry '1' for
+  key 'product.PRIMARY'"). Now: `MergeChangeLog` after the copy; `CopyProviderFlags`
+  takes the source `TSQLQuery`'s `TableName` (protected - `TSQLQueryAccess` cast) and
+  per-field `ProviderFlags` (`pfInKey` is set by `UsePrimaryKeyAsKey` on Open);
+  `ApplyRecUpdate` builds `update/insert/delete` with `:"field"` / `:"OLD_field"`
+  params (same scheme as `TSQLConnection.ConstructUpdateSQL`), runs it through a
+  temporary `TSQLQuery` on the source connection/transaction and `CommitRetaining`s
+  (dbExpress auto-commit, see the sqlexpr shim). No table name / no key field ->
+  `EDatabaseError` "Cannot apply changes: ...". `SubmitBtnClick` posts a pending edit,
+  `ApplyUpdates(0)` in try/except + `MessageDlg`, status "Changes applied. N pending".
+- Gotcha: the shim unit `Provider` (implementation `uses`) redefines `TUpdateKind`, so
+  the override must be spelled `DB.TUpdateKind` / `DB.ukModify` or FPC reports
+  "function header doesn't match any method of this class".
+- Driving: the "Apply Changes to DB" speed button is `GridFuncPnl` Top=3 -> screen
+  (1892,667) with the main window at client (42,69); (1892,699) is "Discard Changes"
+  (`CancelBtn`, Close+Open, cursor back to row 1) - round 11 clicked that one.
+  `import -window` between keystrokes can close the inplace editor (focus out); type
+  the value right after the double click. After `pkill` the next start came up
+  600x426: `xdotool windowmove 42 69` + `windowsize 1878 886` restores the layout.
+  The stored `OrderMySQL` connection has no password: type `bpsa` into the Password
+  field of the Select Database Connection dialog (screen 1172,538) before Connect.
+- #47 not reproduced in 5 error->valid cycles (3 MySQL, 2 SQLite); one first-Execute-
+  after-reconnect oddity noted in the catalog entry.
+- Verification: `shots/fix43/` (`h.sh`, `q.sh`, `c.sh`, scratch MySQL `dbdfix43` from
+  `order_mysql.sql`, `order.sqlite` copy): `51-52-stack.png` + `mysql` `2 ZZ`,
+  `60-72-stack.png` + `sqlite3` `2|YY`, `20-22-stack.png` zero rows, `24-29-stack.png`
+  four ways to open the editor. Not exercised: DBNavigator insert/delete write-back.
+
+## Fix: model-edit #45 - query-mode DATE/DATETIME shown as `23-4-03`
+
+- Display: `TField.AsString` on date fields is `DateTimeToStr(DefaultFormatSettings)`;
+  the LCL pulls those from the locale (`clocale`), so the grid showed `d-M-yy` and
+  dropped the time. `DoFieldGetText` (`src/EditorQuery.pas`) now uses explicit
+  `FormatDateTime` masks (`yyyy-mm-dd`, `hh:nn:ss`, `yyyy-mm-dd hh:nn:ss`) and
+  replaces the locale decimal separator by `.` on float/BCD fields; the grid's
+  `Text`/`DisplayText`, `ExportAllRecords` and `DBGridDrawColumnCell` all go through it.
+- Edit: `TDateTimeField.SetAsString` would parse with the locale too, so the same
+  fields get `OnSetText := DoFieldSetText` (ISO first via a `QueryFormatSettings`
+  record, `DefaultFormatSettings` as fallback, `EConvertError` with the expected form).
+- Write-back trap: `TSQLite3Connection` binds `ftDate/ftDateTime` params as a
+  Julian-day `double` (`sqlite3conn.pp`, `P.AsFloat - JulianEpoch`), and the schema
+  script creates DATE/DATETIME as text affinity, so the first SQLite test stored
+  `2453528.5`. `ApplyRecUpdate` (`src/clx_shims/dbclient.pas`) now has `AssignParam`:
+  date/time values go as ISO strings (`P.AsString`), NULL and everything else through
+  `AssignFieldValue`. MySQL accepts the quoted ISO literal as well.
+- Driving notes: grid row 1 starts at screen y=831 with the 1878x886 layout - a click
+  at exactly 831 hits the header/row edge and does not select the cell (three wasted
+  attempts); use y=841 for row 1, 862 for row 2. After a reconnect the first Execute
+  click can do nothing (fix43 oddity again) - click Execute a second time.
+- Verification: `shots/fix45/` (`h.sh`, `q.sh`, `c.sh` copies from fix43, scratch
+  MySQL `dbdfix45`, `order.sqlite` copy): `02-my-c.png`, `09-sq-c.png` display;
+  `05-apply-c.png` + `mysql` `2 2005-06-07`; `30-31-stack.png` + `1 2006-07-08 09:10:11`;
+  `21-apply-c.png` + `sqlite3` `2|2005-06-07`. Not exercised: SQLite DATETIME edit
+  (same `AssignParam` path as DATE), TIME columns (none in `order`), BOOL/TINYINT
+  (`AsString` of an integer field - nothing locale dependent).
+
+## Fix: model-edit #48-#50 - query mode: Ctrl+S, rename dialog title/Escape, stored-SQL popup
+
+- **#48 Ctrl+S in query mode** (`src/Main.pas` `DoApplicationEvent`): not a focus
+  problem - `LCLAppKeyDown` sees the key before the memo. Ctrl+S -> `SaveMIClick`
+  sat only in the "Keys in Design Mode" block, and the "Keys in Query Mode" block
+  bound Ctrl+S to `DMEER.SetWorkTool(wtSQLSelect)` (the DBDesigner4 binding for
+  the SQL SELECT drag tool) with `Handled:=True`. Ctrl+S is now in the "Keys in
+  both Modes" section; the tool binding is gone (the palette button remains),
+  Ctrl+Shift+S (Create SQL Script, design mode) is unchanged. Ctrl+A/C/V/X stay
+  with the memo (the query-mode Ctrl+A branch calls `SQLMemo.SelectAll` itself).
+  One `GLib-GObject-CRITICAL ... no emission of signal "key-press-event" to stop`
+  in `run.log` at the first Ctrl+S: `LCLAppKeyDown` zeroes the key after the save
+  ran a nested loop; harmless, same mechanism as any handled key that opens a dialog.
+- **#49 rename dialog** (`src/EditorQuery.pas` `StoredSQLTreeViewEditing`): title
+  `'Rename SQL Command'` instead of the `'Connecion Name'` literal copied from
+  `DBConnSelect` (the original has the same literal - no message id to reuse).
+  Escape: `TEditorStringForm.FormKeyDown` (`src/EditorString.pas`) now maps
+  `VK_ESCAPE` to `CancelBtnClick` next to the existing Return -> OK; this covers
+  every `ShowStringEditor` caller (index name, prefix, store SQL, ...).
+- **#50 stored-SQL popup** (`StoredSQLPopupMenuPopup`): same LCL difference as in
+  the Table Editor (#16) - a right click does not select the `TTreeView` node, and
+  `RefreshStoredSQLTreeView` (store / rename / delete) rebuilds the tree without a
+  selection, so Execute / Edit / Delete acted on `Selected=nil`. The popup handler
+  selects the node under `Mouse.CursorPos` (`ScreenToClient` + `GetNodeAt`;
+  `ClearSelection`, `Selected:=`, `Node.Selected:=True` because `MultiSelect`)
+  when it is outside the current selection, then runs `DeleteSQLCommandMIShow`
+  (the CLX `OnShow` was never wired under the LCL) and mirrors its state to the
+  Execute / Edit items. `DeleteSQLCommandMIClick` itself was fine (iterates
+  `Items[i].Selected`, deletes from `StoredSQLCmds`, `ModelHasChanged`).
+- **Driving notes** (`shots/fix48/`, `h.sh` = round-11 helpers): Database menu
+  (227,81) > Connect (260,112), connection dialog at (608,271): row OrderMySQL
+  (901,352), Password (1165,535), Connect (1294,505). Memo (442,689), Execute
+  (1814,675), Store SQL (1814,723); tree expanders SQL Commands (84,673),
+  `Fix48` (100,727), node `prod` at (156,745). Rename: a second single click on
+  the selected node did *not* open the dialog here (only a 62x1 override-redirect
+  hint window at the node row); **F2** does. That 1-px window sits exactly on the
+  node row: a right click at y=745 hit it and opened the *SQL memo* popup
+  (`12-popup-s.png`, 277x320, pushed up by GTK to fit the screen) - right-click 3 px
+  lower (160,748) gives the tree popup (211x110): Execute = +15 px, Delete = +67 px.
+- **Verified** (real display): store `Fix48/prod`, F2 rename -> "Rename SQL
+  Command", Escape cancels, Return -> `prod2` (`09-combo.png`); Ctrl+S from the
+  memo -> status saved, mtime changed, `StoredPosition="Fix48/prod2"` in the XML
+  (`10-status-c.png`); Ctrl+A/C/End/V doubles the memo text (`11-combo.png`);
+  popup Execute with an empty memo -> statement + 3 rows (`13-combo.png`); popup
+  Delete -> node and folder gone (`14-tree-c.png`), Ctrl+S -> no `Fix48` in the
+  XML. `dbdfix48` dropped, `DBConn.ini` and settings restored from the backups.
+
+## Fix: model-edit #51, #52 - first Execute after connect (not reproduced), duplicate Image_03
+
+- **#51 not reproduced (0/4)**. Probes (`writeln` + `Flush(System.Output)` - the local
+  `Output: integer` in `ExecSQLBtnClick` shadows the text file, spell it `System.Output`)
+  at the top of `ExecSQLBtnClick`, around `OutputClientDataSet.Open` and in the `except`
+  branch: the first Execute after Database > Connect ran the whole path every time
+  (`CurrentDBConn` set, `SQLConn.Connected`, memo text intact, `Open` -> 3 rows), on
+  MySQL right after start-up and on the MySQL -> SQLite switch, with and without an
+  `import -window` shot between the connect and the memo click. Code reading: the only
+  silent exits are "no connection" (then the connect dialog opens) and an empty memo;
+  exceptions reach `AppException`'s dialog; `QApplication_postEvent` is synchronous, so
+  `CloseAllClientDatasets` runs inside `DisconnectFromDB`. Left open together with #47;
+  if it recurs, rerun with the probes (`shots/fix51/h.sh`, `c.sh`, `q.sh`) and check
+  whether the probe line appears at all - a missing line means the button click was lost.
+- **#52**: `TEERModel.GetNewObjName(ObjType, Prefix, var Counter)` increments the
+  per-kind counter until `GetEERObjectByName` finds no object with `Prefix+'00'`-style
+  name; `NewTable/NewNote/NewRegion/NewImage` use it. The counters are not 0 after a
+  load (`order.xml` with `Note_02/03/05` gave `Note_06`, `Note_07`), so the loop only
+  matters when a loaded name sits above the counter - exactly the `Image_03` case. The
+  undo of a new object still `dec`s the counter (`RedoActions`), which is harmless with
+  the loop. Verified for notes on the real display; regions/images share the helper.

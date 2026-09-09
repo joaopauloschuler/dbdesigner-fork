@@ -287,6 +287,7 @@ type
       DataCol: Integer; Column: TColumn; State: TGridDrawState);
     procedure OutputClientDataSetAfterOpen(DataSet: TDataSet);
     procedure DoFieldGetText(Sender: TField; var Text: String; DisplayText: Boolean);
+    procedure DoFieldSetText(Sender: TField; const Text: String);
 
     procedure SetSQLMemoText(Text: string);
     function GetSQLMemoText: string;
@@ -376,9 +377,12 @@ begin
   // StoredSQLTreeView header caption (Columns not available in LCL TTreeView)
   // DMMain.GetTranslatedMessage('Stored SQL Commands', 84);
 
-{$IFDEF LINUX}
-  DBGrid.Options:=DBGrid.Options + [dgAlwaysShowEditor];
-{$ENDIF}
+  // CLX on Linux needed dgAlwaysShowEditor to get an editable grid; the LCL
+  // TDBGrid with it shows an empty inplace editor over the current cell after
+  // every Open and puts an empty result into Insert (a phantom row) - so
+  // editing starts on a keypress / F2 / double click instead
+  // (model-edit-bug-catalog #44, #46).
+  DBGrid.Options:=DBGrid.Options - [dgAlwaysShowEditor];
 
 {$IFDEF USE_SYNEDIT}
   SQLSynEditHighlighter:=TSynSQLSyn.Create(self);
@@ -578,6 +582,14 @@ begin
       theColumn.Width:=theSize.Cx+5;
   end;
 
+  //The LCL TDBGrid always shows one data row, even for an empty result;
+  //without the indicator and with the blank painting in DBGridDrawColumnCell
+  //it reads as an empty grid (model-edit-bug-catalog #46)
+  if(OutputClientDataSet.Active)and(OutputClientDataSet.RecordCount=0)then
+    DBGrid.Options:=DBGrid.Options-[dgIndicator]
+  else
+    DBGrid.Options:=DBGrid.Options+[dgIndicator];
+
   DBGridColEnter(self);
 end;
 
@@ -603,8 +615,28 @@ end;
 procedure TEditorQueryForm.SubmitBtnClick(Sender: TObject);
 begin
   if(OutputClientDataSet.Active)then
+  begin
+    //Post the cell that is still being edited
+    if(OutputClientDataSet.State in [dsEdit, dsInsert])then
+      OutputClientDataSet.Post;
+
     if(OutputClientDataSet.ChangeCount>0)then
-      OutputClientDataSet.ApplyUpdates(-1);
+    begin
+      try
+        //the DBClient shim resolves the change log into UPDATE/INSERT/DELETE
+        //statements (model-edit-bug-catalog #43); the first error aborts
+        OutputClientDataSet.ApplyUpdates(0);
+      except
+        on x: Exception do
+          MessageDlg('ERROR while applying the changes to the database: '+#13#10#13#10+
+            x.Message, mtError, [mbOk], 0);
+      end;
+      DMGUI.SetStatusCaption('Changes applied. '+
+        FormatFloat('##,###,##0', OutputClientDataSet.ChangeCount)+' pending change(s).');
+    end
+    else
+      DMGUI.SetStatusCaption('No changes to apply.');
+  end;
 end;
 
 procedure TEditorQueryForm.CancelBtnClick(Sender: TObject);
@@ -1569,7 +1601,7 @@ begin
     if(Node.Level>0)then
     begin
       s:=Node.Text;
-      if(DMMain.ShowStringEditor('Connecion Name', 'Name:', s))then
+      if(DMMain.ShowStringEditor('Rename SQL Command', 'Name:', s))then
         if(s<>'')then
         begin
           s1:=s;
@@ -2391,12 +2423,12 @@ begin
             s:=s+'"'+DMMain.ReplaceText(OutputClientDataSet.Fields[i].AsString, '"', '""')+'"'
           else if(OutputClientDataSet.Fields[i].DataType=ftDateTime)or
             (OutputClientDataSet.Fields[i].DataType=ftTimeStamp)then
-            s:=s+'"'+OutputClientDataSet.Fields[i].AsString+'"'
+            s:=s+'"'+OutputClientDataSet.Fields[i].Text+'"'
           else if(OutputClientDataSet.Fields[i].DataType=ftDate)or
             (OutputClientDataSet.Fields[i].DataType=ftTime)then
-            s:=s+'"'+OutputClientDataSet.Fields[i].AsString+'"'
+            s:=s+'"'+OutputClientDataSet.Fields[i].Text+'"'
           else
-            s:=s+'"'+DMMain.ReplaceText(OutputClientDataSet.Fields[i].AsString, '"', '""')+'"';
+            s:=s+'"'+DMMain.ReplaceText(OutputClientDataSet.Fields[i].Text, '"', '""')+'"';
 
           if(i<OutputClientDataSet.Fields.Count-1)then
             s:=s+';';
@@ -2920,9 +2952,28 @@ begin
 end;
 
 procedure TEditorQueryForm.StoredSQLPopupMenuPopup(Sender: TObject);
+var thePos: TPoint;
+  theNode: TTreeNode;
 begin
   if(StoredSQLTreeView.IsEditing)then
     raise EAbort.Create('');
+
+  //A right click does not select the node under the LCL (unlike CLX), and
+  //RefreshStoredSQLTreeView drops the selection after a store / rename, so
+  //Execute / Edit / Delete acted on nothing (model-edit #50): select the
+  //right-clicked node when it is outside the current selection
+  thePos:=StoredSQLTreeView.ScreenToClient(Mouse.CursorPos);
+  theNode:=StoredSQLTreeView.GetNodeAt(thePos.X, thePos.Y);
+  if(theNode<>nil)and(Not(theNode.Selected))then
+  begin
+    StoredSQLTreeView.ClearSelection;
+    StoredSQLTreeView.Selected:=theNode;
+    theNode.Selected:=True;
+  end;
+
+  DeleteSQLCommandMIShow(Sender);
+  ExecuteSQLCommandMI.Enabled:=DeleteSQLCommandMI.Enabled;
+  EditSQLCommandsMI.Enabled:=DeleteSQLCommandMI.Enabled;
 end;
 
 procedure TEditorQueryForm.StoredSQLSplitterMoved(Sender: TObject);
@@ -2943,6 +2994,16 @@ var theTextRect: TRect;
 begin
   with DBGrid.Canvas do
   begin
+    //Empty result: the LCL grid's single placeholder row is painted blank
+    if(OutputClientDataSet.Active)and(OutputClientDataSet.RecordCount=0)then
+    begin
+      Brush.Color:=clWhite;
+      Pen.Style:=psClear;
+      Rectangle(Rect);
+      Pen.Style:=psSolid;
+      Exit;
+    end;
+
     if(gdSelected in State)then
     begin
       Brush.Color:=$00AAAAAA;
@@ -2965,7 +3026,7 @@ begin
     theTextRect.Top:=Rect.Top+1;
     theTextRect.Right:=Rect.Right-1;
     theTextRect.Bottom:=Rect.Bottom-1;
-    TextRect(theTextRect, Rect.Left+2, Rect.Top+1, Column.Field.AsString);
+    TextRect(theTextRect, Rect.Left+2, Rect.Top+1, Column.Field.DisplayText);
   end;
 end;
 
@@ -2975,15 +3036,55 @@ begin
   for i:=0 to DataSet.FieldCount-1 do
   begin
     DataSet.Fields[i].OnGetText:=DoFieldGetText;
+    //Dates/times/decimals are shown in the ISO form the databases use
+    //(model-edit #45); parse the edited text back the same way.
+    if(DataSet.Fields[i].DataType in [ftDate, ftTime, ftDateTime, ftTimeStamp,
+      ftFloat, ftCurrency, ftBCD, ftFMTBcd])then
+      DataSet.Fields[i].OnSetText:=DoFieldSetText;
   end;
 
 end;
 
-procedure TEditorQueryForm.DoFieldGetText(Sender: TField; var Text: String; DisplayText: Boolean);
+//Locale independent format settings for the result grid: the ISO date /
+//time form the databases return and '.' as decimal separator (model-edit #45).
+function QueryFormatSettings: TFormatSettings;
 begin
+  Result:=DefaultFormatSettings;
+  Result.DateSeparator:='-';
+  Result.TimeSeparator:=':';
+  Result.ShortDateFormat:='yyyy-mm-dd';
+  Result.LongDateFormat:='yyyy-mm-dd';
+  Result.ShortTimeFormat:='hh:nn:ss';
+  Result.LongTimeFormat:='hh:nn:ss';
+  Result.DecimalSeparator:='.';
+  Result.ThousandSeparator:=#0;
+end;
+
+procedure TEditorQueryForm.DoFieldGetText(Sender: TField; var Text: String; DisplayText: Boolean);
+var F: TField;
+begin
+  F:=TField(Sender);
   //Catch empty datetime fields
   try
-    Text:=TField(Sender).AsString;
+    if(F.IsNull)then
+      Text:=''
+    else
+      case F.DataType of
+        ftDate:
+          Text:=FormatDateTime('yyyy"-"mm"-"dd', F.AsDateTime);
+        ftTime:
+          Text:=FormatDateTime('hh":"nn":"ss', F.AsDateTime);
+        ftDateTime, ftTimeStamp:
+          Text:=FormatDateTime('yyyy"-"mm"-"dd" "hh":"nn":"ss', F.AsDateTime);
+        ftFloat, ftCurrency, ftBCD, ftFMTBcd:
+        begin
+          Text:=F.AsString;
+          if(DefaultFormatSettings.DecimalSeparator<>'.')then
+            Text:=StringReplace(Text, DefaultFormatSettings.DecimalSeparator, '.', []);
+        end;
+      else
+        Text:=F.AsString;
+      end;
   except
     on x: Exception do
     begin
@@ -2998,6 +3099,43 @@ begin
         end;
       end;
     end;
+  end;
+end;
+
+procedure TEditorQueryForm.DoFieldSetText(Sender: TField; const Text: String);
+var F: TField;
+  s: string;
+  fs: TFormatSettings;
+  d: TDateTime;
+begin
+  F:=TField(Sender);
+  s:=Trim(Text);
+  if(s='')then
+  begin
+    F.Clear;
+    Exit;
+  end;
+  fs:=QueryFormatSettings;
+  case F.DataType of
+    ftDate, ftDateTime, ftTimeStamp:
+    begin
+      //ISO first (what the grid shows), then the locale form as a fallback
+      if(not(TryStrToDateTime(s, d, fs)))and
+        (not(TryStrToDateTime(s, d, DefaultFormatSettings)))then
+        raise EConvertError.Create('"'+s+'" is not a valid date, use YYYY-MM-DD [HH:NN:SS].');
+      F.AsDateTime:=d;
+    end;
+    ftTime:
+    begin
+      if(not(TryStrToTime(s, d, fs)))and
+        (not(TryStrToTime(s, d, DefaultFormatSettings)))then
+        raise EConvertError.Create('"'+s+'" is not a valid time, use HH:NN:SS.');
+      F.AsDateTime:=d;
+    end;
+    ftFloat, ftCurrency, ftBCD, ftFMTBcd:
+      F.AsFloat:=StrToFloat(s, fs);
+  else
+    F.AsString:=Text;
   end;
 end;
 

@@ -379,7 +379,14 @@ begin
 
   TableEditor.SetFocusedControl(TableEditor.ColumnGrid);
   TableEditor.ColumnGrid.Invalidate;
-  Application.ProcessMessages;
+  //No Application.ProcessMessages here (the CLX-era workaround): HideEdit
+  //runs from OnExit while the grid is still handling the button press of
+  //the click that closed the editor. Pumping the queue processed the
+  //button release *before* the LCL took the mouse capture for the press,
+  //so the grid (GTK grab) kept the capture for good and every following
+  //key press was emitted on the grid instead of the new in-place editor -
+  //only the first character (typed via ColumnGridKeyDown -> EditCellStr)
+  //arrived. model-edit-bug-catalog #20
 
   {TableEditor.ColumnGrid.Invalidate;
   Application.ProcessMessages;

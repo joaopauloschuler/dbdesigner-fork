@@ -7,13 +7,17 @@
 
 ## Project Status (September 2026)
 
-The port builds, launches and has been through five rounds of run-and-click testing on Linux (GTK2). Treat it as an **early beta**: it is usable for modeling and for MySQL 8 / SQLite 3 work, but it has not been used in production and has only been run on Linux.
+The port builds, launches and has been through eleven rounds of run-and-click testing on Linux (GTK2), each block of rounds followed by a combined regression pass on a single build (rounds 6-9b on d0fbc19, rounds 10-11 on 920a93c: no regressions, self-test 93 PASS / 0 FAIL both times). Treat it as an **early beta**: it is usable for modeling and for MySQL 8 / SQLite 3 work, but it has not been used in production and has only been run on Linux.
 
 **Works and has been verified on a real display:**
 
-- Modeling: creating, moving, editing and deleting tables, columns, indices, relations (1:1, 1:n, n:m), regions and notes; Table, Relation and Index editors; Edit menu with Copy/Cut/Paste/Select All and keyboard shortcuts; z-order of regions; save and reload of XML models.
+- Modeling: creating, moving, editing and deleting tables, columns, indices, relations (1:1, 1:n, n:m), regions, notes and images; Table, Relation, Index, Region, Note and Image editors; Edit menu with Copy/Cut/Paste/Select All and keyboard shortcuts; z-order of regions; save and reload of XML models.
+- Field editing on a blank model: in-place Column Name / DataType / Comment editors, the in-cell datatype drop-down and the "Set Datatype" popup submenu, Shift+click multi-row selection, prefix/postfix and index-name prompts, all Table Editor pages; typed datatypes and comments survive OK, reopen, save and reload.
+- Undo/redo of delete, move and paste (the redo stack is cleared by a new edit, the close prompt appears after an undo); copy/paste within and across open models keeps FK indexes linked to their relations; Place Model from file (placement itself works, see limitations).
+- Canvas regions, notes and images (rounds 10-10b): Region tool and Region Editor, region move with contents, notes with two-line non-ASCII text, PNG and 1-bpp BMP images that keep their colours and drag size after save/reopen; mixed selections of tables, regions, notes and images can be copied and pasted with unique names, and a multi-object delete is undone with every relation and FK column restored; new tables, notes, regions and images get names that are not already in use; Export Model / selected Objects as Image (PNG, JPEG) and Copy as Image run without an exception dialog.
+- Query mode on MySQL and SQLite (round 11): query building by dragging tables onto the Query Drag Target, JOIN/WHERE/ORDER BY results matching the CLI, an editable result grid whose Apply Changes writes UPDATE/INSERT/DELETE back through the dataset shim, DATE/DATETIME/TIME shown and edited as ISO text (also stored as text on SQLite), empty results shown as an empty grid, stored SQL commands and the history saved with the model, Ctrl+S in both modes, rename dialog and every other string prompt closable with Escape.
 - SQL export: CREATE scripts for MySQL and SQLite load into the real databases without errors (checked with `tests/mysql-roundtrip.sh` and `tests/sqlite-roundtrip.sh`).
-- **MySQL 8**: connect, reverse engineering (columns, auto-increment, UNIQUE and prefix indexes, native foreign keys), synchronisation, Query mode, committed DML.
+- **MySQL 8**: connect, reverse engineering (columns, auto-increment, UNIQUE and prefix indexes, native foreign keys, column and table comments, the table engine), synchronisation of column changes, Query mode, committed DML. A tool-created model with typed datatypes and comments went export → load → reverse engineer → compare → sync without data loss (round 8).
 - **SQLite 3**: connect, reverse engineering through the pragma tables (columns, primary keys, AUTOINCREMENT, indexes, foreign keys), Query mode, committed DML; the read lock is released when idle so other writers are not blocked.
 - Connection selector and editor, DBConn.ini persistence, real server error messages on failed logins.
 - All four plugins start; DataImporter (CSV import) and SimpleWebFront (PHP generation) and HTMLReport have been exercised end to end.
@@ -22,9 +26,15 @@ The port builds, launches and has been through five rounds of run-and-click test
 **Known limitations:**
 
 - Only the **MySQL** and **SQLite** connectors are linked. Oracle, MS SQL Server and ODBC still appear in the driver list but cannot connect.
-- **Synchronisation against SQLite** is not implemented (SQLite has no ALTER COLUMN); reverse engineering and export work.
+- **Synchronisation against SQLite** is not implemented (SQLite has no ALTER COLUMN); it now stops cleanly with a message on top of a closable dialog. Reverse engineering and export work.
+- Dragging a datatype from the palette onto the Table Editor grid does nothing while the editor is modal (it would need a non-modal Table Editor); use the "Set Datatype" popup submenu of the column grid instead.
+- SQL export writes no `ENGINE` clause for MyISAM tables (MySQL's default engine applies).
+- Placing a model from file (Add/Link Model) is not undoable, as in the original.
+- Export selected Objects as Image paints from the model origin instead of cropping to the selection (inherited).
+- The query result grid shows DECIMAL values through a float conversion, so trailing zeros are trimmed (`14.20` is displayed as `14.2`).
+- Unconfirmed: typing over an already filled DataType cell after a single click may not replace the value (model-edit #34); an empty one-column result right after a syntax-error dialog (#47) and a first Execute after connecting that does nothing (#51) were each seen once and could not be reproduced under probes.
 - Self relations are not guessed by reverse engineering.
-- Not yet tested: PDF export, print and page preview output, ERwin import, Open/Save model in database, datatype palette drag, column reordering, the Column Parameters dialog.
+- Not yet tested: PDF export, print and page preview output, ERwin import, Open/Save model in database, the Column Parameters dialog, undo granularity inside the Table and Relation editors, the query grid's Export Records / Print Records to PDF and BLOB viewer.
 - Runtime is Linux only so far. Windows and macOS have not been built or run.
 - One GLib-CRITICAL warning on stderr remains (Return in the Table Editor grid followed by Return in the name editor; harmless).
 
@@ -132,7 +142,11 @@ Areas outside the self-test, verified manually on a real display (see the bug ca
 - Database connectivity, reverse engineering, synchronisation and Query mode against MySQL 8 and SQLite 3
 - Model loading/saving through the UI
 - Plugin loading and end-to-end plugin runs
-- Table, Relation and Index editors
+- Table, Relation and Index editors, field editing on a blank model
+- Undo/redo, copy/paste within and across models, Place Model from file
+- Canvas regions, notes and images; mixed-selection paste and delete/undo; model and selection image export
+- Query mode editing on MySQL 8 and SQLite 3: editable result grid with Apply Changes, ISO dates, stored SQL commands
+- Start-up tips window (parked in the lower-right corner, off the canvas)
 
 Areas still requiring manual or integration testing:
 - PDF export
@@ -164,7 +178,7 @@ Runtime testing is done in rounds: one diagnosis pass on a real display writes a
 | [`docs/sqlite-bug-catalog.md`](docs/sqlite-bug-catalog.md) | SQLite export → load → reverse engineer → compare round trip | 15 fixed (sync is a known limitation) |
 | [`docs/mysql-bug-catalog.md`](docs/mysql-bug-catalog.md) | Same round trip against MySQL 8, plus synchronisation | 13 fixed |
 | [`docs/db-ui-bug-catalog.md`](docs/db-ui-bug-catalog.md) | Connection selector/editor, reverse engineering, sync, export dialogs, plugins end to end | 19 fixed |
-| [`docs/model-edit-bug-catalog.md`](docs/model-edit-bug-catalog.md) | Editing tables, fields, indices and relations | 14 (13 fixed, 1 warning left open) |
+| [`docs/model-edit-bug-catalog.md`](docs/model-edit-bug-catalog.md) | Editing tables, fields, indices and relations; SQL export, MySQL/SQLite round trip and sync of a tool-created model; paste, undo/redo, Place Model; regions, notes, images and image export; Query mode editing on MySQL and SQLite (rounds 5-11 plus two regression passes) | 52 (40 fixed, 1 worked around, 1 hardened, 4 not bugs, 1 verified OK for the record, 1 not reproduced, 1 warning and 3 unconfirmed left open) |
 
 [`docs/notes-to-myself.md`](docs/notes-to-myself.md) holds the working notes behind the fixes: root causes, LCL/GTK2 gotchas and the test-driving tricks.
 
@@ -222,7 +236,7 @@ The bundled Delphi-era SynEdit was replaced by the SynEdit package that ships wi
 
 ### Progress
 
-All five projects (main application and four plugins) compile and run. Of the porting task list, 211 of 234 items are checked; the remaining ones are the untested areas listed under [Project Status](#project-status-september-2026), the Windows/macOS builds and the final clean-up (removing the shim layer in favour of direct LCL units). See [`docs/port-to-lazarus.md`](docs/port-to-lazarus.md) for the porting guide and [`docs/port-to-lazarus-task-list.md`](docs/port-to-lazarus-task-list.md) for the checklist.
+All five projects (main application and four plugins) compile and run. Of the porting task list, 228 of 244 items are checked; the remaining ones are the untested areas listed under [Project Status](#project-status-september-2026), the Windows/macOS builds and the final clean-up (removing the shim layer in favour of direct LCL units). See [`docs/port-to-lazarus.md`](docs/port-to-lazarus.md) for the porting guide and [`docs/port-to-lazarus-task-list.md`](docs/port-to-lazarus-task-list.md) for the checklist.
 
 ### AI-Assisted Porting
 

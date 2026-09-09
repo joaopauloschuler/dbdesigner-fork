@@ -86,6 +86,8 @@ type
     procedure DataModuleDestroy(Sender: TObject);
 
     function RemoveCommentsFromSQLCmd(cmd: string): string;
+    function StripMySQLTableStatusComment(const s: string): string;
+    function MySQLEngineToTableType(const Engine: string): integer;
     function GetSQLiteDatatype(theModel: Pointer; DeclType: string; DatatypeSubst: TStringList; var DatatypeParams: string): Pointer;
     function SQLiteRefActionCode(action: string): string;
   private
@@ -493,10 +495,44 @@ begin
         Application.ProcessMessages;
       end;
 
-      //SHOW FIELDS: Field, Type, Null, Key, Default, Extra (MySQL 4 .. 8).
-      //Read by name: NULL-typed columns can vanish from the field list
-      //(mysql-bug-catalog #2), which would shift positional reads.
-      DMDB.SchemaSQLQuery.SQL.Text:='show fields from '+TEERTable(DbTables[i]).GetSQLTableName;
+      //Table comment from SHOW TABLE STATUS (column Comment); old servers
+      //append "; InnoDB free: NNN kB" to it (model-edit-bug-catalog #24).
+      //Not fatal when it fails (e.g. a non-MySQL server behind the driver).
+      try
+        DMDB.SchemaSQLQuery.SQL.Text:='show table status like '+
+          QuotedStr(TEERTable(DbTables[i]).ObjName);
+        DMDB.SchemaSQLQuery.Open;
+        try
+          if(Not(DMDB.SchemaSQLQuery.EOF))then
+          begin
+            if(DMDB.SchemaSQLQuery.FindField('Comment')<>nil)then
+              TEERTable(DbTables[i]).Comments:=
+                StripMySQLTableStatusComment(DMDB.SchemaSQLQuery.FieldByName('Comment').AsString);
+
+            //Engine (MySQL < 4.1.2 called the column Type) -> TableType index,
+            //the inverse of the ENGINE= mapping in TEERTable.GetSQLCreateCode
+            //(model-edit #24). Unknown engines keep the model's default.
+            if(DMDB.SchemaSQLQuery.FindField('Engine')<>nil)then
+              j:=MySQLEngineToTableType(DMDB.SchemaSQLQuery.FieldByName('Engine').AsString)
+            else if(DMDB.SchemaSQLQuery.FindField('Type')<>nil)then
+              j:=MySQLEngineToTableType(DMDB.SchemaSQLQuery.FieldByName('Type').AsString)
+            else
+              j:=-1;
+            if(j>=0)then
+              TEERTable(DbTables[i]).TableType:=j;
+          end;
+        finally
+          DMDB.SchemaSQLQuery.Close;
+        end;
+      except
+        TEERTable(DbTables[i]).Comments:='';
+      end;
+
+      //SHOW FULL FIELDS: Field, Type, Collation, Null, Key, Default, Extra,
+      //Privileges, Comment (MySQL 4 .. 8). Read by name: NULL-typed columns
+      //can vanish from the field list (mysql-bug-catalog #2), which would
+      //shift positional reads. FULL for the column comment (#24).
+      DMDB.SchemaSQLQuery.SQL.Text:='show full fields from '+TEERTable(DbTables[i]).GetSQLTableName;
       DMDB.SchemaSQLQuery.Open;
       while(Not(DMDB.SchemaSQLQuery.EOF))do
       begin
@@ -505,6 +541,8 @@ begin
         TEERTable(DbTables[i]).Columns.Add(theColumn);
 
         theColumn.ColName:=DMDB.SchemaSQLQuery.FieldByName('Field').AsString;
+        if(DMDB.SchemaSQLQuery.FindField('Comment')<>nil)then
+          theColumn.Comments:=DMDB.SchemaSQLQuery.FieldByName('Comment').AsString;
         theColumn.Obj_id:=DMMain.GetNextGlobalID;
         theColumn.Pos:=TEERTable(DbTables[i]).Columns.Count;
         //theColumn.idDatatype:=-1;
@@ -700,9 +738,13 @@ begin
             pkColName:=DMDB.SchemaSQLQuery.FieldByName('refcol').AsString;
 
             theRel.FKFields.Add(pkColName+'='+fkColName);
-            theRel.FKFieldsComments.Add('');
 
             theColumn:=TEERColumn(theTable.GetColumnByName(fkColName));
+            //FK column comment (model-edit-bug-catalog #24)
+            if(theColumn<>nil)then
+              theRel.FKFieldsComments.Add(theColumn.Comments)
+            else
+              theRel.FKFieldsComments.Add('');
             if(theColumn<>nil)then
             begin
               theColumn.IsForeignKey:=True;
@@ -2154,6 +2196,7 @@ var EERModel: TEERModel;
   FieldOnGeneratorOrSequence:string;
   SyncErrors: TStringList;
   ErrCount: integer;
+  IsSQLite: Boolean;
 
   //Execute one statement; a failure is collected in SyncErrors (and logged)
   //instead of raising / showing a message box, so the sync goes on and the
@@ -2218,14 +2261,23 @@ begin
     //Sort tables in FK order, if they are created all
     EERModel.SortEERTableListByForeignKeyReferences(ModelTables);
 
-    //Disable Foreign Key checks
-    DMDB.ExecSQL('SET FOREIGN_KEY_CHECKS=0');
+    IsSQLite:=(CompareText(TDBConn(DBConn).DriverName, 'SQLite')=0);
+
+    //Disable Foreign Key checks (MySQL only)
+    if(Not(IsSQLite))then
+      DMDB.ExecSQL('SET FOREIGN_KEY_CHECKS=0');
     try
       //Get Tables from DB
       Log.Add('Get Tables from DB');
       DMDB.SchemaSQLQuery.ParamCheck:=False;
       DMDB.SchemaSQLQuery.SetSchemaInfo(stNoSchema, '', '');
-      DMDB.SchemaSQLQuery.SQL.Text:='show tables';
+      if(IsSQLite)then
+        //Like the reverse engineering: user tables from sqlite_master
+        DMDB.SchemaSQLQuery.SQL.Text:='SELECT name FROM sqlite_master '+
+          'WHERE type=''table'' AND name NOT LIKE ''sqlite_%'' '+
+          'ORDER BY name'
+      else
+        DMDB.SchemaSQLQuery.SQL.Text:='show tables';
       DMDB.SchemaSQLQuery.Open;
 
       while(Not(DMDB.SchemaSQLQuery.EOF))do
@@ -2238,6 +2290,20 @@ begin
         DMDB.SchemaSQLQuery.Next;
       end;
       DMDB.SchemaSQLQuery.Close;
+
+      //Everything from here on is MySQL DDL (CREATE with table options,
+      //SHOW FULL FIELDS, ALTER TABLE ... MODIFY/CHANGE, SHOW INDEX). Stop
+      //with a clear message instead of failing statement by statement
+      //(sqlite-bug-catalog #8, model-edit-bug-catalog #25).
+      if(IsSQLite)then
+      begin
+        Log.Add(IntToStr(DbTables.Count)+' table(s) found in the SQLite database: '+
+          DbTables.CommaText);
+        raise Exception.Create('Synchronisation with a SQLite database is not '+
+          'supported yet: comparing and altering the tables uses MySQL-only '+
+          'statements (SHOW FULL FIELDS, ALTER TABLE ... MODIFY). '+
+          'Use File > Export > SQL Create Script with the SQLite target instead.');
+      end;
 
       //---------------------------------------------------------------
       //Compare Tables
@@ -3297,6 +3363,44 @@ begin
       theTable.ObjName));
   end;
 
+end;
+
+//SHOW TABLE STATUS on MySQL < 5.5 appends "; InnoDB free: 4096 kB" (and, for
+//InnoDB tables without a comment, just "InnoDB free: ...") to the table
+//comment; strip it so it does not end up in the model (model-edit #24).
+function TDMDBEER.StripMySQLTableStatusComment(const s: string): string;
+var p: integer;
+begin
+  Result:=s;
+  p:=Pos('InnoDB free:', Result);
+  if(p>0)then
+    Result:=Copy(Result, 1, p-1);
+  Result:=Trim(Result);
+  if(Result<>'')and(Result[Length(Result)]=';')then
+    Result:=Trim(Copy(Result, 1, Length(Result)-1));
+end;
+
+//SHOW TABLE STATUS Engine name -> TableType index of the Table Editor combo
+//(0 MYISAM, 1 InnoDB, 2 HEAP/MEMORY, 3 BDB, 4 ISAM, 5 MERGE); -1 for an
+//engine the model has no entry for (CSV, ARCHIVE, NDB, ...).
+function TDMDBEER.MySQLEngineToTableType(const Engine: string): integer;
+var e: string;
+begin
+  e:=UpperCase(Trim(Engine));
+  if(e='MYISAM')then
+    Result:=0
+  else if(e='INNODB')then
+    Result:=1
+  else if(e='MEMORY')or(e='HEAP')then
+    Result:=2
+  else if(e='BDB')or(e='BERKELEYDB')then
+    Result:=3
+  else if(e='ISAM')then
+    Result:=4
+  else if(e='MERGE')or(e='MRG_MYISAM')then
+    Result:=5
+  else
+    Result:=-1;
 end;
 
 function TDMDBEER.RemoveCommentsFromSQLCmd(cmd: string): string;

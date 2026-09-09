@@ -89,6 +89,7 @@ uses
   EERModel_XML,
   {$ENDIF}
   Contnrs,
+  IntfGraphics, GraphType, FPImage, FPReadBMP, FPReadPNG,
   LibXmlParser;
 
 type
@@ -255,6 +256,7 @@ type
     function GetEERObjectByLinkedID(id: integer): Pointer;
     function GetEERObjectByIndex(ObjType: TEERObject; Index: integer): Pointer;
     function GetEERObjectByName(ObjType: TEERObject; Name: string): Pointer;
+    function GetNewObjName(ObjType: TEERObject; const Prefix: string; var Counter: integer): string;
     function GetEERObjectClassName(ObjType: TEERObject): string;
 
     //EERTable functions
@@ -913,6 +915,7 @@ type
     procedure DeleteObj; override;
 
     procedure LoadImageFromFile;
+    procedure LoadImgFromStream(theStream: TStream);
 
     function GetXML: string; override;
 {$IFDEF USE_IXMLDBMODELType}
@@ -1175,6 +1178,10 @@ type
     sa_ScaleTo=52;
 
     at_EditObj=60;
+
+    //Paste: one sub action per pasted object, Params holds the object's
+    //XML (GetObjAsXMLModel) - undo deletes the object, redo reloads it
+    at_PasteObj=70;
 
     //SQLCmdType
     ct_SQLCmd=1;
@@ -2488,51 +2495,59 @@ begin
 end;
 
 procedure TEERModel.DoSelectionRectPaint(Sender: TObject);
+var w, h: integer;
 begin
-  with SelectionRect do
-    with SelectionRect.Canvas do
-    begin
-      Pen.Color:=clWhite;
-      MoveTo(0, 0);
-      LineTo(0, height-1);
-      LineTo(width-1, height-1);
-      LineTo(width-1, 0);
-      LineTo(0, 0);
+  //Take the size from the paintbox, not from the canvas: inside
+  //"with SelectionRect.Canvas do" the LCL TCanvas has its own Width/Height
+  //(the size of the parent's device context, CLX had none), so the right and
+  //bottom edges were drawn outside the paintbox and clipped away.
+  w:=SelectionRect.Width;
+  h:=SelectionRect.Height;
+  with SelectionRect.Canvas do
+  begin
+    Pen.Color:=clWhite;
+    MoveTo(0, 0);
+    LineTo(0, h-1);
+    LineTo(w-1, h-1);
+    LineTo(w-1, 0);
+    LineTo(0, 0);
 
-      Pen.Color:=clBlack;
-      Pen.Style:=psDot;
-      MoveTo(0, 0);
-      LineTo(0, height-1);
-      LineTo(width-1, height-1);
-      LineTo(width-1, 0);
-      LineTo(0, 0);
+    Pen.Color:=clBlack;
+    Pen.Style:=psDot;
+    MoveTo(0, 0);
+    LineTo(0, h-1);
+    LineTo(w-1, h-1);
+    LineTo(w-1, 0);
+    LineTo(0, 0);
 
-      Pen.Style:=psSolid;
-    end;
+    Pen.Style:=psSolid;
+  end;
 end;
 
 
 procedure TEERModel.DoGridPaintBoxPaint(Sender: TObject);
-var i: integer;
+var i, w, h: integer;
 begin
-  with GridPaintBox do
-    with GridPaintBox.Canvas do
+  //Same as DoSelectionRectPaint: use the paintbox size, not TCanvas.Width/Height
+  w:=GridPaintBox.Width;
+  h:=GridPaintBox.Height;
+  with GridPaintBox.Canvas do
+  begin
+    Pen.Style:=psDot;
+    Pen.Color:=clSilver;
+    for i:=0 to w div 21 do
     begin
-      Pen.Style:=psDot;
-      Pen.Color:=clSilver;
-      for i:=0 to width div 21 do
-      begin
-        MoveTo(EvalZoomFac(Round(EERModel_Width/HPageCount)*(i+1)), 0);
-        LineTo(EvalZoomFac(Round(EERModel_Width/HPageCount)*(i+1)), height-1);
-      end;
-
-      for i:=0 to height div 16 do
-      begin
-        MoveTo(0, EvalZoomFac(Round(EERModel_Height/VPageCount)*(i+1)));
-        LineTo(width-1, EvalZoomFac(Round(EERModel_Height/VPageCount)*(i+1)));
-      end;
-      Pen.Style:=psSolid;
+      MoveTo(EvalZoomFac(Round(EERModel_Width/HPageCount)*(i+1)), 0);
+      LineTo(EvalZoomFac(Round(EERModel_Width/HPageCount)*(i+1)), h-1);
     end;
+
+    for i:=0 to h div 16 do
+    begin
+      MoveTo(0, EvalZoomFac(Round(EERModel_Height/VPageCount)*(i+1)));
+      LineTo(w-1, EvalZoomFac(Round(EERModel_Height/VPageCount)*(i+1)));
+    end;
+    Pen.Style:=psSolid;
+  end;
 end;
 
 procedure TEERModel.SetSelectionRectPos(l, t, w, h: integer);
@@ -2627,9 +2642,7 @@ end;
 function TEERModel.NewTable(x, y: integer; LogTheAction: Boolean): Pointer;
 var theTbl: TEERTable;
 begin
-  inc(NewTableCounter);
-
-  theTbl:=TEERTable.Create(self, 'Table_'+FormatFloat('#00', NewTableCounter),
+  theTbl:=TEERTable.Create(self, GetNewObjName(EERTable, 'Table_', NewTableCounter),
     DefModelFont, DefaultTableType, DefaultTablePrefix, PopupMenuEERTable);
 
   theTbl.Obj_X:=x;
@@ -2751,9 +2764,7 @@ end;
 function TEERModel.NewNote(x, y: integer; LogTheAction: Boolean): Pointer;
 var theNote: TEERNote;
 begin
-  inc(NewNoteCounter);
-
-  theNote:=TEERNote.Create(self, 'Note_'+FormatFloat('#00', NewNoteCounter));
+  theNote:=TEERNote.Create(self, GetNewObjName(EERNote, 'Note_', NewNoteCounter));
 
   theNote.Obj_X:=x;
   theNote.Obj_Y:=y;
@@ -2795,9 +2806,7 @@ begin
   if(w<20)or(h<20)then
     Exit;
 
-  inc(NewRegionCounter);
-
-  theRegion:=TEERRegion.Create(self, 'Region_'+FormatFloat('#00', NewRegionCounter));
+  theRegion:=TEERRegion.Create(self, GetNewObjName(EERRegion, 'Region_', NewRegionCounter));
 
   theRegion.Obj_X:=x;
   theRegion.Obj_Y:=y;
@@ -2845,9 +2854,7 @@ begin
   if(w<20)or(h<20)then
     Exit;}
 
-  inc(NewImageCounter);
-
-  theImage:=TEERImage.Create(self, 'Image_'+FormatFloat('#00', NewImageCounter));
+  theImage:=TEERImage.Create(self, GetNewObjName(EERImage, 'Image_', NewImageCounter));
 
   theImage.Obj_X:=x;
   theImage.Obj_Y:=y;
@@ -5216,16 +5223,69 @@ end;
 
 
 procedure TEERModel.DeleteSelectedObjs(AddToLog: Boolean);
-var i: integer;
+var i, j: integer;
+  theRels: TList;
+
+  procedure AddRel(theRel: Pointer);
+  begin
+    if(theRels.IndexOf(theRel)=-1)then
+      theRels.Add(theRel);
+  end;
+
 begin
   if(AddToLog)then
   begin
     StartSubActionLog(at_DeleteObj);
-    LogActions:=True;
+
+    //Log all objects before anything is deleted, and log the tables
+    //first and the relations last. UndoActions replays the sub actions
+    //in this order with one LoadFromFile each, and GetRELATIONS skips a
+    //RELATION whose SrcTable/DestTable does not exist (yet). Deleting a
+    //relation also strips the FK columns from its destination table
+    //(CheckAllRelations), so the tables have to be logged while every
+    //relation is still in place. Letting each DeleteObj log itself, as
+    //the single-object delete does, only works for one table.
+    theRels:=TList.Create;
+    try
+      //Tables, collecting their relations
+      for i:=ComponentCount-1 downto 0 do
+        if(Components[I].Classparent=TEERObj)then
+          if(TEERObj(Components[I]).Selected)and
+            (Components[I] is TEERTable)then
+          begin
+            LogSubAction(at_DeleteObj, TEERObj(Components[I]).Obj_id,
+              TEERObj(Components[I]).GetObjAsXMLModel);
+
+            for j:=0 to TEERTable(Components[I]).RelStart.Count-1 do
+              AddRel(TEERTable(Components[I]).RelStart[j]);
+            for j:=0 to TEERTable(Components[I]).RelEnd.Count-1 do
+              AddRel(TEERTable(Components[I]).RelEnd[j]);
+          end;
+
+      //Notes, images, regions; selected relations are collected
+      for i:=ComponentCount-1 downto 0 do
+        if(Components[I].Classparent=TEERObj)then
+          if(TEERObj(Components[I]).Selected)and
+            (Not(Components[I] is TEERTable))then
+          begin
+            if(Components[I] is TEERRel)then
+              AddRel(Components[I])
+            else
+              LogSubAction(at_DeleteObj, TEERObj(Components[I]).Obj_id,
+                TEERObj(Components[I]).GetObjAsXMLModel);
+          end;
+
+      //Relations
+      for i:=0 to theRels.Count-1 do
+        LogSubAction(at_DeleteObj, TEERObj(theRels[i]).Obj_id,
+          TEERObj(theRels[i]).GetObjAsXMLModel);
+    finally
+      theRels.Free;
+    end;
   end;
 
   try
-    //Delete all EER-Objects
+    //Delete all EER-Objects (already logged, so LogActions stays False)
     for i:=ComponentCount-1 downto 0 do
     begin
       if(Components[I].Classparent=TEERObj)then
@@ -5236,10 +5296,7 @@ begin
     end;
   finally
     if(AddToLog)then
-    begin
-      LogActions:=False;
       EndSubAction;
-    end;
   end;
 
   if(Not(DisableModelRefresh))then
@@ -5571,6 +5628,14 @@ begin
           //theObj:=nil;
         end;
 
+        at_PasteObj:
+        begin
+          //a pasted relation is already gone when its table was deleted
+          theObj:=GetEERObjectByID(theSubAction.Obj_id);
+          if(theObj<>nil)then
+            theObj.DeleteObj;
+        end;
+
         at_DeleteObj:
         begin
           AssignFile(f, DMMain.SettingsPath+'undo.xml');
@@ -5707,6 +5772,10 @@ begin
     end;
   end;
 
+  //Undoing changes the model away from what is on disk (model-edit #31)
+  if(CurrentAction>=TillAction)and(CurrentAction>=0)then
+    ModelHasChanged;
+
   CurrentAction:=TillAction-1;
 end;
 
@@ -5812,6 +5881,24 @@ begin
           theObj:=GetEERObjectByID(theSubAction.Obj_id);
           if(theObj<>nil)then
             theObj.DeleteObj;
+        end;
+
+        at_PasteObj:
+        begin
+          //Reload the pasted object from its XML (same id, final name)
+          AssignFile(f, DMMain.SettingsPath+'undo.xml');
+          try
+            Rewrite(f);
+
+            Write(f, theSubAction.Params.Text);
+          finally
+            CloseFile(f);
+          end;
+
+          LoadFromFile(DMMain.SettingsPath+'undo.xml',
+            False, True);
+
+          DeleteFile(DMMain.SettingsPath+'undo.xml');
         end;
 
         at_RenameObj:
@@ -5931,6 +6018,10 @@ begin
     end;
   end;
 
+  //Redoing changes the model away from what is on disk (model-edit #31)
+  if(TillAction>CurrentAction)then
+    ModelHasChanged;
+
   CurrentAction:=TillAction;
 end;
 
@@ -5949,6 +6040,8 @@ begin
       GetActionName:=DMMain.GetTranslatedMessage('Scale Object(s)', 53);
     at_EditObj:
       GetActionName:=DMMain.GetTranslatedMessage('Edit Object', 54);
+    at_PasteObj:
+      GetActionName:=DMMain.GetTranslatedMessage('Paste Object(s)', -1);
   end;
 end;
 
@@ -7087,6 +7180,17 @@ begin
     end;
 end;
 
+//Name for a new Table/Note/Region/Image: Prefix + counter, but never a
+//name that another object of the same kind already has (a loaded model
+//may contain Image_03 while the counter says 3 - model-edit-bug-catalog #52)
+function TEERModel.GetNewObjName(ObjType: TEERObject; const Prefix: string; var Counter: integer): string;
+begin
+  repeat
+    inc(Counter);
+    Result:=Prefix+FormatFloat('#00', Counter);
+  until(GetEERObjectByName(ObjType, Result)=nil);
+end;
+
 function TEERModel.GetEERObjectByName(ObjType: TEERObject; Name: string): Pointer;
 var i: integer;
 begin
@@ -7419,6 +7523,10 @@ procedure TEERObj.DoDblClick(Sender: TObject);
 begin
   MouseIsDown:=False;
   EditorIsCalled:=True;
+
+  //The mouse down of the second click opened a Move action; the mouse up
+  //that would discard it goes to the modal editor, so discard it here
+  ParentEERModel.DeleteOpenAction;
 
   ShowEditor(Sender);
 end;
@@ -9209,6 +9317,10 @@ begin
     if(Not(CreateIndices))and(TEERIndex(Indices[i]).IndexName<>'PRIMARY')then
       continue;
 
+    //An index without columns has no valid SQL form (INDEX name())
+    if(TEERIndex(Indices[i]).Columns.Count=0)then
+      continue;
+
     //SQLite: the PRIMARY KEY of an AUTOINCREMENT column is already inline
     if(DatabaseType = 'SQLite')and(TEERIndex(Indices[i]).IndexKind=ik_PRIMARY)and
       (TEERIndex(Indices[i]).Columns.Count=1)then
@@ -9241,7 +9353,11 @@ begin
       ik_UNIQUE_INDEX:
         sIndex:=sIndex+'UNIQUE INDEX '+DBQuote+TEERIndex(Indices[i]).IndexName+DBQuote+indexOnTable+'(';
       ik_FULLTEXT_INDEX:
-        sIndex:=sIndex+'FULLTEXT INDEX '+DBQuote+TEERIndex(Indices[i]).IndexName+DBQuote+indexOnTable+'(';
+        //FULLTEXT is MySQL syntax; SQLite gets a plain index
+        if(DatabaseType = 'SQLite')then
+          sIndex:=sIndex+'INDEX '+DBQuote+TEERIndex(Indices[i]).IndexName+DBQuote+indexOnTable+'('
+        else
+          sIndex:=sIndex+'FULLTEXT INDEX '+DBQuote+TEERIndex(Indices[i]).IndexName+DBQuote+indexOnTable+'(';
     end;
 
     for j:=0 to TEERIndex(Indices[i]).Columns.Count-1 do
@@ -13808,10 +13924,31 @@ begin
 end;
 
 
+//Load a PNG or BMP stream into Img as a 24-bit bitmap.
+//Under the LCL a TBitmap loaded from a 1-bpp BMP (a two-colour picture as
+//exported by most tools) gets a monochrome widgetset handle whose palette is
+//lost - every pixel reads back white, and that white bitmap is what got
+//drawn and saved to the XML (model-edit-bug-catalog #37). Going through a
+//TLazIntfImage with an RGB description keeps the colours whatever the depth
+//of the source; the XML format is unchanged (Img.SaveToStream writes the
+//same 24-bit BMP as before).
+procedure TEERImage.LoadImgFromStream(theStream: TStream);
+var theIntfImg: TLazIntfImage;
+begin
+  theIntfImg:=TLazIntfImage.Create(0, 0, [riqfRGB]);
+  try
+    theStream.Position:=0;
+    theIntfImg.LoadFromStream(theStream);
+    Img.LoadFromIntfImage(theIntfImg);
+  finally
+    theIntfImg.Free;
+  end;
+end;
+
 procedure TEERImage.LoadImageFromFile;
 var theOpenDialog: TOpenDialog;
   RecentOpenImageDir: string;
-  thePic: TPicture;
+  theFile: TFileStream;
 begin
   theOpenDialog:=TOpenDialog.Create(nil);
   try
@@ -13844,16 +13981,11 @@ begin
     begin
       RecentOpenImageDir:=ExtractFilePath(theOpenDialog.Filename);
 
-      // Use TPicture to auto-detect format (PNG, BMP, etc.)
-      // since TBitmap.LoadFromFile only supports BMP in LCL
-      thePic := TPicture.Create;
+      theFile:=TFileStream.Create(theOpenDialog.Filename, fmOpenRead or fmShareDenyWrite);
       try
-        thePic.LoadFromFile(theOpenDialog.Filename);
-        Img.Width := thePic.Width;
-        Img.Height := thePic.Height;
-        Img.Canvas.Draw(0, 0, thePic.Graphic);
+        LoadImgFromStream(theFile);
       finally
-        thePic.Free;
+        theFile.Free;
       end;
 
       if(Obj_W<2)then
@@ -13922,7 +14054,6 @@ end;
 procedure TEERImage.SetXML(theXMLImage: IXMLIMAGEType);
 var imgdata: string;
   theImgFile: TMemoryStream;
-  thePic: TPicture;
 begin
   try
     Obj_id:=theXMLImage.ID;
@@ -13952,18 +14083,7 @@ begin
     theImgFile:=TMemoryStream.Create;
     try
       DMMain.DecodeStreamFromXML(imgdata, theImgFile);
-      // Use TPicture to auto-detect format (PNG, BMP, etc.)
-      // since TBitmap.LoadFromStream only supports BMP in LCL
-      thePic := TPicture.Create;
-      try
-        theImgFile.Position := 0;
-        thePic.LoadFromStream(theImgFile);
-        Img.Width := thePic.Width;
-        Img.Height := thePic.Height;
-        Img.Canvas.Draw(0, 0, thePic.Graphic);
-      finally
-        thePic.Free;
-      end;
+      LoadImgFromStream(theImgFile);
     finally
       FreeAndNil(theImgFile);
     end;
@@ -13987,7 +14107,6 @@ end;
 procedure TEERImage.SetXML2(theXMLParser: TXmlParser);
 var imgdata: string;
   theImgFile: TMemoryStream;
-  thePic: TPicture;
 begin
   try
     Obj_id:=StrToInt(theXMLParser.CurAttr.Value('ID'));
@@ -14017,18 +14136,7 @@ begin
     theImgFile:=TMemoryStream.Create;
     try
       DMMain.DecodeStreamFromXML(imgdata, theImgFile);
-      // Use TPicture to auto-detect format (PNG, BMP, etc.)
-      // since TBitmap.LoadFromStream only supports BMP in LCL
-      thePic := TPicture.Create;
-      try
-        theImgFile.Position := 0;
-        thePic.LoadFromStream(theImgFile);
-        Img.Width := thePic.Width;
-        Img.Height := thePic.Height;
-        Img.Canvas.Draw(0, 0, thePic.Graphic);
-      finally
-        thePic.Free;
-      end;
+      LoadImgFromStream(theImgFile);
     finally
       FreeAndNil(theImgFile);
     end;

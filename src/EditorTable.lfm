@@ -395,7 +395,7 @@ object EditorTableForm: TEditorTableForm
           object RaidTypeLU: TComboBox
             Left = 186
             Top = 16
-            Width = 90
+            Width = 106
             Height = 21
             ItemHeight = 15
             Items.Strings = (
@@ -535,6 +535,7 @@ object EditorTableForm: TEditorTableForm
     object PageControlTreeView: TTreeView
       Left = 17
       Top = 7
+      Width = 124
       Height = 155
       Items.Data = {
         0400000020000000FFFFFFFFFFFFFFFF936A0340000000000000000000000000
@@ -545,6 +546,7 @@ object EditorTableForm: TEditorTableForm
         6572747321000000FFFFFFFFFFFFFFFF936A0340000000000000000000000000
         08436F6D6D656E7473}
       ReadOnly = True
+      ScrollBars = ssAutoBoth
       TabOrder = 1
       OnChange = PageControlTreeViewChange
     end
@@ -1401,8 +1403,15 @@ object EditorTableForm: TEditorTableForm
       FF00FFFFFF00FFFFFF00FFFFFF00}
   end
   object ColPopupMenu: TPopupMenu
+    OnPopup = ColPopupMenuPopup
     Left = 368
     Top = 174
+    object SetDatatypeMI: TMenuItem
+      Caption = 'Set Datatype'
+    end
+    object N6: TMenuItem
+      Caption = '-'
+    end
     object MoveRowupMI: TMenuItem
       Caption = 'Move Row up'
       OnClick = MoveRowupMIClick
