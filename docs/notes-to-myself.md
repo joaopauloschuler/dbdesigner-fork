@@ -2515,3 +2515,25 @@ Driving notes: the earlier "tips window not shown in `import -window <main>`" is
   popup Execute with an empty memo -> statement + 3 rows (`13-combo.png`); popup
   Delete -> node and folder gone (`14-tree-c.png`), Ctrl+S -> no `Fix48` in the
   XML. `dbdfix48` dropped, `DBConn.ini` and settings restored from the backups.
+
+## Fix: model-edit #51, #52 - first Execute after connect (not reproduced), duplicate Image_03
+
+- **#51 not reproduced (0/4)**. Probes (`writeln` + `Flush(System.Output)` - the local
+  `Output: integer` in `ExecSQLBtnClick` shadows the text file, spell it `System.Output`)
+  at the top of `ExecSQLBtnClick`, around `OutputClientDataSet.Open` and in the `except`
+  branch: the first Execute after Database > Connect ran the whole path every time
+  (`CurrentDBConn` set, `SQLConn.Connected`, memo text intact, `Open` -> 3 rows), on
+  MySQL right after start-up and on the MySQL -> SQLite switch, with and without an
+  `import -window` shot between the connect and the memo click. Code reading: the only
+  silent exits are "no connection" (then the connect dialog opens) and an empty memo;
+  exceptions reach `AppException`'s dialog; `QApplication_postEvent` is synchronous, so
+  `CloseAllClientDatasets` runs inside `DisconnectFromDB`. Left open together with #47;
+  if it recurs, rerun with the probes (`shots/fix51/h.sh`, `c.sh`, `q.sh`) and check
+  whether the probe line appears at all - a missing line means the button click was lost.
+- **#52**: `TEERModel.GetNewObjName(ObjType, Prefix, var Counter)` increments the
+  per-kind counter until `GetEERObjectByName` finds no object with `Prefix+'00'`-style
+  name; `NewTable/NewNote/NewRegion/NewImage` use it. The counters are not 0 after a
+  load (`order.xml` with `Note_02/03/05` gave `Note_06`, `Note_07`), so the loop only
+  matters when a loaded name sits above the counter - exactly the `Image_03` case. The
+  undo of a new object still `dec`s the counter (`RedoActions`), which is harmless with
+  the loop. Verified for notes on the real display; regions/images share the helper.

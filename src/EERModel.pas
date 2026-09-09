@@ -256,6 +256,7 @@ type
     function GetEERObjectByLinkedID(id: integer): Pointer;
     function GetEERObjectByIndex(ObjType: TEERObject; Index: integer): Pointer;
     function GetEERObjectByName(ObjType: TEERObject; Name: string): Pointer;
+    function GetNewObjName(ObjType: TEERObject; const Prefix: string; var Counter: integer): string;
     function GetEERObjectClassName(ObjType: TEERObject): string;
 
     //EERTable functions
@@ -2641,9 +2642,7 @@ end;
 function TEERModel.NewTable(x, y: integer; LogTheAction: Boolean): Pointer;
 var theTbl: TEERTable;
 begin
-  inc(NewTableCounter);
-
-  theTbl:=TEERTable.Create(self, 'Table_'+FormatFloat('#00', NewTableCounter),
+  theTbl:=TEERTable.Create(self, GetNewObjName(EERTable, 'Table_', NewTableCounter),
     DefModelFont, DefaultTableType, DefaultTablePrefix, PopupMenuEERTable);
 
   theTbl.Obj_X:=x;
@@ -2765,9 +2764,7 @@ end;
 function TEERModel.NewNote(x, y: integer; LogTheAction: Boolean): Pointer;
 var theNote: TEERNote;
 begin
-  inc(NewNoteCounter);
-
-  theNote:=TEERNote.Create(self, 'Note_'+FormatFloat('#00', NewNoteCounter));
+  theNote:=TEERNote.Create(self, GetNewObjName(EERNote, 'Note_', NewNoteCounter));
 
   theNote.Obj_X:=x;
   theNote.Obj_Y:=y;
@@ -2809,9 +2806,7 @@ begin
   if(w<20)or(h<20)then
     Exit;
 
-  inc(NewRegionCounter);
-
-  theRegion:=TEERRegion.Create(self, 'Region_'+FormatFloat('#00', NewRegionCounter));
+  theRegion:=TEERRegion.Create(self, GetNewObjName(EERRegion, 'Region_', NewRegionCounter));
 
   theRegion.Obj_X:=x;
   theRegion.Obj_Y:=y;
@@ -2859,9 +2854,7 @@ begin
   if(w<20)or(h<20)then
     Exit;}
 
-  inc(NewImageCounter);
-
-  theImage:=TEERImage.Create(self, 'Image_'+FormatFloat('#00', NewImageCounter));
+  theImage:=TEERImage.Create(self, GetNewObjName(EERImage, 'Image_', NewImageCounter));
 
   theImage.Obj_X:=x;
   theImage.Obj_Y:=y;
@@ -7185,6 +7178,17 @@ begin
 
       inc(theCount);
     end;
+end;
+
+//Name for a new Table/Note/Region/Image: Prefix + counter, but never a
+//name that another object of the same kind already has (a loaded model
+//may contain Image_03 while the counter says 3 - model-edit-bug-catalog #52)
+function TEERModel.GetNewObjName(ObjType: TEERObject; const Prefix: string; var Counter: integer): string;
+begin
+  repeat
+    inc(Counter);
+    Result:=Prefix+FormatFloat('#00', Counter);
+  until(GetEERObjectByName(ObjType, Result)=nil);
 end;
 
 function TEERModel.GetEERObjectByName(ObjType: TEERObject; Name: string): Pointer;
