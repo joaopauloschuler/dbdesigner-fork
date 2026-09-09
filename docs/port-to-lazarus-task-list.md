@@ -315,26 +315,27 @@
 ## Final — Integration Testing & Cleanup
 
 ### Functional Testing
-Evidence for the items below is recorded in the bug catalogs (`docs/ui-bug-catalog.md`, `docs/sqlite-bug-catalog.md`, `docs/mysql-bug-catalog.md`, `docs/db-ui-bug-catalog.md`, `docs/model-edit-bug-catalog.md`) and in `docs/notes-to-myself.md`. Each catalog is one diagnosis round on a real display followed by fixes and a verification pass.
+Evidence for the items below is recorded in the bug catalogs (`docs/ui-bug-catalog.md`, `docs/sqlite-bug-catalog.md`, `docs/mysql-bug-catalog.md`, `docs/db-ui-bug-catalog.md`, `docs/model-edit-bug-catalog.md`) and in `docs/notes-to-myself.md`. Each catalog is one or more diagnosis rounds on a real display followed by fixes and a verification pass; `model-edit-bug-catalog.md` holds rounds 5-9b and a combined regression pass on d0fbc19 (no regressions, self-test 93 PASS / 0 FAIL).
 
 - [X] **Automated UI self-test** (`--selftest`) — baseline 93 PASS, 0 FAIL, 78 SKIP (UITestRunner.pas; also sweeps the buttons of every visible form; never opens a database connection or touches the user's settings)
 - [X] Application launches without errors (real display and xvfb-run)
 - [X] Load example model (`bin/Examples/order.xml`) — through the UI and via TestModelLoad
-- [X] Create a new model with tables, fields, and relations — model-edit-bug-catalog (round 5)
-- [X] Save model to XML and reload — verify round-trip — edited models reloaded in rounds 4 and 5
-- [X] Export SQL script (MySQL) — verify output — script loads into MySQL 8 without errors (`tests/mysql-roundtrip.sh`)
+- [X] Create a new model with tables, fields, and relations — model-edit-bug-catalog (rounds 5-7: tables from the tool, typed datatypes and comments through the Table Editor in-place editors and the "Set Datatype" popup, indexes, relations)
+- [X] Save model to XML and reload — verify round-trip — edited models reloaded in rounds 4-9b
+- [X] Export SQL script (MySQL) — verify output — script loads into MySQL 8 without errors (`tests/mysql-roundtrip.sh`); column/table comments, empty indexes skipped (model-edit #23, round 8); no `ENGINE` clause for MyISAM
 - [ ] Export SQL script (PostgreSQL) — verify output — not verified, no server available
 - [ ] Export SQL script (Oracle) — verify output — not verified, no server available
-- [X] Export SQL script (SQLite) — verify output — script loads into sqlite3 without errors (`tests/sqlite-roundtrip.sh`)
+- [X] Export SQL script (SQLite) — verify output — script loads into sqlite3 without errors (`tests/sqlite-roundtrip.sh`); FULLTEXT written as plain INDEX (model-edit #23)
 - [X] Connect to a live SQLite database — through the UI (sqlite-bug-catalog) and TestSQLExprShim
 - [X] Connect to a live MySQL database — MySQL 8 through the UI (mysql-bug-catalog) and TestMySQLShim
-- [X] Reverse-engineer a database schema — SQLite and MySQL: all columns, indexes, auto-increment and foreign-key relations of the 12-table example recovered
-- [X] Synchronise model with database — MySQL 8 (mysql-bug-catalog stage E); not possible against SQLite (known limitation)
+- [X] Reverse-engineer a database schema — SQLite and MySQL: all columns, indexes, auto-increment and foreign-key relations of the 12-table example recovered; MySQL column/table comments and the table engine since model-edit #24 (round 8)
+- [X] Synchronise model with database — MySQL 8 (mysql-bug-catalog stage E, model-edit round 8: column type and comment change applied); not possible against SQLite (known limitation, stops with a message and a closable dialog since model-edit #25)
 - [ ] Test print / page setup — Page Setup dialog exercised, printed output not checked
 - [ ] Test PDF export
 - [X] Test zoom, navigation palette, model palette — self-test plus real-display rounds
-- [X] Test copy/paste of tables and relations — model-edit-bug-catalog #9
-- [X] Test undo functionality — only that Undo/Redo run without exceptions (self-test); restored state not yet verified
+- [X] Test copy/paste of tables and relations — model-edit-bug-catalog #9, #26-#28 (FK index/relation id remap, DB Model tree refresh, paste as one undo action), cross-model paste in round 9b
+- [X] Test undo functionality — delete/move/paste undone and redone with the restored state checked on the canvas, in the tree and in the saved XML; redo stack cleared by a new edit; close prompt after an undo (model-edit #31, rounds 9-9b). Undo granularity inside the Table and Relation editors not yet checked
+- [X] Place / Link model from file — picked file loaded into the dialog only, objects placed on the target canvas; Escape and window close abort (model-edit #32, #33); placement is not undoable (as in the original)
 - [X] Load a plugin (Demo) — all four plugins started from the Plugins menu on a real display
 - [X] Generate HTML report via plugin — report generated from reverse-engineered models (mysql and sqlite catalogs)
 - [X] Test on Linux — x86-64 Linux, GTK2
@@ -366,11 +367,11 @@ Evidence for the items below is recorded in the bug catalogs (`docs/ui-bug-catal
 | Phase 0 — Setup & Scaffolding | ✅ Complete | 30 | 30 |
 | Phase 1 — Non-Visual Core | ✅ Complete | 33 | 33 |
 | Phase 2 — Database Layer | 🟡 SQLite 3 and MySQL 8 working (runtime tested); Oracle, MSSQL, ODBC, PostgreSQL connectors not linked | 39 | 34 |
-| Phase 3 — UI Forms | ✅ Complete (runtime tested, 5 bug-fix rounds) | 54 | 54 |
+| Phase 3 — UI Forms | ✅ Complete (runtime tested, 9 bug-fix rounds plus a regression pass) | 54 | 54 |
 | Phase 4 — SynEdit | ✅ Complete | 22 | 22 |
 | Phase 5 — Plugins & Extras | ✅ Complete (plugins runtime tested; PDF export untested) | 27 | 26 |
-| Final — Testing & Cleanup | 🟡 In progress | 35 | 25 |
-| **Total** | | **240** | **224** |
+| Final — Testing & Cleanup | 🟡 In progress | 36 | 26 |
+| **Total** | | **241** | **225** |
 
 Last recount: September 2026.
 
