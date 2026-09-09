@@ -1249,7 +1249,7 @@ begin
             TEERForm(FActiveEERForm).EERModel.PaintModelToImage(ModelBmp, (TMenuItem(Sender).Tag=2));
 
             //Use this function to save PNGs, too
-            DMMain.SaveBitmap(ModelBmp.Handle, theSaveDialog.Filename, ExtractFileExt(theSaveDialog.Filename));
+            DMMain.SaveBitmap({$IFDEF FPC}ModelBmp{$ELSE}ModelBmp.Handle{$ENDIF}, theSaveDialog.Filename, ExtractFileExt(theSaveDialog.Filename));
           finally
             ModelBmp.Free;
           end;

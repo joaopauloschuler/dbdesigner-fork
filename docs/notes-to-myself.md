@@ -2338,3 +2338,28 @@ Driving notes: the earlier "tips window not shown in `import -window <main>`" is
   snapshots, `diff-*.txt`/`setdiff-*.txt`, `run.log` with the probe order). The main window
   came up 600x426 on the second launch of the session (saved geometry not applied, see
   round 9c (e)), the band (80,103)-(532,792) still selected the same 12 objects.
+
+## Fix: model-edit #39 - "Division by zero" dialog after every image export
+
+- Not arithmetic: the LCL's `RaiseGDBException` raises SIGFPE on purpose, so any
+  `TGtk2WidgetSet.DeleteObject invalid GdiObject` shows up as "Division by zero" in the
+  exception dialog. Whenever that text appears, look for a GDI handle freed twice before
+  hunting for a `div`.
+- `TDMMain.SaveBitmap` wrapped the caller's `TBitmap.Handle` in a second `TBitmap`
+  (`Bmp.Handle := Handle` ... `Bmp.Handle := 0; Bmp.Free`, "Don't free the handle -
+  caller owns it"). That comment was a Delphi/QPixmap assumption. In the LCL
+  `TRasterImage.SetHandle` puts the handle into the wrapper's `TSharedRasterImage`, and
+  the following `Png.Assign` (`RawImageNeeded`) / `Handle := 0` re-create the image and
+  delete the old handle, so `ModelBmp.Free` in the caller deleted it a second time.
+- Fix: `SaveBitmap` takes the `TBitmap` itself under FPC (`{$IFDEF FPC}TBitmap{$ELSE}
+  QPixmapH{$ENDIF}`) and assigns PNG / JPEG straight from it; `SaveModelasImageMIClick`
+  passes `ModelBmp`. `CopyselectedObjectsasImageMIClick` already used
+  `Clipboard.Assign(ModelBmp)` and was fine. Rule: never give one GDI handle to two
+  `TBitmap`s under the LCL; pass the object, `Assign`, or `ReleaseHandle` first.
+- Left as is: the selection export paints from the model origin (a 730x860 image for two
+  small tables at the top-left), inherited from `PaintModelToImage`; the dialog title
+  "Save Model As ..." for the image export (translated message 12).
+- Verification: `shots/fix39/` (`h.sh` = round-10b helper, `model.png`, `model2.jpg`,
+  `sel.png`, crops, `run.log`). GTK message boxes: `xwininfo` "Absolute upper-left" is
+  the client origin (821,455 here), `xdotool getwindowgeometry` reported the frame
+  (835,504) - clicks computed from the latter missed the Yes button twice.

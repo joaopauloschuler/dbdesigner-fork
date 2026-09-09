@@ -192,7 +192,9 @@ type
     {$ENDIF}
 
     //Save Bitmap als PNG, JPG or BMP
-    procedure SaveBitmap(Handle: {$IFDEF FPC}HBITMAP{$ELSE}QPixmapH{$ENDIF}; FileName: string; FileType: string; JPGQuality: integer = 75);
+    //FPC: takes the TBitmap itself (never wrap a handle owned by another
+    //TBitmap - under the LCL both objects would delete the same GDI handle)
+    procedure SaveBitmap(Bmp: {$IFDEF FPC}TBitmap{$ELSE}QPixmapH{$ENDIF}; FileName: string; FileType: string; JPGQuality: integer = 75);
 
     function GetFileSize(fname: string): string;
     function GetFileDate(fname: string): TDateTime;
@@ -1704,46 +1706,43 @@ begin
 end;
 {$ENDIF}
 
-procedure TDMMain.SaveBitmap(Handle: {$IFDEF FPC}HBITMAP{$ELSE}QPixmapH{$ENDIF}; FileName: string; FileType: string; JPGQuality: integer = 75);
+procedure TDMMain.SaveBitmap(Bmp: {$IFDEF FPC}TBitmap{$ELSE}QPixmapH{$ENDIF}; FileName: string; FileType: string; JPGQuality: integer = 75);
 {$IFDEF FPC}
 var
-  Bmp: TBitmap;
   Png: TPortableNetworkGraphic;
   Jpg: TJPEGImage;
 begin
   if(Copy(FileType, 1, 1)='.')then
     FileType:=Copy(FileType, 2, Length(FileType));
-  
-  Bmp := TBitmap.Create;
-  try
-    Bmp.Handle := Handle;
-    if(Uppercase(FileType)='PNG')then
-    begin
-      Png := TPortableNetworkGraphic.Create;
-      try
-        Png.Assign(Bmp);
-        Png.SaveToFile(FileName);
-      finally
-        Png.Free;
-      end;
-    end
-    else if(Uppercase(FileType)='JPEG')or(Uppercase(FileType)='JPG')then
-    begin
-      Jpg := TJPEGImage.Create;
-      try
-        Jpg.Assign(Bmp);
-        Jpg.CompressionQuality := JPGQuality;
-        Jpg.SaveToFile(FileName);
-      finally
-        Jpg.Free;
-      end;
-    end
-    else
-      Bmp.SaveToFile(FileName);
-  finally
-    Bmp.Handle := 0; // Don't free the handle - caller owns it
-    Bmp.Free;
-  end;
+
+  //Work on the caller's TBitmap directly. The former code wrapped
+  //Bmp.Handle in a second TBitmap; under the LCL the wrapper deleted the
+  //shared GDI handle and the caller's Free then raised
+  //"TGtk2WidgetSet.DeleteObject invalid GdiObject" (shown as "Division by
+  //zero" because RaiseGDBException uses SIGFPE) - model-edit #39.
+  if(Uppercase(FileType)='PNG')then
+  begin
+    Png := TPortableNetworkGraphic.Create;
+    try
+      Png.Assign(Bmp);
+      Png.SaveToFile(FileName);
+    finally
+      Png.Free;
+    end;
+  end
+  else if(Uppercase(FileType)='JPEG')or(Uppercase(FileType)='JPG')then
+  begin
+    Jpg := TJPEGImage.Create;
+    try
+      Jpg.Assign(Bmp);
+      Jpg.CompressionQuality := JPGQuality;
+      Jpg.SaveToFile(FileName);
+    finally
+      Jpg.Free;
+    end;
+  end
+  else
+    Bmp.SaveToFile(FileName);
 end;
 {$ELSE}
 var lWideStr: WideString;
@@ -1752,9 +1751,9 @@ begin
   if(Copy(FileType, 1, 1)='.')then
     FileType:=Copy(FileType, 2, Length(FileType));
   if(Uppercase(FileType)='PNG')or(Uppercase(FileType)='BMP')then
-    QPixMap_save(Handle, @lWideStr, PChar(Uppercase(FileType)))
+    QPixMap_save(Bmp, @lWideStr, PChar(Uppercase(FileType)))
   else if(FileType='JPEG')or(FileType='JPG')then
-    QPixMap_save(Handle, @lWideStr, PChar('JPEG'), JPGQuality);
+    QPixMap_save(Bmp, @lWideStr, PChar('JPEG'), JPGQuality);
 end;
 {$ENDIF}
 
