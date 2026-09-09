@@ -59,6 +59,9 @@ type
   private
     { Private-Deklarationen }
     LimitCharsMode: integer;
+    procedure LayoutControls;
+  protected
+    procedure DoShow; override;
   public
     { Public-Deklarationen }
   end;
@@ -98,9 +101,34 @@ begin
 
   LimitCharsMode:=LimitChars;
 
-  InputPnl.Left:=PromtLbl.Left+PromtLbl.Width+2;
+  LayoutControls;
+end;
 
-  Width:=InputPnl.Left+InputPnl.Width+PromtLbl.Left;
+// Place the input panel right of the prompt and size the form accordingly.
+// Under the LCL an AutoSize label is not re-measured for a new caption until
+// the form is shown, so the width is taken from the canvas as well; the layout
+// is repeated in DoShow when the handle (and the real font metrics) exist.
+procedure TEditorStringForm.LayoutControls;
+var w: integer;
+begin
+  PromtLbl.AdjustSize;
+  w:=PromtLbl.Width;
+  if(HandleAllocated)then
+  begin
+    Canvas.Font:=PromtLbl.Font;
+    if(Canvas.TextWidth(PromtLbl.Caption)>w)then
+      w:=Canvas.TextWidth(PromtLbl.Caption);
+  end;
+
+  InputPnl.Left:=PromtLbl.Left+w+4;
+
+  ClientWidth:=InputPnl.Left+InputPnl.Width+PromtLbl.Left;
+end;
+
+procedure TEditorStringForm.DoShow;
+begin
+  inherited DoShow;
+  LayoutControls;
 end;
 
 procedure TEditorStringForm.FormKeyDown(Sender: TObject; var Key: Word;

@@ -1897,3 +1897,31 @@ navigation (`Down`x4 `Right` for File > Open Recent). Shots: `fix13-*`.
   (x+67), not the text; the Read view of a wide crop is downscaled, so measure line positions
   with PIL (`sum(px)<500` per row) rather than by eye (cost three misplaced clicks on a
   relation line); an appended popup screenshot shifts every y of the image below it.
+
+## Fix: model-edit #15 - string-input dialog hid its prompt behind the edit panel
+
+- **Cause (confirmed):** `TEditorStringForm.SetParams` (`src/EditorString.pas`) set
+  the label caption and immediately used `PromtLbl.Width` to place `InputPnl`. Under
+  the LCL an `AutoSize` label is not re-measured until its parent has a handle
+  (`AutoSizeDelayed`), so at that point `Width` was still the design-time width of
+  `Promt:` (32 px) and the panel was placed on top of the real "Name of Index:" /
+  "Prefix:" text - only the first letter survived. The `.lfm` also had the label
+  at `Left = 64` (a leftover), which made the form 64 px wider than needed.
+- **Fix:** new private `LayoutControls` - `PromtLbl.AdjustSize`, width = max(label
+  width, `Canvas.TextWidth(Caption)` with the label font when the handle exists),
+  `InputPnl.Left := PromtLbl.Left + w + 4`, `ClientWidth := InputPnl.Left +
+  InputPnl.Width + PromtLbl.Left`. Called from `SetParams` (harmless early pass)
+  and from an overridden `DoShow` (the pass that counts: handle and font metrics
+  exist, form not yet mapped so no visible jump). Label `Left = 8` in the `.lfm`.
+- **Verification** (real display, `shots/fix15/`, round6.xml, Table_02): index
+  dialog 354x61 with "Name of Index:" readable and the edit + OK/Cancel to its right
+  (`after-index.png`); `idx1` + Return creates the index (`m1.png`); grid popup >
+  Add Prefix shows "Prefix:" (312x61, `after-prefix.png`), `p_` + Return renames
+  `d1` to `p_d1` (`m2.png` = round-6 before / after / grid). No stderr output.
+  All 20 `ShowStringEditor` callers pass a short prompt (`Name:`, `Hostname/IP:`,
+  `Database Name:`, `New Table Prefix:` ...); the long questions go into the title.
+- **Driving note:** `pkill -f bin/DBDesignerFork` inside a Bash-tool command kills
+  the tool's own shell when the pattern text appears in the command line (heredoc
+  or sed argument) - use `pkill -f 'bin/DBDesigner[F]ork'` or run the script alone.
+  `flow.sh` here (no palette undock) lands on the Indices page directly; the
+  add-index button is at (280,332) of the Table Editor window.

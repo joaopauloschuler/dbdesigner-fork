@@ -17,7 +17,7 @@ object EditorStringForm: TEditorStringForm
   Font.Height = -11
   Font.Name = 'Sans'
   object PromtLbl: TLabel
-    Left = 64
+    Left = 8
     Top = 24
     AutoSize = True
     Caption = 'Promt:'
