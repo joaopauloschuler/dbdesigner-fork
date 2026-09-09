@@ -5230,16 +5230,69 @@ end;
 
 
 procedure TEERModel.DeleteSelectedObjs(AddToLog: Boolean);
-var i: integer;
+var i, j: integer;
+  theRels: TList;
+
+  procedure AddRel(theRel: Pointer);
+  begin
+    if(theRels.IndexOf(theRel)=-1)then
+      theRels.Add(theRel);
+  end;
+
 begin
   if(AddToLog)then
   begin
     StartSubActionLog(at_DeleteObj);
-    LogActions:=True;
+
+    //Log all objects before anything is deleted, and log the tables
+    //first and the relations last. UndoActions replays the sub actions
+    //in this order with one LoadFromFile each, and GetRELATIONS skips a
+    //RELATION whose SrcTable/DestTable does not exist (yet). Deleting a
+    //relation also strips the FK columns from its destination table
+    //(CheckAllRelations), so the tables have to be logged while every
+    //relation is still in place. Letting each DeleteObj log itself, as
+    //the single-object delete does, only works for one table.
+    theRels:=TList.Create;
+    try
+      //Tables, collecting their relations
+      for i:=ComponentCount-1 downto 0 do
+        if(Components[I].Classparent=TEERObj)then
+          if(TEERObj(Components[I]).Selected)and
+            (Components[I] is TEERTable)then
+          begin
+            LogSubAction(at_DeleteObj, TEERObj(Components[I]).Obj_id,
+              TEERObj(Components[I]).GetObjAsXMLModel);
+
+            for j:=0 to TEERTable(Components[I]).RelStart.Count-1 do
+              AddRel(TEERTable(Components[I]).RelStart[j]);
+            for j:=0 to TEERTable(Components[I]).RelEnd.Count-1 do
+              AddRel(TEERTable(Components[I]).RelEnd[j]);
+          end;
+
+      //Notes, images, regions; selected relations are collected
+      for i:=ComponentCount-1 downto 0 do
+        if(Components[I].Classparent=TEERObj)then
+          if(TEERObj(Components[I]).Selected)and
+            (Not(Components[I] is TEERTable))then
+          begin
+            if(Components[I] is TEERRel)then
+              AddRel(Components[I])
+            else
+              LogSubAction(at_DeleteObj, TEERObj(Components[I]).Obj_id,
+                TEERObj(Components[I]).GetObjAsXMLModel);
+          end;
+
+      //Relations
+      for i:=0 to theRels.Count-1 do
+        LogSubAction(at_DeleteObj, TEERObj(theRels[i]).Obj_id,
+          TEERObj(theRels[i]).GetObjAsXMLModel);
+    finally
+      theRels.Free;
+    end;
   end;
 
   try
-    //Delete all EER-Objects
+    //Delete all EER-Objects (already logged, so LogActions stays False)
     for i:=ComponentCount-1 downto 0 do
     begin
       if(Components[I].Classparent=TEERObj)then
@@ -5250,10 +5303,7 @@ begin
     end;
   finally
     if(AddToLog)then
-    begin
-      LogActions:=False;
       EndSubAction;
-    end;
   end;
 
   if(Not(DisableModelRefresh))then

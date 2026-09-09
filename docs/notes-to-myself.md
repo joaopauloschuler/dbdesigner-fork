@@ -2299,3 +2299,42 @@ What GNOME Shell (mutter) does with the alternatives, measured with `xprop -root
 Fix: `fsNormal` + `poDesigned` in the .lfm, popup child of the main form in `ShowPalettesTmrTimer`, and after `Show` park it at the lower-right corner of the main window (`Left+Width-TipsForm.Width-24`, `Top+Height-TipsForm.Height-48`, `Max`-clamped to the main form's origin). It ends up at about `1172,683` on the 1878x886 main window, i.e. over the bottom of the palette column and the canvas edge, not over a freshly loaded model. `FormClose` (`caFree`, writes `ShowTipsOnStartup` from the check box) is unchanged, so Phase 0 of the self-test closes it as before (PASS 93 / FAIL 0).
 
 Driving notes: the earlier "tips window not shown in `import -window <main>`" is just the capture reading the main window's own pixels; use `getmouselocation` or the stacking list to know what is on top. The main window came up once at 1287x810 instead of the saved 1878x886 between two launches (WM state, not the app) - re-read `xwininfo` before reusing canvas coordinates.
+
+
+## Fix: model-edit #42 - undo of a multi-object delete lost the relations between deleted tables
+
+- The undo of `at_DeleteObj` is one `LoadFromFile(undo.xml)` per sub action, replayed
+  forwards (`UndoActions` iterates `j:=0 to Count-1`; it is `RedoActions` that walks
+  backwards). `GetRELATIONS` silently drops a `<RELATION>` whose `SrcTable`/`DestTable` id
+  is not in the model. So the order in which `DeleteSelectedObjs` *logged* the objects was
+  the whole story: it walked `Components` downwards and let every `DeleteObj` log itself,
+  and in a loaded model the relations sit above the tables, so a rubber band that had
+  selected the relations logged them first. Two consequences: the relation XML was
+  replayed before its tables existed (dropped), and `TEERRel.DeleteObj` ->
+  `CheckAllRelations` had already removed the FK columns from the destination tables
+  before those tables were logged (the "7 FK columns lost"). The single-table case only
+  worked because `TEERTable.DeleteObj` logs itself before deleting its relations.
+- Fix in `TEERModel.DeleteSelectedObjs` (`src/EERModel.pas`): when `AddToLog` is set, the
+  routine writes all sub actions itself before anything is deleted - tables first, then
+  notes/images/regions (same reverse component order as before, so the region's z-order
+  restore of #5 is unchanged), then every relation involved: selected relations plus the
+  `RelStart`/`RelEnd` of every selected table, deduplicated through a local `TList`. The
+  deletion pass then runs with `LogActions` still False, so the per-object `DeleteObj`
+  logging (kept for `PopupMenuDeleteObj`, the single-object path) does not double up.
+  `UndoActions`/`RedoActions` untouched; redo walks the log backwards, i.e. relations
+  are deleted first by id (nil-guarded), tables last.
+- Considered and not done: a two-pass replay in `UndoActions` (tables, then relations)
+  would have fixed the dropped relations but not the FK columns, because those are gone
+  from the logged XML by then; a single combined undo document would need the wrappers of
+  `GetObjAsXMLModel` stripped and merged per section - more code for the same result.
+- Inherited: the original Delphi `DeleteSelectedObjs` / `TEERTable.DeleteObj` (8b2b15f)
+  have exactly this ordering.
+- What still differs after an undo (ids only, as before): an FK column of a *surviving*
+  destination table is recreated by the final `CheckAllRelations` with a new id (and its
+  index column follows). Side observation, not touched: a deleted-and-undone image comes
+  back as `ImgFormat="BMP"` with a larger `ImgData` (`TEERImage.GetXML` writes the
+  in-memory bitmap), the placement is identical.
+- Verification and driving notes: `shots/fix42/` (`h.sh` = round-10b helper, `f-*.xml`
+  snapshots, `diff-*.txt`/`setdiff-*.txt`, `run.log` with the probe order). The main window
+  came up 600x426 on the second launch of the session (saved geometry not applied, see
+  round 9c (e)), the band (80,103)-(532,792) still selected the same 12 objects.
