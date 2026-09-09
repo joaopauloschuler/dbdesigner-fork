@@ -87,6 +87,7 @@ type
 
     function RemoveCommentsFromSQLCmd(cmd: string): string;
     function StripMySQLTableStatusComment(const s: string): string;
+    function MySQLEngineToTableType(const Engine: string): integer;
     function GetSQLiteDatatype(theModel: Pointer; DeclType: string; DatatypeSubst: TStringList; var DatatypeParams: string): Pointer;
     function SQLiteRefActionCode(action: string): string;
   private
@@ -502,10 +503,24 @@ begin
           QuotedStr(TEERTable(DbTables[i]).ObjName);
         DMDB.SchemaSQLQuery.Open;
         try
-          if(Not(DMDB.SchemaSQLQuery.EOF))and
-            (DMDB.SchemaSQLQuery.FindField('Comment')<>nil)then
-            TEERTable(DbTables[i]).Comments:=
-              StripMySQLTableStatusComment(DMDB.SchemaSQLQuery.FieldByName('Comment').AsString);
+          if(Not(DMDB.SchemaSQLQuery.EOF))then
+          begin
+            if(DMDB.SchemaSQLQuery.FindField('Comment')<>nil)then
+              TEERTable(DbTables[i]).Comments:=
+                StripMySQLTableStatusComment(DMDB.SchemaSQLQuery.FieldByName('Comment').AsString);
+
+            //Engine (MySQL < 4.1.2 called the column Type) -> TableType index,
+            //the inverse of the ENGINE= mapping in TEERTable.GetSQLCreateCode
+            //(model-edit #24). Unknown engines keep the model's default.
+            if(DMDB.SchemaSQLQuery.FindField('Engine')<>nil)then
+              j:=MySQLEngineToTableType(DMDB.SchemaSQLQuery.FieldByName('Engine').AsString)
+            else if(DMDB.SchemaSQLQuery.FindField('Type')<>nil)then
+              j:=MySQLEngineToTableType(DMDB.SchemaSQLQuery.FieldByName('Type').AsString)
+            else
+              j:=-1;
+            if(j>=0)then
+              TEERTable(DbTables[i]).TableType:=j;
+          end;
         finally
           DMDB.SchemaSQLQuery.Close;
         end;
@@ -3363,6 +3378,29 @@ begin
   Result:=Trim(Result);
   if(Result<>'')and(Result[Length(Result)]=';')then
     Result:=Trim(Copy(Result, 1, Length(Result)-1));
+end;
+
+//SHOW TABLE STATUS Engine name -> TableType index of the Table Editor combo
+//(0 MYISAM, 1 InnoDB, 2 HEAP/MEMORY, 3 BDB, 4 ISAM, 5 MERGE); -1 for an
+//engine the model has no entry for (CSV, ARCHIVE, NDB, ...).
+function TDMDBEER.MySQLEngineToTableType(const Engine: string): integer;
+var e: string;
+begin
+  e:=UpperCase(Trim(Engine));
+  if(e='MYISAM')then
+    Result:=0
+  else if(e='INNODB')then
+    Result:=1
+  else if(e='MEMORY')or(e='HEAP')then
+    Result:=2
+  else if(e='BDB')or(e='BERKELEYDB')then
+    Result:=3
+  else if(e='ISAM')then
+    Result:=4
+  else if(e='MERGE')or(e='MRG_MYISAM')then
+    Result:=5
+  else
+    Result:=-1;
 end;
 
 function TDMDBEER.RemoveCommentsFromSQLCmd(cmd: string): string;

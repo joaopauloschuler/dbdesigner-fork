@@ -2168,9 +2168,24 @@ navigation (`Down`x4 `Right` for File > Open Recent). Shots: `fix13-*`.
   `information_schema` FK relations now store the FK column's comment in
   `FKFieldsComments` (was always `''`). SQLite reverse engineering not touched (no
   comments there).
-- **Not done**: `show table status` also has `Engine`/`Auto_increment`/`Row_format`;
-  the table type still defaults to MyISAM in the model (Table Editor shows MYISAM for an
-  InnoDB table). Cheap to add next to the comment read if wanted.
+- **Engine (second commit)**: the same `show table status` row's `Engine` column (`Type`
+  on MySQL < 4.1.2) now sets `TEERTable.TableType` through `MySQLEngineToTableType`
+  (MyISAM 0, InnoDB 1, MEMORY/HEAP 2, BDB/BerkeleyDB 3, ISAM 4, MERGE/MRG_MYISAM 5; -1 =
+  unknown engine such as CSV/ARCHIVE/NDB -> the model default stays), the inverse of the
+  `ENGINE=` case in `GetSQLCreateCode`. Verified on the display (`shots/fix24b/`): XML
+  `TableType` 1/1/0 for parent/child/logtab, Table Editor combo InnoDB, re-export has
+  `ENGINE=InnoDB` on the two InnoDB tables only. Loading that export into MySQL 8 turns
+  `logtab` into InnoDB because type 0 emits no clause and the server default is InnoDB
+  since 5.5 - an export question (emit `ENGINE=MyISAM` for 0?), left as is. Still not
+  read: `Auto_increment`/`Row_format`.
+- **Driving addendum**: `xdotool getwindowgeometry` reports managed windows 37 px too
+  low (frame offset); `xwininfo -id <xid>` "Absolute upper-left" is right (connection
+  selector at +608+271, rows y +63/+83, password field +559+268, Connect +683+237; Export
+  SQL Script client +713+222, target combo arrow +347+250, Save Script +410+534). The
+  File > Export submenu opens on hover only after small pointer motions inside the item
+  (a click on Export closes the menu); SQL Create Script at abs (342,374). `xdotool
+  search --name` may return the mutter frame - activate the client xid from
+  `xwininfo -root -tree`.
 - **Driving** (`shots/fix24/`): main client origin +42+69; Database menu opens with one
   click at (227,81) after `windowactivate`, popup 234x135 at +189+95, Reverse Engineering
   at abs (269,195) - move the pointer in steps (x=260, y 120..191) before the click, a jump
