@@ -315,13 +315,13 @@
 ## Final — Integration Testing & Cleanup
 
 ### Functional Testing
-Evidence for the items below is recorded in the bug catalogs (`docs/ui-bug-catalog.md`, `docs/sqlite-bug-catalog.md`, `docs/mysql-bug-catalog.md`, `docs/db-ui-bug-catalog.md`, `docs/model-edit-bug-catalog.md`) and in `docs/notes-to-myself.md`. Each catalog is one or more diagnosis rounds on a real display followed by fixes and a verification pass; `model-edit-bug-catalog.md` holds rounds 5-9b and a combined regression pass on d0fbc19 (no regressions, self-test 93 PASS / 0 FAIL).
+Evidence for the items below is recorded in the bug catalogs (`docs/ui-bug-catalog.md`, `docs/sqlite-bug-catalog.md`, `docs/mysql-bug-catalog.md`, `docs/db-ui-bug-catalog.md`, `docs/model-edit-bug-catalog.md`) and in `docs/notes-to-myself.md`. Each catalog is one or more diagnosis rounds on a real display followed by fixes and a verification pass; `model-edit-bug-catalog.md` holds rounds 5-11 and two combined regression passes, d0fbc19 for rounds 6-9b and 920a93c for rounds 10-11 (no regressions either time, self-test 93 PASS / 0 FAIL).
 
 - [X] **Automated UI self-test** (`--selftest`) — baseline 93 PASS, 0 FAIL, 78 SKIP (UITestRunner.pas; also sweeps the buttons of every visible form; never opens a database connection or touches the user's settings)
 - [X] Application launches without errors (real display and xvfb-run)
 - [X] Load example model (`bin/Examples/order.xml`) — through the UI and via TestModelLoad
 - [X] Create a new model with tables, fields, and relations — model-edit-bug-catalog (rounds 5-7: tables from the tool, typed datatypes and comments through the Table Editor in-place editors and the "Set Datatype" popup, indexes, relations)
-- [X] Save model to XML and reload — verify round-trip — edited models reloaded in rounds 4-9b
+- [X] Save model to XML and reload — verify round-trip — edited models reloaded in rounds 4-11 (tables, regions, notes, images, stored SQL commands)
 - [X] Export SQL script (MySQL) — verify output — script loads into MySQL 8 without errors (`tests/mysql-roundtrip.sh`); column/table comments, empty indexes skipped (model-edit #23, round 8); no `ENGINE` clause for MyISAM
 - [ ] Export SQL script (PostgreSQL) — verify output — not verified, no server available
 - [ ] Export SQL script (Oracle) — verify output — not verified, no server available
@@ -333,9 +333,12 @@ Evidence for the items below is recorded in the bug catalogs (`docs/ui-bug-catal
 - [ ] Test print / page setup — Page Setup dialog exercised, printed output not checked
 - [ ] Test PDF export
 - [X] Test zoom, navigation palette, model palette — self-test plus real-display rounds
-- [X] Test copy/paste of tables and relations — model-edit-bug-catalog #9, #26-#28 (FK index/relation id remap, DB Model tree refresh, paste as one undo action), cross-model paste in round 9b
-- [X] Test undo functionality — delete/move/paste undone and redone with the restored state checked on the canvas, in the tree and in the saved XML; redo stack cleared by a new edit; close prompt after an undo (model-edit #31, rounds 9-9b). Undo granularity inside the Table and Relation editors not yet checked
+- [X] Test copy/paste of tables and relations — model-edit-bug-catalog #9, #26-#28 (FK index/relation id remap, DB Model tree refresh, paste as one undo action), cross-model paste in round 9b; mixed selections with regions, notes and images renamed and given a fresh OrderPos (model-edit #40, round 10b)
+- [X] Test undo functionality — delete/move/paste undone and redone with the restored state checked on the canvas, in the tree and in the saved XML; redo stack cleared by a new edit; close prompt after an undo (model-edit #31, rounds 9-9b); undo of a multi-object delete restores every relation and FK column (model-edit #42, round 10b, regression pass 920a93c). Undo granularity inside the Table and Relation editors not yet checked
 - [X] Place / Link model from file — picked file loaded into the dialog only, objects placed on the target canvas; Escape and window close abort (model-edit #32, #33); placement is not undoable (as in the original)
+- [X] Regions, notes and images on the canvas — Region tool and Region Editor, region move with contents, Note Editor with non-ASCII text, PNG and 1-bpp BMP images kept after save/reopen, Image Editor, unique names for new objects (model-edit rounds 10-10b, #35-#38, #41, #52)
+- [X] Export model / selected objects as image, Copy as Image — PNG and JPEG written without an exception dialog (model-edit #39); the selection export paints from the model origin instead of cropping (inherited)
+- [X] Query mode against MySQL 8 and SQLite 3 — drag-and-drop query building, JOIN/WHERE/ORDER BY, editable result grid with Apply Changes writing UPDATE/INSERT/DELETE, ISO date/time display and write-back, stored SQL and history saved with the model, Ctrl+S, rename dialog, stored-SQL popup (model-edit round 11, #43-#50). Not reached: Export/Print Records, BLOB viewer, multi-statement scripts; #47/#51 unconfirmed
 - [X] Load a plugin (Demo) — all four plugins started from the Plugins menu on a real display
 - [X] Generate HTML report via plugin — report generated from reverse-engineered models (mysql and sqlite catalogs)
 - [X] Test on Linux — x86-64 Linux, GTK2
@@ -367,11 +370,11 @@ Evidence for the items below is recorded in the bug catalogs (`docs/ui-bug-catal
 | Phase 0 — Setup & Scaffolding | ✅ Complete | 30 | 30 |
 | Phase 1 — Non-Visual Core | ✅ Complete | 33 | 33 |
 | Phase 2 — Database Layer | 🟡 SQLite 3 and MySQL 8 working (runtime tested); Oracle, MSSQL, ODBC, PostgreSQL connectors not linked | 39 | 34 |
-| Phase 3 — UI Forms | ✅ Complete (runtime tested, 9 bug-fix rounds plus a regression pass) | 54 | 54 |
+| Phase 3 — UI Forms | ✅ Complete (runtime tested, 11 bug-fix rounds plus two regression passes) | 54 | 54 |
 | Phase 4 — SynEdit | ✅ Complete | 22 | 22 |
 | Phase 5 — Plugins & Extras | ✅ Complete (plugins runtime tested; PDF export untested) | 27 | 26 |
-| Final — Testing & Cleanup | 🟡 In progress | 36 | 26 |
-| **Total** | | **241** | **225** |
+| Final — Testing & Cleanup | 🟡 In progress | 39 | 29 |
+| **Total** | | **244** | **228** |
 
 Last recount: September 2026.
 
