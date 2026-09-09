@@ -6,9 +6,12 @@ object EERPlaceModelForm: TEERPlaceModelForm
   ClientHeight = 351
   ClientWidth = 662
   Color = clBtnFace
+  KeyPreview = True
   Menu = PlaceMainMenu
   Position = poMainFormCenter
   OnClose = FormClose
+  OnCloseQuery = FormCloseQuery
+  OnKeyDown = FormKeyDown
   OnCreate = FormCreate
   OnDestroy = FormDestroy
   OnShow = FormShow
