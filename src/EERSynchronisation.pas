@@ -227,14 +227,34 @@ procedure TEERSynchronisationForm.SubmitBtnClick(Sender: TObject);
 begin
   EERModel.DefSyncDBConn:=DMDB.CurrentDBConn.Name;
   
-  DMDBEER.EERMySQLSyncDB(EERModel, DMDB.CurrentDBConn, ProgressMemo.Lines, KeepExistingTabelsCBox.Checked, StdInsertsCBox.Checked, SyncStdInsertsCBox.Checked);
+  //An exception escaping the sync used to reach Application.OnException while
+  //this form is modal; its dialog opened behind this one (the GTK grab stays
+  //here), so the user saw no message and Close/Escape only hit the hidden
+  //dialog (model-edit-bug-catalog #25). Catch it here: log it, show it on top
+  //of this form and leave the dialog closable.
+  try
+    DMDBEER.EERMySQLSyncDB(EERModel, DMDB.CurrentDBConn, ProgressMemo.Lines, KeepExistingTabelsCBox.Checked, StdInsertsCBox.Checked, SyncStdInsertsCBox.Checked);
+  except
+    on x: Exception do
+    begin
+      ProgressMemo.Lines.Add('');
+      ProgressMemo.Lines.Add('ERROR: '+x.Message);
+      ProgressMemo.Lines.Add('Synchronisation aborted.');
+      ProgressMemo.Lines.Add('');
+      MessageDlg('Synchronisation aborted.'+#13#10#13#10+
+        x.Message, mtError, [mbOK], 0);
+    end;
+  end;
 end;
 
 procedure TEERSynchronisationForm.FormKeyDown(Sender: TObject;
   var Key: Word; Shift: TShiftState);
 begin
   if(Key=VK_F1)then
-    DMMain.ShowHelp('db', 'dbsync');
+    DMMain.ShowHelp('db', 'dbsync')
+  //Escape closes the dialog like the Close button (no button has Cancel=True)
+  else if(Key=VK_ESCAPE)then
+    ModalResult:=mrAbort;
 end;
 
 procedure TEERSynchronisationForm.FormResize(Sender: TObject);

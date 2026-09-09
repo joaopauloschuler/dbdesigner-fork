@@ -522,6 +522,9 @@ begin
     Dlg.BorderStyle:=bsDialog;
     Dlg.BorderIcons:=[biSystemMenu];
     Dlg.Position:=poDesigned;
+    //Transient for the active (possibly modal) form, so the window manager
+    //stacks it above that form instead of behind it (model-edit-bug-catalog #25)
+    Dlg.PopupMode:=pmAuto;
 
     //Measure the wrapped message with the dialog's font
     Dlg.Canvas.Font:=Dlg.Font;

@@ -2154,6 +2154,7 @@ var EERModel: TEERModel;
   FieldOnGeneratorOrSequence:string;
   SyncErrors: TStringList;
   ErrCount: integer;
+  IsSQLite: Boolean;
 
   //Execute one statement; a failure is collected in SyncErrors (and logged)
   //instead of raising / showing a message box, so the sync goes on and the
@@ -2218,14 +2219,23 @@ begin
     //Sort tables in FK order, if they are created all
     EERModel.SortEERTableListByForeignKeyReferences(ModelTables);
 
-    //Disable Foreign Key checks
-    DMDB.ExecSQL('SET FOREIGN_KEY_CHECKS=0');
+    IsSQLite:=(CompareText(TDBConn(DBConn).DriverName, 'SQLite')=0);
+
+    //Disable Foreign Key checks (MySQL only)
+    if(Not(IsSQLite))then
+      DMDB.ExecSQL('SET FOREIGN_KEY_CHECKS=0');
     try
       //Get Tables from DB
       Log.Add('Get Tables from DB');
       DMDB.SchemaSQLQuery.ParamCheck:=False;
       DMDB.SchemaSQLQuery.SetSchemaInfo(stNoSchema, '', '');
-      DMDB.SchemaSQLQuery.SQL.Text:='show tables';
+      if(IsSQLite)then
+        //Like the reverse engineering: user tables from sqlite_master
+        DMDB.SchemaSQLQuery.SQL.Text:='SELECT name FROM sqlite_master '+
+          'WHERE type=''table'' AND name NOT LIKE ''sqlite_%'' '+
+          'ORDER BY name'
+      else
+        DMDB.SchemaSQLQuery.SQL.Text:='show tables';
       DMDB.SchemaSQLQuery.Open;
 
       while(Not(DMDB.SchemaSQLQuery.EOF))do
@@ -2238,6 +2248,20 @@ begin
         DMDB.SchemaSQLQuery.Next;
       end;
       DMDB.SchemaSQLQuery.Close;
+
+      //Everything from here on is MySQL DDL (CREATE with table options,
+      //SHOW FULL FIELDS, ALTER TABLE ... MODIFY/CHANGE, SHOW INDEX). Stop
+      //with a clear message instead of failing statement by statement
+      //(sqlite-bug-catalog #8, model-edit-bug-catalog #25).
+      if(IsSQLite)then
+      begin
+        Log.Add(IntToStr(DbTables.Count)+' table(s) found in the SQLite database: '+
+          DbTables.CommaText);
+        raise Exception.Create('Synchronisation with a SQLite database is not '+
+          'supported yet: comparing and altering the tables uses MySQL-only '+
+          'statements (SHOW FULL FIELDS, ALTER TABLE ... MODIFY). '+
+          'Use File > Export > SQL Create Script with the SQLite target instead.');
+      end;
 
       //---------------------------------------------------------------
       //Compare Tables

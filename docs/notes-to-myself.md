@@ -2121,3 +2121,34 @@ navigation (`Down`x4 `Right` for File > Open Recent). Shots: `fix13-*`.
   (~10514xxx) from a dead instance on this display; filter by id (`awk '$1>12000000'`).
   `--pid` filtering did not work. A mis-targeted `ctrl+a` + typing landed in the column
   grid once and renamed a column - that was the driver, not the fix.
+
+## Fix: model-edit #25 - sync exception behind the modal dialog, SQLite table listing
+
+- **Cause of the stuck dialog** (confirmed with probes appended to a file - `writeln` to
+  stdout/stderr showed nothing here): the SQLite `near "show": syntax error` escaped
+  `EERMySQLSyncDB` and `SubmitBtnClick` into `TMainForm.AppException`. Its dialog
+  (`TForm.CreateNew(nil)`, no popup parent) opened behind the modal sync form: the GTK
+  modal grab stays with the sync form, so Execute still worked, while Close set
+  `ModalResult` on a form whose `ShowModal` loop was suspended by the second modal loop,
+  and Escape/Alt+F4 closed the *hidden* exception dialog - which is why the diagnosis saw
+  no window afterwards. `import -window` on that hidden window hangs with Bad Drawable.
+- **Fix**: `TEERSynchronisationForm.SubmitBtnClick` wraps the sync in try/except, logs
+  `ERROR: <msg>` + `Synchronisation aborted.` into the memo and shows a `MessageDlg`
+  (owned by the dialog, stacks on top); holds for MySQL failures too. `AppException`
+  sets `Dlg.PopupMode:=pmAuto` (transient for the active form). `FormKeyDown` maps Escape
+  to `ModalResult:=mrAbort` - no button in that dialog has `Cancel=True`, so Escape never
+  worked, even with MySQL.
+- **SQLite**: `EERMySQLSyncDB` has an `IsSQLite` flag (`TDBConn.DriverName`): no
+  `SET FOREIGN_KEY_CHECKS`, tables from `sqlite_master ... NOT LIKE 'sqlite_%'`, then a
+  `raise Exception` with the limitation text right before "Create non existing table" -
+  everything after that is MySQL DDL (`GetSQLCreateCode` for the model's `DatabaseType`,
+  `show full fields`, `ALTER TABLE ... MODIFY/CHANGE`, `show index`). Real SQLite sync
+  (sqlite #8) would need a `PRAGMA table_info` diff and SQLite's limited ALTER; not done.
+  `TDMDB.GetDBTables` also filters `sqlite_%`, so the header no longer counts
+  `sqlite_sequence`.
+- **Driving**: connection selector (frame 774x366 at +594+222): OrderSQLite row abs
+  (902,335), OrderMySQL (902,355), Password box (1152,539) - (1160,509) is the Username
+  box -, Connect (1294,509). Sync dialog frame 423x584 at +769+259: Execute abs (1041,766),
+  Close (1124,766). `xdotool windowactivate --sync` can hang forever on a window that is
+  not viewable - wrap every xdotool call in `timeout 5`; and `pkill -f drive2.sh` kills
+  the calling shell too (its command line contains the pattern).
