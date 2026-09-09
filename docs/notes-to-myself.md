@@ -1987,6 +1987,43 @@ navigation (`Down`x4 `Right` for File > Open Recent). Shots: `fix13-*`.
   600x426) main window, then clicks Table Options / Advanced in the tree at
   y=312 / y=325 of the editor. No new stderr lines.
 
+## Fix: model-edit #22 - Shift+click does not extend the column grid selection
+
+- **Cause:** `ColumnGridMouseDown` (unchanged from the Delphi original) drops
+  `goRangeSelect` on every left click so that a mouse drag moves rows instead of
+  range-selecting; `ColumnGridMouseUp` puts it back. Under the LCL,
+  `TCustomGrid.MouseDown` (`lcl/grids.pas`) calls `inherited` - and with it
+  `OnMouseDown` - *before* `if ssShift in Shift then SelectActive:=(goRangeSelect in
+  Options)`, so the option was already gone and no range was built. Delphi evaluates
+  the range first, then fires the event.
+- **Second finding:** after a Shift range (click or Shift+Down) the LCL leaves the
+  protected `SelectActive` on until the next plain click. Any programmatic
+  `ColumnGrid.Row:=` then goes through `MoveExtend` and re-extends the range from
+  `FPivot` - the #16 popup handler did exactly that (`Selection:=theRect; Row:=ARow`),
+  so a right-click on a row outside a Shift+click range deleted the whole range plus
+  that row.
+- **Fix (src/EditorTable.pas):** the `Options-[goRangeSelect]` line runs only when
+  `ssShift` is not in `Shift`; `TColumnGridAccess = class(TDrawGrid)` (implementation
+  section) exposes `SelectActive`; `ColumnGridMouseUp` resets it right after restoring
+  `goRangeSelect`, and `ColPopupMenuPopup` resets it, sets `Row` and then `Selection`
+  (single row wins). Plain click and Ctrl+click paths unchanged.
+- **Not changed:** `ApplyDatatype` ends with `ColumnGrid.Col:=3; Row:=ARow` (original),
+  which collapses a multi-row selection to the target cell after Set Datatype - the
+  lingering `SelectActive` used to mask that. Delphi collapses too.
+- **Verification (`shots/fix22/`, real display, `fix22.xml` = round6.xml):**
+  `v1-click-c.png`/`v2-shiftclick-c.png` (one, then three rows), `v3-setdt-c.png`
+  (BIGINT on exactly `notes`, `p_born`, `active`), `w1-range-c.png`/`w2-del-c.png`
+  (three-row Delete), `w3-collapse-c.png`, `w4-del16-c.png` (#16 holds),
+  `w5-type-c.png` (#20 holds). `s9-c.png` is the failed #16 check of the first attempt
+  (without the SelectActive reset). Zero GLib-CRITICAL lines.
+- **Driving notes:** `xdotool keydown shift; click 1; keyup shift` does carry the
+  modifier into the grid (the #16 note about the lost modifier was the lost first
+  click after `windowactivate`, not the modifier - click the row twice, or once after a
+  throw-away click). The main window on this display is 1878x886; `Table_03` header at
+  abs (375,324), editor grid rows at abs y = 291 + 19*(row-1), Column Name at x=354.
+  Popup: Set Datatype y+13, Delete Row(s) y+91 relative to the popup top; the group
+  submenu opens at x=626, the type list at x=847, items 26 px apart from y+13.
+
 ## Fix: model-edit #23 - empty index exported as `FULLTEXT INDEX idx7()`; FULLTEXT for SQLite
 
 - **Cause:** `TEERTable.GetSQLCreateCode` (`src/EERModel.pas`, index loop) wrote every

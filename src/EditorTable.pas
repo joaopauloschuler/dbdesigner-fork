@@ -254,6 +254,12 @@ implementation
 
 uses MainDM, EERDM, GUIDM, EditorTableField;
 
+type
+  //Gives access to the protected SelectActive of the column grid
+  //(model-edit #22: the LCL keeps it True after a Shift+click / Shift+Down
+  //range, and every later Row:= would re-extend the range from the pivot)
+  TColumnGridAccess = class(TDrawGrid);
+
 {$R *.lfm}
 
 procedure TEditorTableForm.FormCreate(Sender: TObject);
@@ -1293,8 +1299,11 @@ begin
     theRect.Right := 1;
     theRect.Bottom := ARow;
 
-    ColumnGrid.Selection:=theRect;
+    //Row first (a keyboard range leaves SelectActive on, so Row:= may
+    //extend the range), then the single-row Selection wins
+    TColumnGridAccess(ColumnGrid).SelectActive:=False;
     ColumnGrid.Row:=ARow;
+    ColumnGrid.Selection:=theRect;
   end;
 
   SetDatatypeMI.Enabled:=(Not(TableReadOnly))and
@@ -1389,7 +1398,12 @@ begin
       //DragShiftState:=Shift;
       ColumnGrid.BeginDrag(False, 5);
 
-      ColumnGrid.Options:=ColumnGrid.Options-[goRangeSelect];
+      //Drop goRangeSelect so a mouse drag moves rows instead of selecting a
+      //range - but not on a Shift+click: the LCL TCustomGrid.MouseDown runs
+      //OnMouseDown before it evaluates the Shift range and would find the
+      //option gone (model-edit #22). MouseUp restores it either way.
+      if(Not(ssShift in Shift))then
+        ColumnGrid.Options:=ColumnGrid.Options-[goRangeSelect];
 
       //Activate Windows like edit of cell > DISABLED
       //MouseEditTmr.Enabled:=True;
@@ -1457,6 +1471,10 @@ var ACol, ARow: Longint;
 begin
   if(Not(goRangeSelect in ColumnGrid.Options))then
     ColumnGrid.Options:=ColumnGrid.Options+[goRangeSelect];
+
+  //The range (if any) is final now - stop the grid's range mode so that
+  //a later Row:= (popup on another row, keyboard) does not extend it again
+  TColumnGridAccess(ColumnGrid).SelectActive:=False;
 
   ColumnGrid.MouseToCell(X, Y, ACol, ARow);
 
