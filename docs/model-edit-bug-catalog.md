@@ -751,3 +751,56 @@ Round 11 OK (not entries): the Query Drag Target form and its seven drop zones r
 Exercised / not reached: exercised - stages 1, 2, 6 on both backends, 3-5 on MySQL as listed in the stage table. Not reached - column resize, header-click sort, Ctrl+C from the grid (no clipboard tool on the machine), "Export Records" / "Print Records to PDF", BLOB viewer / Load-Store BLOB buttons (all BLOB values NULL in the example data), UPDATE/INSERT/DELETE statements through the memo (`ExecuteSQLCmdScript` branch), multi-statement scripts, "Scripts" and "Table Selects" nodes, the temporary SQL store buttons, layout switch button, SQL history navigation (`PrevCmdClick`), Load SQL Script from File, Cut/Paste in the memo, stored-SQL rename persistence (renamed `prod2` was not saved again: the reopened model shows `prod`, as expected).
 
 Proposed grouping for this pass: (A) result grid inplace editing - #43, #44, #46 (one LCL `TDBGrid` + `TBufDataset` shim issue: `dgEditing` with an editor that neither shows the value nor accepts input, phantom row on empty sets); (B) field display - #45 (date format) plus the DECIMAL trailing-zero note; (C) stored-SQL tree - #50, #49; (D) shortcut routing - #48; (E) unconfirmed result-state bug - #47. Recommended order: #47 (verify first: wrong data if real), #43/#44/#46 together, #45, #48, #50, #49.
+
+## Regression pass (2026-09-09, HEAD 920a93c, rounds 10-11 combined)
+
+Date: 2026-09-09, 35-minute time box, real display DISPLAY=:0, binary rebuilt with `lazbuild --build-all` from 920a93c. All work on copies under `<scratchpad>/shots/regress2/` (`order.xml` copy of `bin/Examples/order.xml`, `order-orig.xml` untouched reference, `round8.xml`, `order.sqlite` copy of the round-11 database, MySQL scratch database `dbdregress2` built with `tests/mysql-roundtrip.sh` from the round-11 `order_mysql.sql` and dropped afterwards, drivers `h.sh`/`q.sh`/`c.sh`/`cnt.sh`, stderr `run-full.log`). Purpose: replay the round 10, 10b and 11 scenarios on one build, since every fix of #35-#50 had only been verified alone. Nothing was changed in the code. `run-full.log`: no exception, one `GLib-GObject-CRITICAL ... "key-press-event"` line at the first Ctrl+S in Query mode (the one already documented in #48).
+
+| Entry | Result | Evidence (`shots/regress2/`) |
+|---|---|---|
+| #35 Region tool creates a region, full rubber band | verified | `0405.png` (left: four-edge band during the drag; right: `Region_04` after release), `01c-status.png` ("New Region" tool), `0506-status.png` (Ctrl+Z back to Pointer) |
+| #36 relation middle-segment hit box (docs only) | not exercised | - |
+| #37 1-bpp BMP with palette keeps its colour and drag size after save/reopen | verified | `2223.png` (orange 140x250 bar before and after restart), `order.xml` `Image_04 ... Width="215" Height="385"` |
+| #38 notes (for the record) | not exercised | - |
+| #39 Export Model as Image without "Division by zero" | not verified | File > Export submenu never opened under `xdotool` (click on the item + stepwise hover, `24-s.png`/`25-s.png`: item highlighted, no submenu window) - driver limitation, not a finding; #39 stays at its round-10b verification |
+| #40 paste renames regions/notes/images, fresh OrderPos | verified (tables, regions, notes) | `after-paste.xml`: 28/6/6 tables/regions/notes, `_1` names for all 14 tables, 3 regions, 3 notes, no duplicate name, table/note/region OrderPos 37-56 unique; images were outside the band (see S1) |
+| #41 Image Editor button captions | verified | `26-imgeditor.png` (459x130, "Restore Size", "Restore Aspect Ratio", "Clear Image" complete) |
+| #42 undo of a multi-object delete restores every relation and FK column | verified | `f-after-del.xml` T=0 REL=0 FK=0 N=0 R=0 (I=2), `f-after-undo.xml` and `f-after-undo2.xml` 14/11/11/3/2/3 = `order-orig.xml`; sorted RelationName/ColName sets identical (`diff-f-after-undo.xml.txt`, `diff-f-after-undo2.xml.txt` empty); Ctrl+Y gives the same element set as the first delete (0 diff lines) |
+| #43 grid cell editable, Apply Changes writes back | verified (MySQL + SQLite) | `4648.png` (row 2 name -> `ZZ`, "Changes applied. 0 pending change(s)."), `mysql` CLI `2 ZZ`; `7076.png` bottom (SQLite `YY`), `sqlite3` `2|YY` |
+| #44 no empty inplace editor after Execute | verified | `4648.png` top, `7076.png` (all 3x7 cells visible, grey selection only) |
+| #45 DATE/DATETIME as ISO text | verified | `4245.png`: `2004-03-01`, `2003-07-01` (DATE), `2003-04-23 00:00:00` (DATETIME) on MySQL; `7076.png` same DATE values on SQLite (edit of a date not repeated) |
+| #46 zero-row query shows an empty grid | verified | `4245.png` second panel and `7076.png` third panel: titles only, "0 Record(s) fetched" |
+| #47 empty one-column result after a syntax error | not exercised (see #51 for the related first-Execute oddity) | - |
+| #48 Ctrl+S in Query mode saves | verified | `order.xml` mtime 20:11:11 -> 20:14:46 after Ctrl+S with the memo focused, `StoredPosition="Regress2/prod2"` in the XML; Ctrl+A / Ctrl+C / End / Ctrl+V doubled the memo text (`5658.png` bottom) |
+| #49 rename dialog titled "Rename SQL Command", Escape cancels | verified | window list: `Rename SQL Command | 313x61`; after Escape only the main window; `5658.png` (prompt "Name:", node renamed `prod2`); string editor also checked from the Table Editor (S2) |
+| #50 stored-SQL popup Execute / Delete | verified | `59-popup-4207082.png` (popup at the node), `6061.png` (Execute filled the memo and the 3-row grid; Delete removed `prod2` and the `Regress2` folder) |
+
+S1 (canvas, rounds 10/10b) on the `order.xml` copy: Region tool drag 200x200 on the free canvas -> full band, `Region_04`, Ctrl+Z removes it and the tool returns to Pointer. A pointer band from the lower-left (78,782) up to (842,135) covers all 14 tables, 3 regions, 3 notes and the relations (confirmation lists 34 objects, `11-confirm-s.png`) but not the two logo images at the top-left; Ctrl+Del + Yes, Ctrl+Z, Ctrl+Y, Ctrl+Z with Ctrl+S after each step gave the counts in the table. The same band + Ctrl+C + Ctrl+V pasted 14 tables, 11 relations, 3 notes, 3 regions with unique names; Ctrl+Z + Ctrl+S restored 14/11/11/3/2/3 with no `_1` name left. Driving note: a band that starts on the "DB Designer 4" logo image (75,150) drags the image instead of rubber-banding, and `convert -type bilevel -monochrome` turns orange into an all-white 1-bpp BMP (`mono.bmp`, histogram 9600 x #FFFFFF), so the first placed image (`Image_03` at 1040,120, 187x400) is white on purpose in the file - the round-10 `test.bmp` (1-bpp, palette 0 = orange) was used for the real check. Export as Image not reached (submenu, see #39). Windows came up at different sizes on restart (1287x758, 600x426, 1878x886) and were resized to 1878x886 with `xdotool windowsize` so the fix43/fix48 coordinates could be reused.
+
+S2 (Table Editor, #49 shared code): double-click on `productgroup` opens the Table Editor with the Indices page (`32-s.png`); the new-index button opens "Please enter the Index Name:" (354x61) with the prompt "Name of Index:" and the pre-filled `productgroup_index1463` readable (`333435.png` top); Escape closes it (window list empty afterwards); the second time `pg_idx_regress` + Return creates the index (list and Indexname edit show it); `pg comment` typed into the Comments cell of row 2 sticks; OK, Ctrl+S: index and comment in the XML; Ctrl+Z on the canvas, Ctrl+S: both gone (1/1 -> 0/0 grep hits).
+
+S3 (Query mode, WorkMode=2, MySQL then SQLite): connect (`41-status.png` "Connected to Database bpsa@dbdregress2"); `SELECT * FROM product` 3 rows, all cells visible; zero-row query; DATE and DATETIME columns as ISO text; row 2 name edited and applied on both backends; store as `Regress2/prod`, F2 rename (Escape, then `prod2`), Ctrl+S from the memo, memo clipboard keys, popup Execute and Delete - all as in the table. Not reached: the Design <-> Query mode switch (mode buttons not located within the time box), a date edit on SQLite, the DBNavigator insert/delete path. New: #51 (first Execute after connecting does nothing).
+
+S4 self-test (`xvfb-run -a ./bin/DBDesignerFork --selftest`, `selftest.log`): 168 tests, PASS 93, FAIL 0, SKIP 75, "Self-test PASSED: no failures detected." (same counts as the rounds 6-9b pass).
+
+### 51. The first Execute after connecting to a database leaves the grid inactive and the status bar unchanged; the second Execute works
+
+Severity: functional nuisance (no data loss, one lost click per connection), reproducible.
+Backend: MySQL and SQLite (both in this pass), same picture as the one-off note in #47.
+Steps: WorkMode=2, Database > Connect to Database, pick `OrderMySQL` (or `OrderSQLite`), Connect; click the SQL memo, Ctrl+A, type `SELECT * FROM product`, click Execute SQL Query (`q.sh`).
+Observed: the grid keeps its inactive look (indicator column plus one untitled empty cell), the status bar keeps its previous text ("Pointer [Q] ..." on MySQL right after start-up, `42-prod-c.png`; "Query opened. 3 Record(s) fetched. Time: 00:00:006" from the last MySQL query on SQLite, `71-prod-c.png`), no error dialog, memo text intact. The very next Execute with the same text returns the 3 rows (`46-prod2-c.png`, `72-prod2-c.png`). Reproduced 2 of 2 connections (first MySQL after start, then the switch MySQL -> SQLite); every later Execute in the session worked at the first click. `run-full.log` has nothing for it.
+Suspected files: `src/EditorQuery.pas` `ExecSQLBtnClick` / the connect path in `src/DBDM.pas` (`DMDB.CurrentDBConn` or the result dataset not (re)bound after `ConnectToDB` until something else touches it - the round-11 note suggested a `writeln` on the branch taken right after a reconnect); possibly also the first `ExecSQLBtn` click being swallowed by the connect dialog's focus return, but the memo click and typing before it did land, so a lost click is unlikely.
+Evidence: `42-prod-c.png`, `46-prod2-c.png`, `71-prod-c.png`, `72-prod2-c.png`.
+Status: open.
+
+### 52. A newly placed image gets a name that is already in use (`Image_03` twice in the model)
+
+Severity: cosmetic / data (duplicate `ImageName` in the XML; the paste renamer of #40 avoids exactly this).
+Backend: none.
+Steps: `order.xml` (its two logo images are named `Image_03` and `Image_04`), Image tool, drag on the free canvas, pick any picture.
+Observed: the new image is saved as `<IMAGE ID="1460" ImageName="Image_03" ...>` next to the existing `<IMAGE ID="39" ImageName="Image_03" ...>`; the next one became `Image_04`, also a duplicate. The name is apparently `Image_` + (image count + 1) without a uniqueness check (`NewImage` in `src/EERModel.pas`); regions (`Region_04` for the fourth region) and notes count the same way, but their example names happen not to collide. Original DBDesigner4 behaviour, most likely inherited.
+Evidence: `order.xml` IMAGE lines (`grep -o 'ImageName="[^"]*"'`: `Image_03`, `Image_04`, `Image_03`, `Image_04`).
+Status: open (low).
+
+Observation (not an entry): pasted relations keep the `OrderPos` of their originals (11 duplicate `OrderPos` values 21-31 among the 22 RELATION lines of `after-paste.xml`); the #40 fix documents that relations are left alone and `OrderPos` is only the DB Model tree sort key, so this is as designed for now.
+
