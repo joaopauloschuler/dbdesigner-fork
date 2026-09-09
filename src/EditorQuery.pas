@@ -1601,7 +1601,7 @@ begin
     if(Node.Level>0)then
     begin
       s:=Node.Text;
-      if(DMMain.ShowStringEditor('Connecion Name', 'Name:', s))then
+      if(DMMain.ShowStringEditor('Rename SQL Command', 'Name:', s))then
         if(s<>'')then
         begin
           s1:=s;
@@ -2952,9 +2952,28 @@ begin
 end;
 
 procedure TEditorQueryForm.StoredSQLPopupMenuPopup(Sender: TObject);
+var thePos: TPoint;
+  theNode: TTreeNode;
 begin
   if(StoredSQLTreeView.IsEditing)then
     raise EAbort.Create('');
+
+  //A right click does not select the node under the LCL (unlike CLX), and
+  //RefreshStoredSQLTreeView drops the selection after a store / rename, so
+  //Execute / Edit / Delete acted on nothing (model-edit #50): select the
+  //right-clicked node when it is outside the current selection
+  thePos:=StoredSQLTreeView.ScreenToClient(Mouse.CursorPos);
+  theNode:=StoredSQLTreeView.GetNodeAt(thePos.X, thePos.Y);
+  if(theNode<>nil)and(Not(theNode.Selected))then
+  begin
+    StoredSQLTreeView.ClearSelection;
+    StoredSQLTreeView.Selected:=theNode;
+    theNode.Selected:=True;
+  end;
+
+  DeleteSQLCommandMIShow(Sender);
+  ExecuteSQLCommandMI.Enabled:=DeleteSQLCommandMI.Enabled;
+  EditSQLCommandsMI.Enabled:=DeleteSQLCommandMI.Enabled;
 end;
 
 procedure TEditorQueryForm.StoredSQLSplitterMoved(Sender: TObject);

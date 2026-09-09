@@ -2468,3 +2468,50 @@ Driving notes: the earlier "tips window not shown in `import -window <main>`" is
   `21-apply-c.png` + `sqlite3` `2|2005-06-07`. Not exercised: SQLite DATETIME edit
   (same `AssignParam` path as DATE), TIME columns (none in `order`), BOOL/TINYINT
   (`AsString` of an integer field - nothing locale dependent).
+
+## Fix: model-edit #48-#50 - query mode: Ctrl+S, rename dialog title/Escape, stored-SQL popup
+
+- **#48 Ctrl+S in query mode** (`src/Main.pas` `DoApplicationEvent`): not a focus
+  problem - `LCLAppKeyDown` sees the key before the memo. Ctrl+S -> `SaveMIClick`
+  sat only in the "Keys in Design Mode" block, and the "Keys in Query Mode" block
+  bound Ctrl+S to `DMEER.SetWorkTool(wtSQLSelect)` (the DBDesigner4 binding for
+  the SQL SELECT drag tool) with `Handled:=True`. Ctrl+S is now in the "Keys in
+  both Modes" section; the tool binding is gone (the palette button remains),
+  Ctrl+Shift+S (Create SQL Script, design mode) is unchanged. Ctrl+A/C/V/X stay
+  with the memo (the query-mode Ctrl+A branch calls `SQLMemo.SelectAll` itself).
+  One `GLib-GObject-CRITICAL ... no emission of signal "key-press-event" to stop`
+  in `run.log` at the first Ctrl+S: `LCLAppKeyDown` zeroes the key after the save
+  ran a nested loop; harmless, same mechanism as any handled key that opens a dialog.
+- **#49 rename dialog** (`src/EditorQuery.pas` `StoredSQLTreeViewEditing`): title
+  `'Rename SQL Command'` instead of the `'Connecion Name'` literal copied from
+  `DBConnSelect` (the original has the same literal - no message id to reuse).
+  Escape: `TEditorStringForm.FormKeyDown` (`src/EditorString.pas`) now maps
+  `VK_ESCAPE` to `CancelBtnClick` next to the existing Return -> OK; this covers
+  every `ShowStringEditor` caller (index name, prefix, store SQL, ...).
+- **#50 stored-SQL popup** (`StoredSQLPopupMenuPopup`): same LCL difference as in
+  the Table Editor (#16) - a right click does not select the `TTreeView` node, and
+  `RefreshStoredSQLTreeView` (store / rename / delete) rebuilds the tree without a
+  selection, so Execute / Edit / Delete acted on `Selected=nil`. The popup handler
+  selects the node under `Mouse.CursorPos` (`ScreenToClient` + `GetNodeAt`;
+  `ClearSelection`, `Selected:=`, `Node.Selected:=True` because `MultiSelect`)
+  when it is outside the current selection, then runs `DeleteSQLCommandMIShow`
+  (the CLX `OnShow` was never wired under the LCL) and mirrors its state to the
+  Execute / Edit items. `DeleteSQLCommandMIClick` itself was fine (iterates
+  `Items[i].Selected`, deletes from `StoredSQLCmds`, `ModelHasChanged`).
+- **Driving notes** (`shots/fix48/`, `h.sh` = round-11 helpers): Database menu
+  (227,81) > Connect (260,112), connection dialog at (608,271): row OrderMySQL
+  (901,352), Password (1165,535), Connect (1294,505). Memo (442,689), Execute
+  (1814,675), Store SQL (1814,723); tree expanders SQL Commands (84,673),
+  `Fix48` (100,727), node `prod` at (156,745). Rename: a second single click on
+  the selected node did *not* open the dialog here (only a 62x1 override-redirect
+  hint window at the node row); **F2** does. That 1-px window sits exactly on the
+  node row: a right click at y=745 hit it and opened the *SQL memo* popup
+  (`12-popup-s.png`, 277x320, pushed up by GTK to fit the screen) - right-click 3 px
+  lower (160,748) gives the tree popup (211x110): Execute = +15 px, Delete = +67 px.
+- **Verified** (real display): store `Fix48/prod`, F2 rename -> "Rename SQL
+  Command", Escape cancels, Return -> `prod2` (`09-combo.png`); Ctrl+S from the
+  memo -> status saved, mtime changed, `StoredPosition="Fix48/prod2"` in the XML
+  (`10-status-c.png`); Ctrl+A/C/End/V doubles the memo text (`11-combo.png`);
+  popup Execute with an empty memo -> statement + 3 rows (`13-combo.png`); popup
+  Delete -> node and folder gone (`14-tree-c.png`), Ctrl+S -> no `Fix48` in the
+  XML. `dbdfix48` dropped, `DBConn.ini` and settings restored from the backups.

@@ -135,7 +135,9 @@ procedure TEditorStringForm.FormKeyDown(Sender: TObject; var Key: Word;
   Shift: TShiftState);
 begin
   if(Key=VK_RETURN)then
-    OKBtnClick(self);
+    OKBtnClick(self)
+  else if(Key=VK_ESCAPE)then
+    CancelBtnClick(self);
 end;
 
 procedure TEditorStringForm.ValueEdChange(Sender: TObject);

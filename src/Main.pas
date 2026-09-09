@@ -3281,6 +3281,16 @@ begin
     begin
       DMEER.SetWorkTool(wtPointer);
       Handled:=True;
+    end
+
+    // S: Save in both modes, also while the SQL memo has the focus
+    // (model-edit #48: the query-mode block bound Ctrl+S to the SQL SELECT
+    // work tool, so Ctrl+S never saved in query mode)
+    else if(Key=Key_S)and
+      (theShiftState=[ssCtrl])then
+    begin
+      SaveMIClick(self);
+      Handled:=True;
     end;
 
     // -------------------------------------------------------
@@ -3340,13 +3350,8 @@ begin
         Handled:=True;
       end
 
-      // S
-      else if(Key=Key_S)and
-        (theShiftState=[ssCtrl])then
-      begin
-        SaveMIClick(self);
-        Handled:=True;
-      end
+      // Ctrl+S (Save) is handled for both modes above
+      // Shift+Ctrl+S
       else if(Key=Key_S)and
         (theShiftState=[ssCtrl, ssShift])then
       begin
@@ -3487,13 +3492,8 @@ begin
         Handled:=True;
       end
 
-      // S
-      else if(Key=Key_S)and
-        (theShiftState=[ssCtrl])then
-      begin
-        DMEER.SetWorkTool(wtSQLSelect);
-        Handled:=True;
-      end
+      // S: Ctrl+S saves the model in both modes (handled above); the
+      // SQL SELECT tool is reached through its palette button
 
       // O
       else if(Key=Key_O)and
