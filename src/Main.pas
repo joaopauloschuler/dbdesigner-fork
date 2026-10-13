@@ -1215,7 +1215,7 @@ begin
       try
 {$IFDEF MSWINDOWS}
         //On Windows use native Win32 Open Dlg
-        theSaveDialog.UseNativeDialog:=True;
+//        theSaveDialog.UseNativeDialog:=True;
         theSaveDialog.OnShow:=DMMain.OnOpenSaveDlgShow;
 {$ENDIF}
 
@@ -3661,7 +3661,7 @@ begin
   try
 {$IFDEF MSWINDOWS}
     //On Windows use native Win32 Open Dlg
-    theOpenDialog.UseNativeDialog:=True;
+//    theOpenDialog.UseNativeDialog:=True;
     theOpenDialog.OnShow:=DMMain.OnOpenSaveDlgShow;
 {$ENDIF}
 
@@ -3772,7 +3772,7 @@ begin
   try
 {$IFDEF MSWINDOWS}
     //On Windows use native Win32 Open Dlg
-    theOpenDialog.UseNativeDialog:=True;
+//    theOpenDialog.UseNativeDialog:=True;
     theOpenDialog.OnShow:=DMMain.OnOpenSaveDlgShow;
 {$ENDIF}
 
@@ -3988,7 +3988,7 @@ begin
       try
 {$IFDEF MSWINDOWS}
         //On Windows use native Win32 Open Dlg
-        theSaveDialog.UseNativeDialog:=True;
+//        theSaveDialog.UseNativeDialog:=True;
         theSaveDialog.OnShow:=DMMain.OnOpenSaveDlgShow;
 {$ENDIF}
 

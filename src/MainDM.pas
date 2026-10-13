@@ -312,6 +312,7 @@ var
 // would not prevent the write.
 procedure UpdateIniFile(theIni: TMemIniFile);
 {$IFDEF MSWINDOWS}
+var
   global_winname: string;
 
 type
@@ -1845,11 +1846,11 @@ begin
   P.X:=P.X+WinPosCorrection[Ord(theForm.BorderStyle)].X;
   P.Y:=P.Y+WinPosCorrection[Ord(theForm.BorderStyle)].Y;
 
-  if(theForm.ParentWidget<>nil)then
-    QWidget_reparent(QOpenWidgetH(theForm.Handle),
-      QOpenWidgetH(theForm.ParentWidget),
-      QOpenWidget_getWFlags(QOpenWidgetH(theForm.Handle)),
-      @P, True);
+//  if(theForm.ParentWidget<>nil)then
+//    QWidget_reparent(QOpenWidgetH(theForm.Handle),
+//      QOpenWidgetH(theForm.ParentWidget),
+//      QOpenWidget_getWFlags(QOpenWidgetH(theForm.Handle)),
+//      @P, True);
 {$ENDIF}
 end;
 
@@ -1867,11 +1868,11 @@ begin
   P.X:=P.X+WinPosCorrection[Ord(theForm.BorderStyle)].X;
   P.Y:=P.Y+WinPosCorrection[Ord(theForm.BorderStyle)].Y;
 
-  if(theForm.ParentWidget<>nil)then
-    QWidget_reparent(QOpenWidgetH(TForm(theForm).Handle),
-      QOpenWidgetH(TForm(theForm).ParentWidget),
-      QOpenWidget_getWFlags(QOpenWidgetH(TForm(theForm).Handle)),
-      @P, True);
+//  if(theForm.ParentWidget<>nil)then
+//    QWidget_reparent(QOpenWidgetH(TForm(theForm).Handle),
+//      QOpenWidgetH(TForm(theForm).ParentWidget),
+//      QOpenWidget_getWFlags(QOpenWidgetH(TForm(theForm).Handle)),
+//      @P, True);
 {$ENDIF}
 end;
 
