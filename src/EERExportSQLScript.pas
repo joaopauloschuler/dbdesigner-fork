@@ -352,7 +352,7 @@ begin
 {$IFDEF MSWINDOWS}
     //On Windows use native Win32 Open Dlg
 //    theSaveDialog.UseNativeDialog:=True;
-    theSaveDialog.OnShow:=DMMain.OnOpenSaveDlgShow;
+//    theSaveDialog.OnShow:=DMMain.OnOpenSaveDlgShow;
 {$ENDIF}
 
     if(ScriptMode=0)then

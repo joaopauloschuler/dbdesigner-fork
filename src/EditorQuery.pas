@@ -767,7 +767,7 @@ begin
   {$IFDEF MSWINDOWS}
       //On Windows use native Win32 Open Dlg
   //      theOpenDialog.UseNativeDialog:=True;
-      theOpenDialog.OnShow:=DMMain.OnOpenSaveDlgShow;
+//      theOpenDialog.OnShow:=DMMain.OnOpenSaveDlgShow;
   {$ENDIF}
 
       theOpenDialog.Title:=DMMain.GetTranslatedMessage('Open a File ...', 89);
@@ -867,7 +867,7 @@ begin
   {$IFDEF MSWINDOWS}
       //On Windows use native Win32 Open Dlg
   //      theSaveDialog.UseNativeDialog:=True;
-      theSaveDialog.OnShow:=DMMain.OnOpenSaveDlgShow;
+//      theSaveDialog.OnShow:=DMMain.OnOpenSaveDlgShow;
   {$ENDIF}
 
       theSaveDialog.Title:=DMMain.GetTranslatedMessage('Save Field As ...', 91);
@@ -2198,7 +2198,7 @@ begin
 {$IFDEF MSWINDOWS}
       //On Windows use native Win32 Open Dlg
 //      theSaveDialog.UseNativeDialog:=True;
-      theSaveDialog.OnShow:=DMMain.OnOpenSaveDlgShow;
+//      theSaveDialog.OnShow:=DMMain.OnOpenSaveDlgShow;
 {$ENDIF}
 
       theSaveDialog.Title:='Export Records ...';
@@ -2555,7 +2555,7 @@ begin
 {$IFDEF MSWINDOWS}
     //On Windows use native Win32 Open Dlg
 //    theOpenDialog.UseNativeDialog:=True;
-    theOpenDialog.OnShow:=DMMain.OnOpenSaveDlgShow;
+//    theOpenDialog.OnShow:=DMMain.OnOpenSaveDlgShow;
 {$ENDIF}
 
     theOpenDialog.Title:='Open a SQL Script ...';
@@ -3182,7 +3182,7 @@ begin
 {$IFDEF MSWINDOWS}
       //On Windows use native Win32 Open Dlg
 //      theSaveDialog.UseNativeDialog:=True;
-      theSaveDialog.OnShow:=DMMain.OnOpenSaveDlgShow;
+//      theSaveDialog.OnShow:=DMMain.OnOpenSaveDlgShow;
 {$ENDIF}
 
       theSaveDialog.Title:='Print Records to PDF ...';

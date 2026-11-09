@@ -184,11 +184,11 @@ type
     procedure ReverseList(ObjList: TList);
 
     {$IFDEF MSWINDOWS}
-    function GetWindowHandle(wTitle: String): HWnd;
-    procedure SetWinPos(Handle, x, y, w, h: integer);
+//    function GetWindowHandle(wTitle: String): HWnd;
+//    procedure SetWinPos(Handle, x, y, w, h: integer);
 
     //This procedure is used as a workaround of a CLX bug
-    procedure OnOpenSaveDlgShow(Sender: TObject);
+//    procedure OnOpenSaveDlgShow(Sender: TObject);
     {$ENDIF}
 
     //Save Bitmap als PNG, JPG or BMP
@@ -312,8 +312,8 @@ var
 // would not prevent the write.
 procedure UpdateIniFile(theIni: TMemIniFile);
 {$IFDEF MSWINDOWS}
-var
-  global_winname: string;
+//var
+//  global_winname: string;
 
 type
   PHWnd = ^HWnd;
@@ -1614,52 +1614,53 @@ end;
 // get a Window handle
 // uses global global_winname
 
+// Disabled: SendMessage without a timeout blocks on a window that does not answer, and the LCL calls OnShow before the dialog window exists.
 {$IFDEF MSWINDOWS}
-function GetText(Wnd: HWND): string;
-var
-  textlength: Integer; 
-  Text: PChar; 
-begin 
-  textlength := SendMessage(Wnd, WM_GETTEXTLENGTH, 0, 0);
-  if textlength = 0 then Result := '' 
-  else
-  begin
-    GetMem(Text, textlength + 1);
-    SendMessage(Wnd, WM_GETTEXT, textlength + 1, Integer(Text));
-    Result := Text;
-    FreeMem(Text);
-  end;
-end;
+//function GetText(Wnd: HWND): string;
+//var
+//  textlength: Integer; 
+//  Text: PChar; 
+//begin 
+//  textlength := SendMessage(Wnd, WM_GETTEXTLENGTH, 0, 0);
+//  if textlength = 0 then Result := '' 
+//  else
+//  begin
+//    GetMem(Text, textlength + 1);
+//    SendMessage(Wnd, WM_GETTEXT, textlength + 1, Integer(Text));
+//    Result := Text;
+//    FreeMem(Text);
+//  end;
+//end;
 
-function EnumWindowsProc(Wnd: HWND; lParam: lParam): BOOL; stdcall;
-begin
-  Result := True;
+//function EnumWindowsProc(Wnd: HWND; lParam: lParam): BOOL; stdcall;
+//begin
+//  Result := True;
   //ShowMessage('Handle: ' + IntToStr(Wnd) + ',Text:  ' + GetText(Wnd));
 
-  if(Pos(global_winname, GetText(Wnd))>0)then
-  begin
-    PHWnd(lParam)^:=Wnd;
-    Result := false;
-  end;
-end;
+//  if(Pos(global_winname, GetText(Wnd))>0)then
+//  begin
+//    PHWnd(lParam)^:=Wnd;
+//    Result := false;
+//  end;
+//end;
 
 
-function TDMMain.GetWindowHandle(wTitle: String): HWnd;
-var theWnd: HWnd;
-begin
-  theWnd := 0;
-  Result:=0;
-  global_winname:=wTitle;
+//function TDMMain.GetWindowHandle(wTitle: String): HWnd;
+//var theWnd: HWnd;
+//begin
+//  theWnd := 0;
+//  Result:=0;
+//  global_winname:=wTitle;
 
-  EnumWindows(@EnumWindowsProc, LongInt(@theWnd));
-  if(theWnd<>0)then
-    Result:=theWnd;
-end;
+//  EnumWindows(@EnumWindowsProc, LongInt(@theWnd));
+//  if(theWnd<>0)then
+//    Result:=theWnd;
+//end;
 
-procedure TDMMain.SetWinPos(Handle, x, y, w, h: integer);
-begin
-  SetWindowPos(Handle, HWND_NOTOPMOST, x, y, w, h, SWP_SHOWWINDOW);
-end;
+//procedure TDMMain.SetWinPos(Handle, x, y, w, h: integer);
+//begin
+//  SetWindowPos(Handle, HWND_NOTOPMOST, x, y, w, h, SWP_SHOWWINDOW);
+//end;
 
 {$ENDIF}
 
@@ -1668,43 +1669,43 @@ end;
 //Because of a Delphi Bug, the Open Dlg is always
 //displayed on the left upper corner
 //To fix this, catch OnShow Event and reposition the Dlg
-procedure TDMMain.OnOpenSaveDlgShow(Sender: TObject);
-var theWinHandle: integer;
-  theTitle: string;
-  dlg_width, dlg_height: integer;
-begin
-  theTitle:='';
-  dlg_width:=0;
-  dlg_height:=0;
+//procedure TDMMain.OnOpenSaveDlgShow(Sender: TObject);
+//var theWinHandle: integer;
+//  theTitle: string;
+//  dlg_width, dlg_height: integer;
+//begin
+//  theTitle:='';
+//  dlg_width:=0;
+//  dlg_height:=0;
 
-  if(Sender.ClassNameIs('TOpenDialog'))then
-  begin
-    theTitle:=TOpenDialog(Sender).Title;
-    if(TOpenDialog(Sender).Width=600)then
-      TOpenDialog(Sender).Width:=660;
-    if(TOpenDialog(Sender).Height=360)then
-      TOpenDialog(Sender).Height:=430;
-    dlg_width:=TOpenDialog(Sender).Width;
-    dlg_height:=TOpenDialog(Sender).Height;
-  end
-  else if(Sender.ClassNameIs('TSaveDialog'))then
-  begin
-    theTitle:=TSaveDialog(Sender).Title;
-    if(TSaveDialog(Sender).Width=600)then
-      TSaveDialog(Sender).Width:=660;
-    if(TSaveDialog(Sender).Height=360)then
-      TSaveDialog(Sender).Height:=430;
-    dlg_width:=TSaveDialog(Sender).Width;
-    dlg_height:=TSaveDialog(Sender).Height;
-  end;
+//  if(Sender.ClassNameIs('TOpenDialog'))then
+//  begin
+//    theTitle:=TOpenDialog(Sender).Title;
+//    if(TOpenDialog(Sender).Width=600)then
+//      TOpenDialog(Sender).Width:=660;
+//    if(TOpenDialog(Sender).Height=360)then
+//      TOpenDialog(Sender).Height:=430;
+//    dlg_width:=TOpenDialog(Sender).Width;
+//    dlg_height:=TOpenDialog(Sender).Height;
+//  end
+//  else if(Sender.ClassNameIs('TSaveDialog'))then
+//  begin
+//    theTitle:=TSaveDialog(Sender).Title;
+//    if(TSaveDialog(Sender).Width=600)then
+//      TSaveDialog(Sender).Width:=660;
+//    if(TSaveDialog(Sender).Height=360)then
+//      TSaveDialog(Sender).Height:=430;
+//    dlg_width:=TSaveDialog(Sender).Width;
+//    dlg_height:=TSaveDialog(Sender).Height;
+//  end;
 
-  theWinHandle:=DMMain.GetWindowHandle(theTitle);
-  if(theWinHandle<>0)then
-    DMMain.SetWinPos(theWinHandle,
-      Application.MainForm.Left+Application.MainForm.Width div 2-dlg_width div 2,
-      Application.MainForm.Top+Application.MainForm.Height div 2-dlg_height div 2,
-      dlg_width, dlg_height);
-end;
+//  theWinHandle:=DMMain.GetWindowHandle(theTitle);
+//  if(theWinHandle<>0)then
+//    DMMain.SetWinPos(theWinHandle,
+//      Application.MainForm.Left+Application.MainForm.Width div 2-dlg_width div 2,
+//      Application.MainForm.Top+Application.MainForm.Height div 2-dlg_height div 2,
+//      dlg_width, dlg_height);
+//end;
 {$ENDIF}
 
 procedure TDMMain.SaveBitmap(Bmp: {$IFDEF FPC}TBitmap{$ELSE}QPixmapH{$ENDIF}; FileName: string; FileType: string; JPGQuality: integer = 75);

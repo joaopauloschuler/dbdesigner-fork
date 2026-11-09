@@ -1217,7 +1217,7 @@ begin
 {$IFDEF MSWINDOWS}
         //On Windows use native Win32 Open Dlg
 //        theSaveDialog.UseNativeDialog:=True;
-        theSaveDialog.OnShow:=DMMain.OnOpenSaveDlgShow;
+//        theSaveDialog.OnShow:=DMMain.OnOpenSaveDlgShow;
 {$ENDIF}
 
         theSaveDialog.Title:=DMMain.GetTranslatedMessage('Save Model As ...', 12);
@@ -3663,7 +3663,7 @@ begin
 {$IFDEF MSWINDOWS}
     //On Windows use native Win32 Open Dlg
 //    theOpenDialog.UseNativeDialog:=True;
-    theOpenDialog.OnShow:=DMMain.OnOpenSaveDlgShow;
+//    theOpenDialog.OnShow:=DMMain.OnOpenSaveDlgShow;
 {$ENDIF}
 
     theOpenDialog.Title:=DMMain.GetTranslatedMessage('Open a ERwin 4.1 XML Model ...', 19);
@@ -3774,7 +3774,7 @@ begin
 {$IFDEF MSWINDOWS}
     //On Windows use native Win32 Open Dlg
 //    theOpenDialog.UseNativeDialog:=True;
-    theOpenDialog.OnShow:=DMMain.OnOpenSaveDlgShow;
+//    theOpenDialog.OnShow:=DMMain.OnOpenSaveDlgShow;
 {$ENDIF}
 
     theOpenDialog.Title:=DMMain.GetTranslatedMessage('Open a Model ...', 9);
@@ -3997,7 +3997,7 @@ begin
 {$IFDEF MSWINDOWS}
         //On Windows use native Win32 Open Dlg
 //        theSaveDialog.UseNativeDialog:=True;
-        theSaveDialog.OnShow:=DMMain.OnOpenSaveDlgShow;
+//        theSaveDialog.OnShow:=DMMain.OnOpenSaveDlgShow;
 {$ENDIF}
 
         theSaveDialog.Title:=DMMain.GetTranslatedMessage('Export Model as MDB XML File ...', -1);
