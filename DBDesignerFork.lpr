@@ -91,6 +91,7 @@ uses
   LibXmlParser in 'src/LibXmlParser.pas',
 
   EERPlaceModel in 'src/EERPlaceModel.pas',
+  MSSQLRevEngUtils in 'src/MSSQLRevEngUtils.pas',
   // RegExpr, // using system regexpr
   GlobalSysFunctions in 'src/GlobalSysFunctions.pas',
   UITestRunner in 'src/UITestRunner.pas';

@@ -139,6 +139,10 @@ function GetConnectErrorMessage(DriverName: string):string;
 function TableScopeToStr(TableScope: TTableScopes): string;
 
 const
+  //Lists the user tables with catalog procedure sp_tables. The doubled single
+  //quotes keep the argument independent of the QUOTED_IDENTIFIER session setting.
+  MSSQLGetTablesSQL = 'EXEC sp_tables @table_type=N''''''TABLE''''''';
+
   QEventType_SetQueryStatusLbl = QEventType(Integer(QEventType_ClxUser) + 200);
   QEventType_CloseAllClientDatasets = QEventType(Integer(QEventType_ClxUser) + 201);
 
@@ -514,6 +518,13 @@ begin
     ErrMsg := ErrMsg + '  You may try connecting thru ODBC.'+#13#10;
     ErrMsg := ErrMsg + '  DB Designer Fork is able to connect thru ODBC to SQLite 3.*, MySQL 5.* and Firebird 2.*.'+#13#10;
     ErrMsg := ErrMsg + '  When reverse engineering, ODBC functions are recommended.'+#13#10;
+  end else
+  if DriverName = 'MSSQL' then
+  begin
+    ErrMsg := ErrMsg + 'The connection goes through ODBC:'+#13#10;
+    ErrMsg := ErrMsg + '* Leave the host name empty to use the database field as an ODBC data source name.'+#13#10;
+    ErrMsg := ErrMsg + '* With a host name, "ODBC Driver" names the installed driver.'+#13#10;
+    ErrMsg := ErrMsg + '* "OS Authentication" = True logs in with the Windows user.'+#13#10;
   end;
 
   ErrMsg := ErrMsg + #13#10;
@@ -640,13 +651,17 @@ begin
       //Meta Information is stored in the table sqlite_master
       SchemaSQLQuery.SetSchemaInfo(stNoSchema, '', '');
 
-      SchemaSQLQuery.SQL.Text:='sp_tables @table_type="''TABLE''"';
+      SchemaSQLQuery.SQL.Text:=MSSQLGetTablesSQL;
       SchemaSQLQuery.Open;
       try
         while(Not(SchemaSQLQuery.EOF))do
         begin
-          tablelist.Add(SchemaSQLQuery.FieldByName('TABLE_QUALIFIER').AsString+'.'+
-            SchemaSQLQuery.FieldByName('TABLE_NAME').AsString);
+          //dtproperties is a Microsoft-shipped table that sp_tables reports as a
+          //user table, sysdiagrams is a support table of Management Studio
+          if(CompareText(SchemaSQLQuery.FieldByName('TABLE_NAME').AsString, 'dtproperties')<>0)and
+            (CompareText(SchemaSQLQuery.FieldByName('TABLE_NAME').AsString, 'sysdiagrams')<>0)then
+            tablelist.Add(SchemaSQLQuery.FieldByName('TABLE_QUALIFIER').AsString+'.'+
+              SchemaSQLQuery.FieldByName('TABLE_NAME').AsString);
           SchemaSQLQuery.Next;
         end;
       finally

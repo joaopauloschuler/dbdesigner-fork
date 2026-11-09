@@ -90,6 +90,19 @@ type
     function MySQLEngineToTableType(const Engine: string): integer;
     function GetSQLiteDatatype(theModel: Pointer; DeclType: string; DatatypeSubst: TStringList; var DatatypeParams: string): Pointer;
     function SQLiteRefActionCode(action: string): string;
+    (** Maps a SQL Server type name as reported by sp_columns to a datatype of the model.
+        The datatype substitution list wins over the built-in table of SQL Server types.
+        @param(theModel [In] the TEERModel the datatype belongs to)
+        @param(TypeName [In] the TYPE_NAME value, e.g. "int identity")
+        @param(DatatypeSubst [In] substitution list, may be nil)
+        @param(IsIdentity [Out] True when the type carries the identity property)
+        @param(IsBinary [Out] True when the column holds raw bytes (binary, varbinary, timestamp))
+        @returns(the TEERDatatype to use, never nil) *)
+    function GetMSSQLDatatype(theModel: Pointer; TypeName: string; DatatypeSubst: TStringList; var IsIdentity, IsBinary: Boolean): Pointer;
+    (** Translates a referential action of sys.foreign_keys to the code used by TEERRel.RefDef.
+        @param(Action [In] 0 = no action, 1 = cascade, 2 = set null, 3 = set default)
+        @returns(the RefDef code) *)
+    function MSSQLRefActionCode(Action: integer): string;
   private
     { Private declarations }
   public
@@ -102,10 +115,14 @@ var
   //table of that name was already in the model (sqlite-bug-catalog #14).
   //A unit variable: DMDBEER is never instantiated, its methods run on nil.
   RevEngSkippedTables: integer = 0;
+  //True when the last MS SQL reverse engineering run could not read a foreign
+  //key's actions from sys.foreign_keys and fell back to sp_fkeys, which only
+  //tells CASCADE from everything else.
+  RevEngFKActionsFallback: Boolean = False;
 
 implementation
 
-uses MainDM, DBDM, EERDM;
+uses MainDM, DBDM, EERDM, MSSQLRevEngUtils;
 
 {$R *.lfm}
 
@@ -1625,7 +1642,7 @@ end;
 
 procedure TDMDBEER.EERMSSQLReverseEngineer(theModel: Pointer; DBConn: Pointer; theTables: TStringList; XCount: integer; BuildRelations: Boolean; BuildRelUsingPrimKey: Boolean; DatatypeSubst: TStringList; StatusLbl: TLabel = nil; CreateStdInserts: Boolean = False; limitStdIns: integer = 0; CollapseTables: Boolean = False);
 var EERModel: TEERModel;
-  i, j: integer;
+  i, j, k: integer;
   DbTables: TList;
   theTable: TEERTable;
   theColumn: TEERColumn;
@@ -1635,6 +1652,19 @@ var EERModel: TEERModel;
   DatatypeName, DatatypeParams, prevIndex: string;
   fkname: string;
   theQuoteChar: string;
+  TableOwners, FKRels, FKActions: TStringList;
+  TypeName, ColumnDefault, pkIndexName, fkKey, ProcArgs, TableName, TableOwner: string;
+  DeleteAction, UpdateAction: integer;
+  IsIdentity, IsBinary, AllFKColsArePK: Boolean;
+
+  (** Builds one named argument of a catalog procedure call as a Unicode literal.
+      @param(ParamName [In] parameter name without the leading @)
+      @param(Value [In] the text; single quotes are doubled)
+      @returns(the argument, e.g. @@table_name=N'Foo') *)
+  function ProcArg(const ParamName, Value: string): string;
+  begin
+    ProcArg:='@'+ParamName+'=N'''+StringReplace(Value, '''', '''''', [rfReplaceAll])+'''';
+  end;
 begin
   EERModel:=theModel;
 
@@ -1646,11 +1676,20 @@ begin
     Application.ProcessMessages;
   end;
 
+  DMDB.SchemaSQLQuery.ParamCheck:=False;
+
+  RevEngSkippedTables:=0;
+  RevEngFKActionsFallback:=False;
+
   //Get Tables
   DbTables:=TList.Create;
+  TableOwners:=TStringList.Create;
+  FKRels:=TStringList.Create;
+  FKActions:=TStringList.Create;
+  FKActions.CaseSensitive:=True;
   try
     DMDB.SchemaSQLQuery.SetSchemaInfo(stNoSchema, '', '');
-    DMDB.SchemaSQLQuery.SQL.Text:='sp_tables @table_type="''TABLE''"';
+    DMDB.SchemaSQLQuery.SQL.Text:=MSSQLGetTablesSQL;
     DMDB.SchemaSQLQuery.Open;
 
     theQuoteChar:=DMDB.SchemaSQLQuery.GetQuoteChar;
@@ -1660,11 +1699,20 @@ begin
     begin
       //get only selected tables
       //Check for Tables retrived with ODBC as well and use theQuoteChar
+      TableName:=DMDB.SchemaSQLQuery.FieldByName('TABLE_NAME').AsString;
+      TableOwner:=DMDB.SchemaSQLQuery.FieldByName('TABLE_OWNER').AsString;
       if(theTables.IndexOf(DMDB.SchemaSQLQuery.FieldByName('TABLE_QUALIFIER').AsString+
         '.'+DMDB.SchemaSQLQuery.FieldByName('TABLE_NAME').AsString)<>-1)or
         (theTables.IndexOf(theQuoteChar+DMDB.SchemaSQLQuery.FieldByName('TABLE_OWNER').AsString+theQuoteChar+
-        '.'+theQuoteChar+DMDB.SchemaSQLQuery.FieldByName('TABLE_NAME').AsString+theQuoteChar)<>-1)then
+        '.'+theQuoteChar+DMDB.SchemaSQLQuery.FieldByName('TABLE_NAME').AsString+theQuoteChar)<>-1)or
+        (theTables.IndexOf(TableOwner+'.'+TableName)<>-1)or
+        (theTables.IndexOf(TableName)<>-1)then
       begin
+        //Skip tables that are already in the model (sqlite-bug-catalog #14)
+        if(EERModel.GetEERObjectByName(EERTable, TableName)<>nil)then
+          inc(RevEngSkippedTables)
+        else
+        begin
         theTable:=EERModel.NewTable(EERModel.EERModel_Width-250, 0, False);
         theTable.ObjName:=DMDB.SchemaSQLQuery.FieldByName('TABLE_NAME').AsString;
         theTable.TablePrefix:=i;
@@ -1674,6 +1722,8 @@ begin
         //theTable.RefreshObj;
 
         DbTables.Add(theTable);
+        TableOwners.Add(TableOwner);
+        end;
       end;
 
       DMDB.SchemaSQLQuery.Next;
@@ -1691,12 +1741,20 @@ begin
         Application.ProcessMessages;
       end;
 
-      DMDB.SchemaSQLQuery.SQL.Text:='sp_columns '''+TEERTable(DbTables[i]).ObjName+'''';
+      ProcArgs:=ProcArg('table_name', TEERTable(DbTables[i]).ObjName)+', '+
+        ProcArg('table_owner', TableOwners[i]);
+
+      //sp_columns matches both the table name and the owner as LIKE patterns,
+      //the other procedures do not
+      DMDB.SchemaSQLQuery.SQL.Text:='EXEC sp_columns '+
+        ProcArg('table_name', MSSQLEscapeLikePattern(TEERTable(DbTables[i]).ObjName))+', '+
+        ProcArg('table_owner', MSSQLEscapeLikePattern(TableOwners[i]));
       DMDB.SchemaSQLQuery.Open;
       while(Not(DMDB.SchemaSQLQuery.EOF))do
       begin
         //Get Datatype
-        theDatatype:=EERModel.GetDataTypeByNameSubst(DMDB.SchemaSQLQuery.FieldByName('TYPE_NAME').AsString, DatatypeSubst);
+        TypeName:=DMDB.SchemaSQLQuery.FieldByName('TYPE_NAME').AsString;
+        theDatatype:=TEERDatatype(GetMSSQLDatatype(EERModel, TypeName, DatatypeSubst, IsIdentity, IsBinary));
         DatatypeName:=theDatatype.GetPhysicalTypeName;
         DatatypeParams:='';
 
@@ -1712,11 +1770,13 @@ begin
         theColumn.Width:=DMDB.SchemaSQLQuery.FieldByName('LENGTH').AsInteger;
         theColumn.Prec:=DMDB.SchemaSQLQuery.FieldByName('PRECISION').AsInteger;
         theColumn.PrimaryKey:=False;
-        theColumn.NotNull:=(DMDB.SchemaSQLQuery.FieldByName('NULLABLE').AsString='1');
-        theColumn.AutoInc:=False;
+        //NULLABLE: 1 = the column accepts NULL, 0 = NOT NULL
+        theColumn.NotNull:=(DMDB.SchemaSQLQuery.FieldByName('NULLABLE').AsString='0');
+        theColumn.AutoInc:=IsIdentity;
         theColumn.IsForeignKey:=False;
-        if(DMDB.SchemaSQLQuery.FieldByName('COLUMN_DEF').AsString<>'')then
-          theColumn.DefaultValue:=DMDB.SchemaSQLQuery.FieldByName('COLUMN_DEF').AsString;
+        ColumnDefault:=DMDB.SchemaSQLQuery.FieldByName('COLUMN_DEF').AsString;
+        if(ColumnDefault<>'')then
+          theColumn.DefaultValue:=MSSQLDefaultValue(ColumnDefault);
 
         //Check DatatypeParams
         if(DMDB.SchemaSQLQuery.FieldByName('PRECISION').AsString<>'')and
@@ -1760,7 +1820,9 @@ begin
           (CompareText(DatatypeName, 'CHAR')=0))then
         begin
           //Replace VARCHAR(>255) with BLOB
-          if(DMDB.SchemaSQLQuery.FieldByName('PRECISION').AsInteger<=255)then
+          //(applied only above SQL Server's limit of 8000: sp_columns reports the
+          //(max) types as text/ntext/image, a declared length stays as it is)
+          if(DMDB.SchemaSQLQuery.FieldByName('PRECISION').AsInteger<=8000)then
             DatatypeParams:='('+DMDB.SchemaSQLQuery.FieldByName('PRECISION').AsString+')'
           else
           begin
@@ -1768,6 +1830,12 @@ begin
             DatatypeParams:='';
           end;
         end;
+
+        //The integer and floating point sizes of sp_columns are fixed properties of
+        //the SQL Server type, not declared parameters
+        if(Pos(' '+UpperCase(DatatypeName)+' ',
+          ' TINYINT SMALLINT MEDIUMINT INTEGER BIGINT FLOAT DOUBLE DOUBLE_PRECISION REAL ')>0)then
+          DatatypeParams:='';
 
         theColumn.DatatypeParams:=DatatypeParams;
 
@@ -1781,15 +1849,24 @@ begin
             else
               theColumn.OptionSelected[j]:=False;
 
+        //binary, varbinary and timestamp are CHAR/VARCHAR columns with the BINARY option
+        if(IsBinary)then
+          for j:=0 to theDatatype.OptionCount-1 do
+            if(CompareText(theDatatype.Options[j], 'BINARY')=0)then
+              theColumn.OptionSelected[j]:=True;
+
         DMDB.SchemaSQLQuery.Next;
       end;
       DMDB.SchemaSQLQuery.Close;
 
       //PK Columns
-      DMDB.SchemaSQLQuery.SQL.Text:='sp_pkeys '''+TEERTable(DbTables[i]).ObjName+'''';
+      pkIndexName:='';
+      DMDB.SchemaSQLQuery.SQL.Text:='EXEC sp_pkeys '+ProcArgs;
       DMDB.SchemaSQLQuery.Open;
       if(Not(DMDB.SchemaSQLQuery.EOF))then
       begin
+        pkIndexName:=DMDB.SchemaSQLQuery.FieldByName('PK_NAME').AsString;
+
         theIndex:=TEERIndex.Create(TEERTable(DbTables[i]));
         theIndex.Obj_id:=DMMain.GetNextGlobalID;
         theIndex.IndexName:='PRIMARY';
@@ -1814,47 +1891,39 @@ begin
 
       //Indices
       prevIndex:='';
-      {theIndex:=nil;
-
-      //ORCL 9i:
-      //DMDB.SchemaSQLQuery.SQL.Text:='SELECT i.INDEX_NAME, i.UNIQUENESS, ic.COLUMN_NAME, ic.DESCEND, ic.COLUMN_LENGTH '+'FROM ALL_INDEXES i, DBA_IND_COLUMNS ic, DBA_CONSTRAINTS c '+'WHERE i.TABLE_OWNER='''+TEERTable(DbTables[i]).GetTablePrefix+''' AND '+' i.TABLE_NAME='''+TEERTable(DbTables[i]).ObjName+''' AND '+' ic.TABLE_OWNER=i.TABLE_OWNER AND ic.TABLE_NAME=i.TABLE_NAME AND '+' ic.INDEX_NAME=i.INDEX_NAME AND c.INDEX_OWNER(+)=i.OWNER AND '+' c.INDEX_NAME(+)=i.INDEX_NAME AND '+' (c.CONSTRAINT_TYPE is null OR c.CONSTRAINT_TYPE<>''P'') '+'ORDER BY i.TABLE_NAME, ic.INDEX_NAME, ic.COLUMN_POSITION';
-      //ORCL 8:
-      DMDB.SchemaSQLQuery.SQL.Text:='SELECT i.INDEX_NAME, '+
-        'i.UNIQUENESS, ic.COLUMN_NAME, ic.COLUMN_LENGTH '+
-        'FROM ALL_INDEXES i, DBA_IND_COLUMNS ic, DBA_CONSTRAINTS c '+
-        'WHERE i.TABLE_OWNER='''+TEERTable(DbTables[i]).GetTablePrefix+''' AND '+
-        'ic.TABLE_OWNER=i.TABLE_OWNER AND '+
-        'i.TABLE_NAME='''+TEERTable(DbTables[i]).ObjName+''' AND '+
-        'ic.TABLE_NAME=i.TABLE_NAME AND '+
-        'ic.INDEX_NAME=i.INDEX_NAME AND '+
-        'c.OWNER(+)=i.OWNER AND '+
-        'c.CONSTRAINT_NAME(+)=i.INDEX_NAME AND '+
-        '(c.CONSTRAINT_TYPE is null OR c.CONSTRAINT_TYPE<>''P'') '+
-        'ORDER BY i.TABLE_NAME, ic.INDEX_NAME, ic.COLUMN_POSITION';
+      theIndex:=nil;
+      //One row per key column of each index in key order; TYPE=0 is the row with the
+      //table statistics, the row(s) of the primary key were handled above
+      DMDB.SchemaSQLQuery.SQL.Text:='EXEC sp_statistics '+ProcArgs;
       DMDB.SchemaSQLQuery.Open;
       while(Not(DMDB.SchemaSQLQuery.EOF))do
       begin
-        if(prevIndex<>DMDB.SchemaSQLQuery.FieldByName('INDEX_NAME').AsString)then
+        if(DMDB.SchemaSQLQuery.FieldByName('TYPE').AsInteger<>0)and
+          (CompareText(DMDB.SchemaSQLQuery.FieldByName('INDEX_NAME').AsString, pkIndexName)<>0)then
         begin
-          prevIndex:=DMDB.SchemaSQLQuery.FieldByName('INDEX_NAME').AsString;
+          if(prevIndex<>DMDB.SchemaSQLQuery.FieldByName('INDEX_NAME').AsString)then
+          begin
+            prevIndex:=DMDB.SchemaSQLQuery.FieldByName('INDEX_NAME').AsString;
 
-          theIndex:=TEERIndex.Create(TEERTable(DbTables[i]));
-          theIndex.Obj_id:=DMMain.GetNextGlobalID;
-          theIndex.IndexName:=DMDB.SchemaSQLQuery.FieldByName('INDEX_NAME').AsString;
-          if(Copy(DMDB.SchemaSQLQuery.FieldByName('UNIQUENESS').AsString, 1, 1)='U')then
-            theIndex.IndexKind:=ik_UNIQUE_INDEX
-          else
-            theIndex.IndexKind:=ik_INDEX;
-          TEERTable(DbTables[i]).Indices.Add(theIndex);
-          theIndex.Pos:=TEERTable(DbTables[i]).Indices.Count-1;
+            theIndex:=TEERIndex.Create(TEERTable(DbTables[i]));
+            theIndex.Obj_id:=DMMain.GetNextGlobalID;
+            theIndex.IndexName:=DMDB.SchemaSQLQuery.FieldByName('INDEX_NAME').AsString;
+            if(DMDB.SchemaSQLQuery.FieldByName('NON_UNIQUE').AsInteger=0)then
+              theIndex.IndexKind:=ik_UNIQUE_INDEX
+            else
+              theIndex.IndexKind:=ik_INDEX;
+            TEERTable(DbTables[i]).Indices.Add(theIndex);
+            theIndex.Pos:=TEERTable(DbTables[i]).Indices.Count-1;
+          end;
+
+          theColumn:=TEERColumn(TEERTable(DbTables[i]).GetColumnByName(DMDB.SchemaSQLQuery.FieldByName('COLUMN_NAME').AsString));
+          if(theColumn<>nil)then
+            theIndex.Columns.Add(IntToStr(theColumn.Obj_id));
         end;
-
-        theIndex.Columns.Add(IntToStr(
-          TEERColumn(TEERTable(DbTables[i]).GetColumnByName(DMDB.SchemaSQLQuery.FieldByName('COLUMN_NAME').AsString)).Obj_id));
 
         DMDB.SchemaSQLQuery.Next;
       end;
-      DMDB.SchemaSQLQuery.Close;}
+      DMDB.SchemaSQLQuery.Close;
     end;
 
     //Order table positions (only the new tables, db-ui-bug-catalog #5)
@@ -1868,10 +1937,42 @@ begin
     end;
     if(BuildRelations)or(1=2)then
     begin
+      //sp_fkeys only tells CASCADE from everything else, the exact actions of
+      //each foreign key are in sys.foreign_keys
+      try
+        DMDB.SchemaSQLQuery.SQL.Text:='SELECT SCHEMA_NAME(schema_id) AS FK_OWNER, name AS FK_NAME, '+
+          'delete_referential_action AS DELETE_ACTION, update_referential_action AS UPDATE_ACTION '+
+          'FROM sys.foreign_keys';
+        DMDB.SchemaSQLQuery.Open;
+        while(Not(DMDB.SchemaSQLQuery.EOF))do
+        begin
+          FKActions.AddObject(DMDB.SchemaSQLQuery.FieldByName('FK_OWNER').AsString+#1+
+            DMDB.SchemaSQLQuery.FieldByName('FK_NAME').AsString,
+            TObject(PtrInt(DMDB.SchemaSQLQuery.FieldByName('DELETE_ACTION').AsInteger*256+
+            DMDB.SchemaSQLQuery.FieldByName('UPDATE_ACTION').AsInteger)));
+          DMDB.SchemaSQLQuery.Next;
+        end;
+        DMDB.SchemaSQLQuery.Close;
+      except
+        on Exception do
+        begin
+          if(DMDB.SchemaSQLQuery.Active)then
+            DMDB.SchemaSQLQuery.Close;
+          FKActions.Clear;
+          RevEngFKActionsFallback:=True;
+        end;
+      end;
+
       for i:=0 to DbTables.Count-1 do
       begin
         //Relations
-        DMDB.SchemaSQLQuery.SQL.Text:='sp_fkeys '''+TEERTable(DbTables[i]).ObjName+'''';
+        //sp_fkeys lists the foreign keys that reference this table as the primary
+        //key table. Its rows are sorted by the key sequence, so that the columns
+        //of different multi-column foreign keys alternate: collect them by name.
+        FKRels.Clear;
+        DMDB.SchemaSQLQuery.SQL.Text:='EXEC sp_fkeys '+
+          ProcArg('pktable_name', TEERTable(DbTables[i]).ObjName)+', '+
+          ProcArg('pktable_owner', TableOwners[i]);
         DMDB.SchemaSQLQuery.Open;
 
         while(Not(DMDB.SchemaSQLQuery.EOF))do
@@ -1879,52 +1980,70 @@ begin
           theTable:=EERModel.GetEERObjectByName(EERTable,
             DMDB.SchemaSQLQuery.FieldByName('FKTABLE_NAME').AsString);
 
-          if(theTable<>nil)then
+          //Table not in the model or self reference: skip this FK
+          if(theTable<>nil)and(theTable<>TEERTable(DbTables[i]))then
           begin
-            theRel:=TEERRel.Create(EERModel, DMDB.SchemaSQLQuery.FieldByName('FK_NAME').AsString);
+            fkname:=DMDB.SchemaSQLQuery.FieldByName('FK_NAME').AsString;
+            fkKey:=theTable.ObjName+#1+fkname;
+
+            j:=FKRels.IndexOf(fkKey);
+            if(j=-1)then
+            begin
+              //PK table = source of the relation, FK table = destination
+              theRel:=TEERRel(EERModel.NewRelation(rk_1nNonId, TEERTable(DbTables[i]), theTable, False));
+              theRel.ObjName:=fkname;
+              theRel.FKFields.Clear;
+              theRel.FKFieldsComments.Clear;
+              theRel.CreateRefDef:=True;
+              k:=FKActions.IndexOf(DMDB.SchemaSQLQuery.FieldByName('FKTABLE_OWNER').AsString+#1+fkname);
+              if(k<>-1)then
+              begin
+                DeleteAction:=PtrInt(FKActions.Objects[k]) div 256;
+                UpdateAction:=PtrInt(FKActions.Objects[k]) mod 256;
+              end
+              else
+              begin
+                DeleteAction:=MSSQLActionFromFKRule(DMDB.SchemaSQLQuery.FieldByName('DELETE_RULE').AsInteger);
+                UpdateAction:=MSSQLActionFromFKRule(DMDB.SchemaSQLQuery.FieldByName('UPDATE_RULE').AsInteger);
+                RevEngFKActionsFallback:=True;
+              end;
+              theRel.RefDef.Values['OnDelete']:=MSSQLRefActionCode(DeleteAction);
+              theRel.RefDef.Values['OnUpdate']:=MSSQLRefActionCode(UpdateAction);
+
+              FKRels.AddObject(fkKey, theRel);
+            end
+            else
+              theRel:=TEERRel(FKRels.Objects[j]);
 
             //Build PK - FK Mapping
-            theRel.FKFields.Clear;
             theRel.FKFields.Add(DMDB.SchemaSQLQuery.FieldByName('PKCOLUMN_NAME').AsString+'='+
               DMDB.SchemaSQLQuery.FieldByName('FKCOLUMN_NAME').AsString);
             theRel.FKFieldsComments.Add('');
+          end;
 
-            fkname:=DMDB.SchemaSQLQuery.FieldByName('FK_NAME').AsString;
-            DMDB.SchemaSQLQuery.Next;
-            while(Not(DMDB.SchemaSQLQuery.EOF))do
-            begin
-              if(DMDB.SchemaSQLQuery.FieldByName('FKTABLE_NAME').AsString=theTable.ObjName)and
-                (DMDB.SchemaSQLQuery.FieldByName('FK_NAME').AsString=fkname)then
-              begin
-                theRel.FKFields.Add(DMDB.SchemaSQLQuery.FieldByName('PKCOLUMN_NAME').AsString+'='+
-                  DMDB.SchemaSQLQuery.FieldByName('FKCOLUMN_NAME').AsString);
-                theRel.FKFieldsComments.Add('');
-
-                DMDB.SchemaSQLQuery.Next;
-              end
-              else
-                break;
-            end;
-
-            //Set Kind of Relation
-            theRel.RelKind:=rk_1nNonId;
-
-            //Assign Tables to the relation
-            theRel.SrcTbl:=TEERTable(DbTables[i]);
-            theRel.DestTbl:=theTable;
-
-            //Add relation to Tables
-            theRel.SrcTbl.RelStart.Add(theRel);
-            theRel.DestTbl.RelEnd.Add(theRel);
-
-            //Display at the right pos and size
-            theRel.SrcTbl.RefreshRelations;
-            theRel.DestTbl.RefreshRelations;
-          end
-          else
-            DMDB.SchemaSQLQuery.Next;
+          DMDB.SchemaSQLQuery.Next;
         end;
         DMDB.SchemaSQLQuery.Close;
+
+        //FK columns that are all part of the child's PK: identifying relation.
+        //The columns' IsForeignKey flags are set by CheckAllRelations below.
+        for j:=0 to FKRels.Count-1 do
+        begin
+          theRel:=TEERRel(FKRels.Objects[j]);
+          AllFKColsArePK:=True;
+          for k:=0 to theRel.FKFields.Count-1 do
+          begin
+            theColumn:=TEERColumn(theRel.DestTbl.GetColumnByName(theRel.FKFields.ValueFromIndex[k]));
+            if(theColumn=nil)or(Not(theColumn.PrimaryKey))then
+              AllFKColsArePK:=False;
+          end;
+          if(AllFKColsArePK)then
+            theRel.RelKind:=rk_1n;
+
+          //Display at the right pos and size
+          theRel.SrcTbl.RefreshRelations;
+          theRel.DestTbl.RefreshRelations;
+        end;
       end;
 
       EERModel.CheckAllRelations;
@@ -1939,10 +2058,57 @@ begin
     if(CreateStdInserts)then
       EERReverseEngineerCreateStdInserts(EERModel, DbTables, limitStdIns);
 
-    StatusLbl.Caption:=DMMain.GetTranslatedMessage('Finished.', 151);
+    if(StatusLbl<>nil)then
+    begin
+      StatusLbl.Caption:=DMMain.GetTranslatedMessage('Finished.', 151);
+      if(RevEngSkippedTables>0)then
+        StatusLbl.Caption:=StatusLbl.Caption+' '+IntToStr(RevEngSkippedTables)+' existing table(s) skipped.';
+      if(RevEngFKActionsFallback)then
+        StatusLbl.Caption:=StatusLbl.Caption+' Foreign key actions could not be read from sys.foreign_keys.';
+    end;
   finally
     DbTables.Free;
+    TableOwners.Free;
+    FKRels.Free;
+    FKActions.Free;
   end;
+end;
+
+function TDMDBEER.GetMSSQLDatatype(theModel: Pointer; TypeName: string; DatatypeSubst: TStringList; var IsIdentity, IsBinary: Boolean): Pointer;
+var EERModel: TEERModel;
+  BaseName, s: string;
+  theDatatype: TEERDatatype;
+begin
+  EERModel:=theModel;
+
+  MSSQLSplitTypeName(TypeName, BaseName, IsIdentity, IsBinary);
+
+  s:='';
+  if(Assigned(DatatypeSubst))then
+  begin
+    s:=DatatypeSubst.Values[Trim(TypeName)];
+    if(s='')then
+      s:=DatatypeSubst.Values[BaseName];
+  end;
+
+  if(s='')then
+    s:=MSSQLBuiltinModelType(BaseName);
+
+  theDatatype:=EERModel.GetDataTypeByName(s);
+
+  //Unknown type (user defined alias, CLR type): TEXT rather than the model's
+  //default datatype, which would silently label the column as a number
+  if(theDatatype=nil)then
+    theDatatype:=EERModel.GetDataTypeByName('TEXT');
+  if(theDatatype=nil)then
+    theDatatype:=TEERDatatype(EERModel.GetDataType(EERModel.DefaultDataType));
+
+  GetMSSQLDatatype:=theDatatype;
+end;
+
+function TDMDBEER.MSSQLRefActionCode(Action: integer): string;
+begin
+  MSSQLRefActionCode:=SQLiteRefActionCode(MSSQLRefActionName(Action));
 end;
 
 

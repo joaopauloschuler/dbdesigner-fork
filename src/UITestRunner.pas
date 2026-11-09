@@ -26,11 +26,22 @@ uses
 
 function RunUITests(AMainForm: TForm; const LogFileName: string = ''): Integer;
 function HasSelfTestParam: Boolean;
+(** Tells whether the unattended MS SQL reverse engineering run was requested.
+    @returns(True when the command line holds --reveng-mssql=<params>) *)
+function HasRevEngMSSQLParam: Boolean;
+(** Runs EERMSSQLReverseEngineer on all tables with relations from declared foreign keys,
+    saves the model to the file of --reveng-out= and reopens it with the application's loader.
+    --reveng-mssql= holds dbExpress-style parameters separated by semicolons, for example
+    Database=MyDSN;OS Authentication=True. The log goes to <out>.log. Reads the database only.
+    @param(AMainForm [In] the main form, owner of the model forms)
+    @returns(0 on success, 1 on failure, usable as process exit code) *)
+function RunRevEngMSSQL(AMainForm: TForm): Integer;
 
 implementation
 
 uses EER, EERModel, EERExportSQLScript, OptionsModel, Options, Main,
-     EditorImage, ZoomSel, PaletteDataTypesReplace, EERPageSetup;
+     EditorImage, ZoomSel, PaletteDataTypesReplace, EERPageSetup,
+     DBDM, DBEERDM, MainDM, IniFiles;
 
 type
   TTestResult = (trPass, trFail, trSkip);
@@ -1075,6 +1086,167 @@ begin
   Log('');
 end;
 
+
+// ===========================================================================
+// Unattended MS SQL reverse engineering (--reveng-mssql)
+// ===========================================================================
+(** Returns the text after a --name=value command line prefix.
+    @param(Prefix [In] the prefix including the equals sign)
+    @returns(the value, empty when the parameter is absent) *)
+function GetParamValue(const Prefix: string): string;
+var
+  I: Integer;
+begin
+  Result := '';
+  for I := 1 to ParamCount do
+    if CompareText(Copy(ParamStr(I), 1, Length(Prefix)), Prefix) = 0 then
+    begin
+      Result := Copy(ParamStr(I), Length(Prefix) + 1, MaxInt);
+      Exit;
+    end;
+end;
+
+function HasRevEngMSSQLParam: Boolean;
+var
+  I: Integer;
+begin
+  Result := False;
+  for I := 1 to ParamCount do
+    if CompareText(Copy(ParamStr(I), 1, 15), '--reveng-mssql=') = 0 then
+    begin
+      Result := True;
+      Exit;
+    end;
+end;
+
+(** Logs the object counts of a model for comparison with the database catalog.
+    @param(Caption [In] label for the log line)
+    @param(Model [In] the model to count) *)
+procedure LogModelCounts(const Caption: string; Model: TEERModel);
+var
+  I, J, Tables, Columns, PKTables, PKColumns, NotNullCols, AutoIncCols, FKColumns, Rels, Indices: Integer;
+  Table: TEERTable;
+  HasPK: Boolean;
+begin
+  Tables := 0; Columns := 0; PKTables := 0; PKColumns := 0; NotNullCols := 0;
+  AutoIncCols := 0; FKColumns := 0; Rels := 0; Indices := 0;
+  for I := 0 to Model.ComponentCount - 1 do
+    if Model.Components[I].ClassNameIs('TEERRel') then
+      Inc(Rels)
+    else if Model.Components[I].ClassNameIs('TEERTable') then
+    begin
+      Table := TEERTable(Model.Components[I]);
+      Inc(Tables);
+      HasPK := False;
+      Inc(Columns, Table.Columns.Count);
+      for J := 0 to Table.Columns.Count - 1 do
+      begin
+        if TEERColumn(Table.Columns[J]).PrimaryKey then
+        begin
+          Inc(PKColumns);
+          HasPK := True;
+        end;
+        if TEERColumn(Table.Columns[J]).NotNull then Inc(NotNullCols);
+        if TEERColumn(Table.Columns[J]).AutoInc then Inc(AutoIncCols);
+        if TEERColumn(Table.Columns[J]).IsForeignKey then Inc(FKColumns);
+      end;
+      for J := 0 to Table.Indices.Count - 1 do
+        if TEERIndex(Table.Indices[J]).IndexKind <> ik_PRIMARY then
+          Inc(Indices);
+      if HasPK then Inc(PKTables);
+    end;
+  Log(Caption + ': tables=' + IntToStr(Tables) + ' columns=' + IntToStr(Columns) +
+    ' tablesWithPK=' + IntToStr(PKTables) + ' pkColumns=' + IntToStr(PKColumns) +
+    ' notNull=' + IntToStr(NotNullCols) + ' identity=' + IntToStr(AutoIncCols) +
+    ' fkColumns=' + IntToStr(FKColumns) + ' relations=' + IntToStr(Rels) +
+    ' nonPrimaryIndices=' + IntToStr(Indices));
+end;
+
+function RunRevEngMSSQL(AMainForm: TForm): Integer;
+var
+  ModelForm, ReopenedForm: TEERForm;
+  Model: TEERModel;
+  Conn: TDBConn;
+  ConnParams, OutFile, LogFile: string;
+  Tables, Subst: TStringList;
+  Ini: TMemIniFile;
+begin
+  Result := 1;
+  ConnParams := GetParamValue('--reveng-mssql=');
+  OutFile := GetParamValue('--reveng-out=');
+  if OutFile = '' then
+    OutFile := 'reveng-mssql.xml';
+  LogFile := OutFile + '.log';
+
+  TestLog := TStringList.Create;
+  Tables := TStringList.Create;
+  Subst := TStringList.Create;
+  try
+    try
+      LogSeparator;
+      Log('MS SQL reverse engineering run');
+      LogSeparator;
+
+      if Trim(ConnParams) = '' then
+        raise Exception.Create('--reveng-mssql= needs connection parameters, for example ' +
+          'Database=MyDataSource;OS Authentication=True');
+
+      ModelForm := TEERForm.Create(AMainForm);
+      Model := ModelForm.EERModel;
+
+      // Same model settings as TEERReverseEngineeringForm.SubmitBtnClick
+      Model.CreateFKRefDefIndex := False;
+      Model.TableNameInRefs := False;
+      Model.FKPrefix := '';
+      Model.FKPostfix := '';
+
+      Ini := TMemIniFile.Create(DMMain.SettingsPath + DMMain.ProgName + '_DatabaseInfo.ini');
+      try
+        Ini.ReadSectionValues('MSSQL_' + Model.DatabaseType + '_DatatypeSubst', Subst);
+      finally
+        Ini.Free;
+      end;
+
+      Conn := DMDB.GetNewDBConn('RevEngMSSQL', False, 'MSSQL');
+      Conn.Params.Clear;
+      ExtractStrings([';'], [], PChar(ConnParams), Conn.Params);
+      DMDB.ConnectToDB(Conn);
+      Log('Connected.');
+
+      DMDB.GetDBTables(Tables);
+      Log('Tables listed: ' + IntToStr(Tables.Count));
+      if Tables.Count = 0 then
+        raise Exception.Create('The database has no tables to reverse engineer.');
+
+      DMDBEER.EERMSSQLReverseEngineer(Model, DMDB.CurrentDBConn, Tables, 10, True, False,
+        Subst, nil, False, 0, True);
+      DMDB.DisconnectFromDB;
+      Log('Tables skipped as already present: ' + IntToStr(RevEngSkippedTables));
+      if RevEngFKActionsFallback then
+        Log('[WARN] Foreign key actions could not be read from sys.foreign_keys.');
+
+      Model.SaveToFile(OutFile);
+      Log('[PASS] Model saved.');
+      LogModelCounts('saved', Model);
+
+      ReopenedForm := TEERForm.Create(AMainForm);
+      ReopenedForm.EERModel.LoadFromFile(OutFile, True, False, True, False);
+      Log('[PASS] Model reopened.');
+      LogModelCounts('reopened', ReopenedForm.EERModel);
+
+      Result := 0;
+    except
+      on E: Exception do
+        Log('[FAIL] ' + E.ClassName + ': ' + E.Message);
+    end;
+  finally
+    FlushLog(LogFile);
+    Tables.Free;
+    Subst.Free;
+    TestLog.Free;
+    TestLog := nil;
+  end;
+end;
 
 // ===========================================================================
 // Main entry point

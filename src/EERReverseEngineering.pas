@@ -375,6 +375,11 @@ begin
       ' table(s) already exist in the model and were skipped.',
       mtInformation, [mbOK], 0);
 
+  if(RevEngTypeCBox.ItemIndex=4)and(RevEngFKActionsFallback)then
+    MessageDlg('Foreign key actions could not be read from sys.foreign_keys. '+
+      'Actions other than CASCADE are shown as NO ACTION.',
+      mtWarning, [mbOK], 0);
+
   EERModel.ModelHasChanged;
 
   DMEER.RefreshPalettes;

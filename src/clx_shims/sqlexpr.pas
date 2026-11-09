@@ -2,7 +2,8 @@
 unit SqlExpr;
 {$mode delphi}
 interface
-uses Classes, DB, SQLDB, SysUtils, DBXpress, SQLite3Conn, SQLiteLib, MySQL80Conn, MySQLLib
+uses Classes, DB, SQLDB, SysUtils, DBXpress, SQLite3Conn, SQLiteLib, MySQL80Conn, MySQLLib,
+  odbcconn
   {$IFDEF LINUX}, ctypes, mysql80dyn{$ENDIF};
 
 {$IFDEF LINUX}
@@ -81,6 +82,71 @@ type
 
 implementation
 
+const
+  ODBC_CONNECTOR_NAME = 'ODBC-DBExpress';
+  DEFAULT_ODBC_DRIVER = 'SQL Server';
+
+type
+  { The stock ODBC connector puts every dbExpress-style connection parameter
+    (HostName, User_Name, BlobSize, ...) straight into the ODBC connection string.
+    This one translates them, for MS SQL Server and for plain ODBC connections. }
+  TDBXODBCConnectionDef = class(TODBCConnectionDef)
+    (** Names this connector for TSQLConnector.ConnectorType.
+        @returns(the connector name) *)
+    class function TypeName: string; override;
+    (** Describes this connector.
+        @returns(a one-line description) *)
+    class function Description: string; override;
+    (** Fills the ODBC connection from dbExpress-style params. An empty HostName means
+        that Database is the name of an ODBC data source; otherwise a connection without a
+        data source is made through the driver named by the ODBC Driver parameter.
+        @param(Params [In] the dbExpress-style parameters of the shim connection)
+        @param(AConnection [In] the TODBCConnection proxy, about to be connected) *)
+    procedure ApplyParams(Params: TStrings; AConnection: SQLDB.TSQLConnection); override;
+  end;
+
+class function TDBXODBCConnectionDef.TypeName: string;
+begin
+  Result := ODBC_CONNECTOR_NAME;
+end;
+
+class function TDBXODBCConnectionDef.Description: string;
+begin
+  Result := 'ODBC connection configured with dbExpress-style parameters';
+end;
+
+procedure TDBXODBCConnectionDef.ApplyParams(Params: TStrings; AConnection: SQLDB.TSQLConnection);
+var
+  Conn: TODBCConnection;
+  Host, Database, Driver: string;
+begin
+  Conn := AConnection as TODBCConnection;
+  Host := Trim(Params.Values['HostName']);
+  Database := Params.Values['Database'];
+  Driver := Trim(Params.Values['ODBC Driver']);
+
+  Conn.Params.Clear;
+  if Host <> '' then
+  begin
+    if Driver = '' then
+      Driver := DEFAULT_ODBC_DRIVER;
+    Conn.DatabaseName := '';
+    Conn.Driver := Driver;
+    Conn.Params.Add('Server=' + Host);
+    if Database <> '' then
+      Conn.Params.Add('Database=' + Database);
+  end
+  else
+    Conn.DatabaseName := Database;
+
+  if SameText(Trim(Params.Values['OS Authentication']), 'True') then
+  begin
+    Conn.UserName := '';
+    Conn.Password := '';
+    Conn.Params.Add('Trusted_Connection=Yes');
+  end;
+end;
+
 { TSQLConnection }
 
 constructor TSQLConnection.Create(AOwner: TComponent);
@@ -113,13 +179,13 @@ begin
   else if Pos('oracle', LowerDriver) > 0 then
     NewType := 'Oracle'
   else if (Pos('mssql', LowerDriver) > 0) or (Pos('microsoft', LowerDriver) > 0) then
-    NewType := 'MSSQLServer'
+    NewType := ODBC_CONNECTOR_NAME
   else if Pos('interbase', LowerDriver) > 0 then
     NewType := 'Firebird'
   else if Pos('firebird', LowerDriver) > 0 then
     NewType := 'Firebird'
   else if (Pos('odbc', LowerDriver) > 0) or (Pos('openodbc', LowerDriver) > 0) then
-    NewType := 'ODBC'
+    NewType := ODBC_CONNECTOR_NAME
   else if Pos('postgre', LowerDriver) > 0 then
     NewType := 'PostgreSQL';
   if NewType <> '' then
@@ -449,6 +515,7 @@ begin
 end;
 
 initialization
+  RegisterConnection(TDBXODBCConnectionDef);
   RegisterClass(TSQLConnection);
   RegisterClass(TSQLDataSet);
   RegisterClass(TSQLMonitor);

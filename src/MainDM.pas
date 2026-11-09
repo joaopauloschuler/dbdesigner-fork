@@ -2188,7 +2188,8 @@ begin
   Result:=False;
   for i:=1 to ParamCount do
     if (CompareText(ParamStr(i), '--selftest')=0) or
-       (CompareText(ParamStr(i), '-selftest')=0) then
+       (CompareText(ParamStr(i), '-selftest')=0) or
+       (CompareText(Copy(ParamStr(i), 1, 15), '--reveng-mssql=')=0) then
       Exit(True);
 end;
 
