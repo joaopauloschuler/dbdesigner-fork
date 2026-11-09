@@ -169,7 +169,7 @@ Runtime testing is done in rounds: one diagnosis pass on a real display writes a
 | [`docs/sqlite-bug-catalog.md`](docs/sqlite-bug-catalog.md) | SQLite export → load → reverse engineer → compare round trip | 15 fixed (sync is a known limitation) |
 | [`docs/mysql-bug-catalog.md`](docs/mysql-bug-catalog.md) | Same round trip against MySQL 8, plus synchronisation | 13 fixed |
 | [`docs/db-ui-bug-catalog.md`](docs/db-ui-bug-catalog.md) | Connection selector/editor, reverse engineering, sync, export dialogs, plugins end to end | 19 fixed |
-| [`docs/mssql-bug-catalog.md`](docs/mssql-bug-catalog.md) | MS SQL Server reverse engineering over ODBC against a SQL Server 2008 R2 database | 13 fixed |
+| [`docs/mssql-bug-catalog.md`](docs/mssql-bug-catalog.md) | MS SQL Server reverse engineering over ODBC against a SQL Server 2008 R2 database | 14 fixed |
 | [`docs/model-edit-bug-catalog.md`](docs/model-edit-bug-catalog.md) | Editing tables, fields, indices and relations; SQL export, MySQL/SQLite round trip and sync of a tool-created model; paste, undo/redo, Place Model; regions, notes, images and image export; Query mode editing on MySQL and SQLite (rounds 5-11 plus two regression passes) | 52 (40 fixed, 1 worked around, 1 hardened, 4 not bugs, 1 verified OK for the record, 1 not reproduced, 1 warning and 3 unconfirmed left open) |
 
 [`docs/notes-to-myself.md`](docs/notes-to-myself.md) holds the working notes behind the fixes: root causes, LCL/GTK2 gotchas and the test-driving tricks.

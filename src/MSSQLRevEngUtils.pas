@@ -43,6 +43,11 @@ uses
     @param(IsBinary [Out] True when the column holds raw bytes (binary, varbinary, timestamp)) *)
 procedure MSSQLSplitTypeName(const TypeName: string; out BaseName: string; out IsIdentity, IsBinary: Boolean);
 
+(** Escapes a name for a catalog procedure parameter that is matched as a LIKE pattern.
+    @param(Name [In] the literal name)
+    @returns(the name with [, % and _ wrapped in brackets) *)
+function MSSQLEscapeLikePattern(const Name: string): string;
+
 (** Returns the model datatype for a SQL Server base type without a model type of its name.
     @param(BaseName [In] the base type name from MSSQLSplitTypeName)
     @returns(the model datatype name, or BaseName when the type maps by its own name) *)
@@ -84,6 +89,16 @@ begin
 
   IsBinary:=(CompareText(BaseName, 'binary')=0)or(CompareText(BaseName, 'varbinary')=0)or
     (CompareText(BaseName, 'timestamp')=0)or(CompareText(BaseName, 'rowversion')=0);
+end;
+
+function MSSQLEscapeLikePattern(const Name: string): string;
+var s: string;
+begin
+  //The bracket goes first, the other two replacements add brackets
+  s:=StringReplace(Name, '[', '[[]', [rfReplaceAll]);
+  s:=StringReplace(s, '%', '[%]', [rfReplaceAll]);
+  s:=StringReplace(s, '_', '[_]', [rfReplaceAll]);
+  MSSQLEscapeLikePattern:=s;
 end;
 
 function MSSQLBuiltinModelType(const BaseName: string): string;

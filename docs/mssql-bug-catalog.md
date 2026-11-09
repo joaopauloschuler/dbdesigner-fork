@@ -66,9 +66,9 @@ Repeatable part: `DBDesignerFork --reveng-mssql=<params> --reveng-out=<file.xml>
 - `TEERModel.CheckAllRelations` deletes columns flagged `IsForeignKey` that it did not confirm itself, so the routine does not set the flag; `CheckAllRelations` sets it for columns that reference a primary key column.
 
 ### 10. Tables in the model were not skipped and table selection was fragile
-- Status: **FIXED** - tables whose name is already in the model are skipped and counted in `RevEngSkippedTables`. Selection now also accepts `owner.table` and plain table names, which is what the general ODBC listing would produce. Catalog procedures receive the table owner, so that the same table name in another schema is not mixed in.
+- Status: **FIXED** - tables whose name is already in the model are skipped and counted in `RevEngSkippedTables`. Selection now also accepts `owner.table` and plain table names, which is what the general ODBC listing would produce. Catalog procedures receive the table owner, as an exact match (escaped for `sp_columns`, see #14), so that the same table name in another schema is not mixed in.
 - Severity: **wrong result**
-- Not exercised against the server: reverse engineering into a model that already contains tables, and a second schema.
+- Not exercised against the server: reverse engineering into a model that already contains tables, and a second schema. The database has one schema, so a merge across schemas could not be reproduced.
 
 ### 11. Status label used without a nil check at the end of the routine
 - Status: **FIXED** - the unattended run passes no label.
@@ -82,6 +82,11 @@ Repeatable part: `DBDesignerFork --reveng-mssql=<params> --reveng-out=<file.xml>
 ### 13. `numeric` and `decimal` identity columns became TEXT
 - Status: **FIXED** - `sp_datatype_info` lists `numeric() identity` and `decimal() identity`. `MSSQLSplitTypeName` removes the identity suffix and the trailing `()`; precision and scale still come from `sp_columns`.
 - Severity: **wrong result**
+
+### 14. `sp_columns` matches the table name and the owner as patterns
+- Status: **FIXED** - `MSSQLEscapeLikePattern` wraps `[`, `%` and `_` of the table name and of the owner in brackets for the `sp_columns` call only. `sp_pkeys`, `sp_fkeys` and `sp_statistics` take the plain names; `sp_pkeys` with an owner containing `_` returned no rows, so it does not match patterns there.
+- Severity: **wrong result** (a `_` in a table or owner name matches any character, so another table's columns could be returned)
+- Tested read-only: a name ending in `_` for a table whose real name has another last character returned that table's columns unescaped and no rows with `[_]`. Bracket escaping returned all columns of real tables with `_` in their name. Backslash escaping returned no rows. `[` and `%` in table names were not exercised, the database has no table names with them. For the owner, an argument of the owner name with its last character replaced by `_` matched unescaped and returned no rows with `[_]`; the real owner has none of the three characters, so its escaped form is unchanged.
 
 ## Examined, not defects
 

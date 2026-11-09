@@ -1744,7 +1744,11 @@ begin
       ProcArgs:=ProcArg('table_name', TEERTable(DbTables[i]).ObjName)+', '+
         ProcArg('table_owner', TableOwners[i]);
 
-      DMDB.SchemaSQLQuery.SQL.Text:='EXEC sp_columns '+ProcArgs;
+      //sp_columns matches both the table name and the owner as LIKE patterns,
+      //the other procedures do not
+      DMDB.SchemaSQLQuery.SQL.Text:='EXEC sp_columns '+
+        ProcArg('table_name', MSSQLEscapeLikePattern(TEERTable(DbTables[i]).ObjName))+', '+
+        ProcArg('table_owner', MSSQLEscapeLikePattern(TableOwners[i]));
       DMDB.SchemaSQLQuery.Open;
       while(Not(DMDB.SchemaSQLQuery.EOF))do
       begin
