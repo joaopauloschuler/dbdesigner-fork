@@ -657,7 +657,8 @@ begin
     WindowState := wsNormal;
 
   // --selftest: schedule automatic UI test after full initialization
-  if HasSelfTestParam then
+  // (--reveng-mssql is scheduled the same way)
+  if HasSelfTestParam or HasRevEngMSSQLParam then
   begin
     SelfTestTmr := TTimer.Create(Self);
     SelfTestTmr.Interval := 250; // polls until ShowPalettesTmrTimer is done, then defers to OnIdle
@@ -3933,6 +3934,13 @@ var
   FailCount: Integer;
   I: Integer;
 begin
+  if HasRevEngMSSQLParam then
+  begin
+    ExitCode := RunRevEngMSSQL(Self);
+    Application.Terminate;
+    Exit;
+  end;
+
   WriteLn('=== DBDesigner Fork Self-Test Mode ===');
   WriteLn('Running UI tests...');
   WriteLn('');

@@ -18,8 +18,8 @@ DBDesigner Fork provides a full-featured graphical environment for designing and
 | **Original** | DBDesigner 4 (v4.0.2.92) by fabFORCE |
 | **Fork versions** | Fork 1.0 (Sep 2006) → Fork 1.5 (Oct 2010) → Lazarus port (2026) |
 | **Original platforms** | Windows (Delphi 7) and Linux (Kylix 3) |
-| **Current platform** | Linux (Lazarus/FPC, GTK2) — Windows and macOS possible but untested |
-| **Databases** | MySQL 8 and SQLite 3 (others not ported yet) |
+| **Current platform** | Linux (Lazarus/FPC, GTK2); Windows x86_64 builds and runs, see [Project Status](#project-status) for what has been run there; macOS untested |
+| **Databases** | MySQL 8 and SQLite 3; reverse engineering from MS SQL Server over ODBC (others not ported yet) |
 | **Codebase size** | ~150,000 lines of Pascal source code (main app + plugins) |
 
 ## Features
@@ -65,6 +65,8 @@ All binaries are output to the `bin/` directory (they are not tracked in git). N
 | SimpleWebFront Plugin | 40,096 | `bin/DBDplugin_SimpleWebFront` |
 | **Total** | **~150,000** | |
 
+The line counts were measured on Linux. On Windows the main application and the Demo and DataImporter plugins compile; HTMLReport and SimpleWebFront do not (`UseNativeDialog` in HTMLReport's `Main.pas`, a `QWord` to `TBitmap` type error in SimpleWebFront's `Weboutput.pas`).
+
 **Runtime requirements (Linux):**
 - GTK2 libraries
 - `libsqlite3.so.0` for SQLite connections
@@ -91,7 +93,9 @@ An automated **UI Test Runner** ([`src/UITestRunner.pas`](src/UITestRunner.pas))
 xvfb-run -a ./bin/DBDesignerFork --selftest
 ```
 
-**Current baseline: 93 PASS, 0 FAIL, 78 SKIP.** The skips are the deliberately unsafe items (exit, save, open, print, database operations, browser links), separators, submenu parents and items that are disabled without a model. The self-test never opens a database connection and leaves the user's settings and `DBConn.ini` untouched.
+**A correct run reports 0 FAIL.** The PASS and SKIP counts depend on how many plugin executables are in `bin/`: on Windows 94 PASS, 72 SKIP with none, 93 PASS, 74 SKIP with one and 93 PASS, 75 SKIP with two; a Linux build gives 93 PASS, 78 SKIP. The skips are the deliberately unsafe items (exit, save, open, print, database operations, browser links), separators, submenu parents and items that are disabled without a model. The self-test never opens a database connection and leaves the user's settings and `DBConn.ini` untouched.
+
+On Windows, where `/tmp` usually does not exist, the log is written as `UITestResults.log` in the working directory and the SQL export and model save phases log "Invalid filename" without counting as failures.
 
 The self-test covers:
 - ✅ Application launch and UI rendering
@@ -117,8 +121,29 @@ Areas still requiring manual or integration testing:
 - PDF export
 - Print / page setup output
 - ERwin import, Open/Save model in database
-- Oracle, MS SQL Server and ODBC (connectors not linked yet)
-- Windows and macOS builds
+- Oracle (connector not linked yet)
+- The general ODBC reverse-engineering method and an ODBC-type connection
+- The connection and Reverse Engineering dialogs with MS SQL Server, and SQL Server logins with `User_Name` and `Password`
+- Run-and-click testing on Windows, and macOS builds
+
+### MS SQL Server over ODBC
+
+MS SQL Server connections use FPC's ODBC connector, so a SQL Server ODBC driver must be installed. A connection of the type `MSSQL` has these parameters:
+
+| Parameter | Meaning |
+|---|---|
+| `HostName` | Leave empty to use `Database` as an ODBC data source name; otherwise the server, and a connection is made without a data source |
+| `Database` | The ODBC data source name, or the database name when a host name is given |
+| `ODBC Driver` | The installed ODBC driver used when a host name is given (default `SQL Server`) |
+| `OS Authentication` | `True` logs in with the Windows user (`Trusted_Connection=Yes`). SQL Server logins with `User_Name` and `Password` have not been run |
+
+The reverse engineering routine for MS SQL Server reads tables, columns, datatypes, NOT NULL, identity, defaults, primary and other indexes and declared foreign keys, including their actions. It only reads the catalog and does not change the database. It maps SQL Server types to the model's MySQL-style datatypes; see [`docs/mssql-bug-catalog.md`](docs/mssql-bug-catalog.md) for the mapping and what was run. What has been run is the unattended form below, against a SQL Server 2008 R2 database on Windows; the connection and Reverse Engineering dialogs have not been exercised with MS SQL Server. Database Synchronisation is MySQL-oriented and has not been run against SQL Server.
+
+The routine runs without a person at the keyboard. It connects with the given parameters, saves the model and reopens it with the application's loader, writing object counts to `<file.xml>.log`:
+
+```bash
+./bin/DBDesignerFork "--reveng-mssql=Database=MyDataSource;OS Authentication=True" "--reveng-out=file.xml"
+```
 
 ### Standalone tests and round-trip scripts
 
@@ -126,6 +151,7 @@ Areas still requiring manual or integration testing:
 |---|---|
 | `tests/TestModelLoad.pas` | XML model parsing without the LCL |
 | `tests/TestSQLite.pas` | Direct SQLDB SQLite3 connectivity |
+| `tests/TestMSSQLRevEngUtils.pas` | MS SQL Server reverse engineering conversions with literal inputs (type names, defaults, referential actions); no connection needed |
 | `tests/TestSQLExprShim.pas` | The `sqlexpr` shim against SQLite: transactions, DML commit, idle lock release |
 | `tests/TestMySQLShim.pas` | The shim's MySQL schema queries against a live MySQL 8 server |
 | `tests/sqlite-roundtrip.sh` | Loads an exported SQL script into sqlite3 and prints a schema summary |
@@ -143,6 +169,7 @@ Runtime testing is done in rounds: one diagnosis pass on a real display writes a
 | [`docs/sqlite-bug-catalog.md`](docs/sqlite-bug-catalog.md) | SQLite export → load → reverse engineer → compare round trip | 15 fixed (sync is a known limitation) |
 | [`docs/mysql-bug-catalog.md`](docs/mysql-bug-catalog.md) | Same round trip against MySQL 8, plus synchronisation | 13 fixed |
 | [`docs/db-ui-bug-catalog.md`](docs/db-ui-bug-catalog.md) | Connection selector/editor, reverse engineering, sync, export dialogs, plugins end to end | 19 fixed |
+| [`docs/mssql-bug-catalog.md`](docs/mssql-bug-catalog.md) | MS SQL Server reverse engineering over ODBC against a SQL Server 2008 R2 database | 13 fixed |
 | [`docs/model-edit-bug-catalog.md`](docs/model-edit-bug-catalog.md) | Editing tables, fields, indices and relations; SQL export, MySQL/SQLite round trip and sync of a tool-created model; paste, undo/redo, Place Model; regions, notes, images and image export; Query mode editing on MySQL and SQLite (rounds 5-11 plus two regression passes) | 52 (40 fixed, 1 worked around, 1 hardened, 4 not bugs, 1 verified OK for the record, 1 not reproduced, 1 warning and 3 unconfirmed left open) |
 
 [`docs/notes-to-myself.md`](docs/notes-to-myself.md) holds the working notes behind the fixes: root causes, LCL/GTK2 gotchas and the test-driving tricks.
@@ -194,14 +221,14 @@ The port uses a **compatibility shim layer** ([`src/clx_shims/`](src/clx_shims/)
 
 - **CLX → LCL shims**: units like `QForms.pas`, `QControls.pas` that re-export LCL equivalents
 - **Qt shim** (`qt.pas`): maps Qt widget types and key constants to LCL equivalents
-- **Database shims** (`sqlexpr.pas`, `dbclient.pas`, `provider.pas`): wrap FPC's SQLDB (SQLite3 and MySQL 8 connectors) behind Delphi DBExpress-compatible interfaces; `sqlitelib.pas` and `mysqllib.pas` load the client libraries by their versioned names
+- **Database shims** (`sqlexpr.pas`, `dbclient.pas`, `provider.pas`): wrap FPC's SQLDB (SQLite3, MySQL 8 and ODBC connectors) behind Delphi DBExpress-compatible interfaces; `sqlitelib.pas` and `mysqllib.pas` load the client libraries by their versioned names
 - **XML shims** (`xmlintf.pas`, `xmldoc.pas`, `xmldom.pas`): wrap `laz2_DOM` behind Delphi XML DOM interfaces
 
 The bundled Delphi-era SynEdit was replaced by the SynEdit package that ships with Lazarus.
 
 ### Progress
 
-All five projects (main application and four plugins) compile and run. Of the porting task list, 228 of 244 items are checked; the remaining ones are the untested areas listed under [Project Status](#project-status-september-2026), the Windows/macOS builds and the final clean-up (removing the shim layer in favour of direct LCL units). See [`docs/port-to-lazarus.md`](docs/port-to-lazarus.md) for the porting guide and [`docs/port-to-lazarus-task-list.md`](docs/port-to-lazarus-task-list.md) for the checklist.
+On Linux all five projects (main application and four plugins) compile and run; for Windows see [Project Status](#project-status). Of the porting task list, 228 of 244 items are checked; the remaining ones are the untested areas listed under [Project Status](#project-status-september-2026), the Windows/macOS builds and the final clean-up (removing the shim layer in favour of direct LCL units). See [`docs/port-to-lazarus.md`](docs/port-to-lazarus.md) for the porting guide and [`docs/port-to-lazarus-task-list.md`](docs/port-to-lazarus-task-list.md) for the checklist.
 
 ### AI-Assisted Porting
 
@@ -229,7 +256,7 @@ The port builds, launches and has been through eleven rounds of run-and-click te
 
 **Known limitations:**
 
-- Only the **MySQL** and **SQLite** connectors are linked. Oracle, MS SQL Server and ODBC still appear in the driver list but cannot connect.
+- The **MySQL**, **SQLite** and **ODBC** connectors are linked; **MS SQL Server** goes through ODBC (reverse engineering only so far). Oracle still appears in the driver list but cannot connect.
 - **Synchronisation against SQLite** is not implemented (SQLite has no ALTER COLUMN); it now stops cleanly with a message on top of a closable dialog. Reverse engineering and export work.
 - Dragging a datatype from the palette onto the Table Editor grid does nothing while the editor is modal (it would need a non-modal Table Editor); use the "Set Datatype" popup submenu of the column grid instead.
 - SQL export writes no `ENGINE` clause for MyISAM tables (MySQL's default engine applies).
@@ -239,7 +266,7 @@ The port builds, launches and has been through eleven rounds of run-and-click te
 - Unconfirmed: typing over an already filled DataType cell after a single click may not replace the value (model-edit #34); an empty one-column result right after a syntax-error dialog (#47) and a first Execute after connecting that does nothing (#51) were each seen once and could not be reproduced under probes.
 - Self relations are not guessed by reverse engineering.
 - Not yet tested: PDF export, print and page preview output, ERwin import, Open/Save model in database, the Column Parameters dialog, undo granularity inside the Table and Relation editors, the query grid's Export Records / Print Records to PDF and BLOB viewer.
-- Runtime is Linux only so far. Windows and macOS have not been built or run.
+- Run-and-click testing has been done on Linux only. On Windows x86_64 the main application builds and has run its self-test and the unattended MS SQL Server reverse engineering. macOS has not been built or run.
 - One GLib-CRITICAL warning on stderr remains (Return in the Table Editor grid followed by Return in the name editor; harmless).
 
 Every finding, fix and verification is recorded in the bug catalogs under `docs/` (see [Testing](#testing)).
