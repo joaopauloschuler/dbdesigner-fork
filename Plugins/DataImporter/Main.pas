@@ -37,6 +37,9 @@ begin
 
   DMDB:=TDMDB.Create(self);
 
+  //Initialise the form like every other form of the program
+  DMMain.InitForm(self);
+
   //Example Params
   //-c paketierung -uroot -proot -s MorawaDgWDaten
 

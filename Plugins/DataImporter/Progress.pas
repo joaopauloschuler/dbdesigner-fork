@@ -37,10 +37,15 @@ var
 
 implementation
 
+uses MainDM;
+
 {$R *.lfm}
 
 procedure TProgressForm.FormCreate(Sender: TObject);
 begin
+  //Application font, translation and group box layout
+  DMMain.InitForm(self);
+
   FileLbl.Caption:='';
 end;
 

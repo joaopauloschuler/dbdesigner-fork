@@ -210,6 +210,11 @@ end;
 
 procedure TDBImportDataForm.FormCreate(Sender: TObject);
 begin
+  //Application font, translation and group box layout. This has to come
+  //first: the controls inside the group boxes are moved to their design
+  //position before the form gets its handle
+  DMMain.InitForm(self);
+
   Version:='1.0.0.24';
 
   SourceDir:='';
