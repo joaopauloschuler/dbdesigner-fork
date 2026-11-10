@@ -174,14 +174,18 @@ object PaletteNavForm: TPaletteNavForm
           Left = 0
           Top = 26
           Width = 41
+          Height = 13
           Alignment = taRightJustify
+          AutoSize = False
           Caption = 'Left:'
         end
         object Label2: TLabel
           Left = 7
           Top = 48
           Width = 34
+          Height = 13
           Alignment = taRightJustify
+          AutoSize = False
           Caption = 'Top:'
         end
         object LeftEdit: TEdit
@@ -218,14 +222,18 @@ object PaletteNavForm: TPaletteNavForm
           Left = 0
           Top = 2
           Width = 41
+          Height = 13
           Alignment = taRightJustify
+          AutoSize = False
           Caption = 'Name:'
         end
         object Label4: TLabel
           Left = 100
           Top = 26
           Width = 49
+          Height = 13
           Alignment = taRightJustify
+          AutoSize = False
           Caption = 'Width:'
         end
         object WidthEd: TEdit
@@ -242,7 +250,9 @@ object PaletteNavForm: TPaletteNavForm
           Left = 93
           Top = 48
           Width = 56
+          Height = 13
           Alignment = taRightJustify
+          AutoSize = False
           Caption = 'Height:'
         end
         object HeightEd: TEdit
@@ -259,7 +269,9 @@ object PaletteNavForm: TPaletteNavForm
           Left = 0
           Top = 88
           Width = 41
+          Height = 13
           Alignment = taRightJustify
+          AutoSize = False
           Caption = 'Linked:'
         end
         object LinkEd: TEdit

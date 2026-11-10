@@ -48,7 +48,9 @@ object OptionsForm: TOptionsForm
           Left = 0
           Top = 26
           Width = 123
+          Height = 13
           Alignment = taRightJustify
+          AutoSize = False
           Caption = 'Splash Screen Delay:'
         end
         object SplashScreenDelayEd: TEdit
@@ -286,7 +288,9 @@ object OptionsForm: TOptionsForm
         Left = 0
         Top = 12
         Width = 83
+        Height = 13
         Alignment = taRightJustify
+        AutoSize = False
         Caption = 'Application Font:'
       end
       object FontEdit: TEdit
@@ -365,7 +369,9 @@ object OptionsForm: TOptionsForm
           Left = 47
           Top = 28
           Width = 49
+          Height = 13
           Alignment = taRightJustify
+          AutoSize = False
           Caption = 'Style:'
         end
         object TblHeaderLU: TComboBox
@@ -387,7 +393,9 @@ object OptionsForm: TOptionsForm
         Left = 0
         Top = 212
         Width = 115
+        Height = 13
         Alignment = taRightJustify
+        AutoSize = False
         Caption = 'Default Database Type:'
         Visible = False
       end
@@ -415,7 +423,9 @@ object OptionsForm: TOptionsForm
         Left = 0
         Top = 10
         Width = 115
+        Height = 13
         Alignment = taRightJustify
+        AutoSize = False
         Caption = 'Reserved Words:'
       end
       object GroupBox6: TGroupBox
@@ -636,7 +646,9 @@ object OptionsForm: TOptionsForm
           Left = 0
           Top = 24
           Width = 67
+          Height = 13
           Alignment = taRightJustify
+          AutoSize = False
           Caption = 'Grid width:'
         end
         object GridXEd: TEdit
@@ -650,7 +662,9 @@ object OptionsForm: TOptionsForm
           Left = 0
           Top = 52
           Width = 67
+          Height = 13
           Alignment = taRightJustify
+          AutoSize = False
           Caption = 'Grid height:'
         end
         object GridYEd: TEdit

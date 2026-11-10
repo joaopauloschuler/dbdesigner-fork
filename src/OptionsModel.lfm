@@ -69,7 +69,9 @@ object OptionsModelForm: TOptionsModelForm
         Left = 0
         Top = 8
         Width = 83
+        Height = 13
         Alignment = taRightJustify
+        AutoSize = False
         Caption = 'Model Name:'
       end
       object ModelNameEd: TEdit
@@ -83,7 +85,9 @@ object OptionsModelForm: TOptionsModelForm
         Left = 348
         Top = 8
         Width = 95
+        Height = 13
         Alignment = taRightJustify
+        AutoSize = False
         Caption = 'Default Font:'
       end
       object FontCBox: TComboBox
@@ -99,7 +103,9 @@ object OptionsModelForm: TOptionsModelForm
         Left = 11
         Top = 68
         Width = 72
+        Height = 13
         Alignment = taRightJustify
+        AutoSize = False
         Caption = 'Comments:'
       end
       object ModelCommentsMemo: TMemo
@@ -120,7 +126,9 @@ object OptionsModelForm: TOptionsModelForm
         Left = 19
         Top = 36
         Width = 64
+        Height = 13
         Alignment = taRightJustify
+        AutoSize = False
         Caption = 'Version:'
       end
     end
@@ -138,7 +146,9 @@ object OptionsModelForm: TOptionsModelForm
           Left = 0
           Top = 24
           Width = 67
+          Height = 13
           Alignment = taRightJustify
+          AutoSize = False
           Caption = 'Grid width:'
         end
         object GridXEd: TEdit
@@ -152,7 +162,9 @@ object OptionsModelForm: TOptionsModelForm
           Left = 0
           Top = 52
           Width = 67
+          Height = 13
           Alignment = taRightJustify
+          AutoSize = False
           Caption = 'Grid height:'
         end
         object GridYEd: TEdit
@@ -313,7 +325,9 @@ object OptionsModelForm: TOptionsModelForm
           Left = 18
           Top = 24
           Width = 49
+          Height = 13
           Alignment = taRightJustify
+          AutoSize = False
           Caption = 'Width:'
         end
         object CanvasWidthEd: TEdit
@@ -334,7 +348,9 @@ object OptionsModelForm: TOptionsModelForm
           Left = 11
           Top = 53
           Width = 56
+          Height = 13
           Alignment = taRightJustify
+          AutoSize = False
           Caption = 'Height:'
         end
         object CanvasHeightEd: TEdit
@@ -490,14 +506,18 @@ object OptionsModelForm: TOptionsModelForm
         Left = 0
         Top = 14
         Width = 135
+        Height = 13
         Alignment = taRightJustify
+        AutoSize = False
         Caption = 'Default Datatype:'
       end
       object Label3: TLabel
         Left = 0
         Top = 80
         Width = 135
+        Height = 13
         Alignment = taRightJustify
+        AutoSize = False
         Caption = 'Database Type:'
         Visible = False
       end

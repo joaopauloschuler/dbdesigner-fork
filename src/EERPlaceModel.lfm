@@ -86,7 +86,9 @@ object EERPlaceModelForm: TEERPlaceModelForm
         Left = 12
         Top = 50
         Width = 71
+        Height = 13
         Alignment = taRightJustify
+        AutoSize = False
         Caption = 'Filename:'
       end
       object FilenameEd: TEdit
@@ -121,7 +123,9 @@ object EERPlaceModelForm: TEERPlaceModelForm
         Left = 23
         Top = 130
         Width = 60
+        Height = 13
         Alignment = taRightJustify
+        AutoSize = False
         Caption = 'DBConn:'
       end
       object DBConnEd: TEdit
@@ -136,7 +140,9 @@ object EERPlaceModelForm: TEERPlaceModelForm
         Left = 199
         Top = 130
         Width = 56
+        Height = 13
         Alignment = taRightJustify
+        AutoSize = False
         Caption = 'Driver:'
       end
       object DriverNameCBox: TComboBox
@@ -153,7 +159,9 @@ object EERPlaceModelForm: TEERPlaceModelForm
         Left = 42
         Top = 160
         Width = 41
+        Height = 13
         Alignment = taRightJustify
+        AutoSize = False
         Caption = 'Host:'
       end
       object HostEd: TEdit
@@ -176,14 +184,18 @@ object EERPlaceModelForm: TEERPlaceModelForm
         Left = 231
         Top = 160
         Width = 26
+        Height = 13
         Alignment = taRightJustify
+        AutoSize = False
         Caption = 'IP:'
       end
       object DBLbl: TLabel
         Left = 12
         Top = 190
         Width = 71
+        Height = 13
         Alignment = taRightJustify
+        AutoSize = False
         Caption = 'Database:'
       end
       object DBEd: TEdit
@@ -198,7 +210,9 @@ object EERPlaceModelForm: TEERPlaceModelForm
         Left = 186
         Top = 190
         Width = 71
+        Height = 13
         Alignment = taRightJustify
+        AutoSize = False
         Caption = 'Model ID:'
       end
       object ModelIDEd: TEdit
@@ -213,7 +227,9 @@ object EERPlaceModelForm: TEERPlaceModelForm
         Left = 12
         Top = 220
         Width = 71
+        Height = 13
         Alignment = taRightJustify
+        AutoSize = False
         Caption = 'Username:'
       end
       object UserEd: TEdit

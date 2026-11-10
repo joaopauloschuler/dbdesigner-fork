@@ -132,7 +132,9 @@ object DBConnSelectForm: TDBConnSelectForm
         Left = 6
         Top = 50
         Width = 71
+        Height = 13
         Alignment = taRightJustify
+        AutoSize = False
         Caption = 'Username:'
       end
       object UsernameEd: TEdit
@@ -146,7 +148,9 @@ object DBConnSelectForm: TDBConnSelectForm
         Left = 194
         Top = 50
         Width = 71
+        Height = 13
         Alignment = taRightJustify
+        AutoSize = False
         Caption = 'Password:'
       end
       object PasswdEd: TEdit
@@ -209,7 +213,9 @@ object DBConnSelectForm: TDBConnSelectForm
         Left = 0
         Top = 20
         Width = 77
+        Height = 13
         Alignment = taRightJustify
+        AutoSize = False
         Caption = 'Connection:'
       end
       object DBConnEd: TEdit
