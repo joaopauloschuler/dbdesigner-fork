@@ -381,8 +381,9 @@ begin
     try
   {$IFDEF MSWINDOWS}
       //On Windows use native Win32 Open Dlg
-      theSaveDialog.UseNativeDialog:=True;
-      theSaveDialog.OnShow:=DMMain.OnOpenSaveDlgShow;
+      //The LCL always uses the native dialog and has no dialog position hook
+//      theSaveDialog.UseNativeDialog:=True;
+//      theSaveDialog.OnShow:=DMMain.OnOpenSaveDlgShow;
   {$ENDIF}
 
       theSaveDialog.Title:='Save File As ...';
