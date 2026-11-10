@@ -1751,7 +1751,7 @@ object EditorQueryForm: TEditorQueryForm
             Font.Color = clBlack
             Font.Height = -11
             Font.Name = 'Monospace'
-            Font.Pitch = fpVariable
+            Font.Pitch = fpFixed
             Font.Style = []
             ParentFont = False
             TabOrder = 0
@@ -1767,7 +1767,7 @@ object EditorQueryForm: TEditorQueryForm
             Font.Color = clBlack
             Font.Height = -11
             Font.Name = 'Monospace'
-            Font.Pitch = fpVariable
+            Font.Pitch = fpFixed
             Font.Style = []
             Lines.Strings = (
               '12F534855476A3CE')
