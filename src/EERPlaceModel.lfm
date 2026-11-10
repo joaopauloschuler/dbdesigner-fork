@@ -24,7 +24,6 @@ object EERPlaceModelForm: TEERPlaceModelForm
     Top = 0
     Width = 627
     Height = 317
-    Anchors = [akTop, akLeft, akRight, akBottom]
     BevelOuter = bvNone
     TabOrder = 0
     Visible = False
@@ -33,7 +32,6 @@ object EERPlaceModelForm: TEERPlaceModelForm
       Top = 14
       Width = 372
       Height = 23
-      Anchors = [akTop, akLeft, akRight]
       Brush.Color = clBtnFace
       Brush.Style = bsClear
     end
@@ -42,7 +40,6 @@ object EERPlaceModelForm: TEERPlaceModelForm
       Top = 15
       Width = 370
       Height = 21
-      Anchors = [akTop, akLeft, akRight]
       BevelOuter = bvNone
       Color = clBtnShadow
       TabOrder = 0
@@ -59,7 +56,6 @@ object EERPlaceModelForm: TEERPlaceModelForm
       Top = 15
       Width = 208
       Height = 284
-      Anchors = [akTop, akLeft, akRight, akBottom]
       Images = LMImgList
       ReadOnly = True
       ScrollBars = ssAutoBoth
@@ -72,7 +68,6 @@ object EERPlaceModelForm: TEERPlaceModelForm
       Top = 44
       Width = 371
       Height = 255
-      Anchors = [akTop, akLeft, akRight, akBottom]
       Caption = 'Settings'
       TabOrder = 2
       object Bevel1: TBevel
