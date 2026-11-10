@@ -105,6 +105,10 @@ uses MainDM, EERDM, GUIDM;
 procedure TEditorDatatypeForm.FormCreate(Sender: TObject);
 begin
   DMMain.InitForm(self, True);
+
+  //The button shows its glyph only: drop the '-' caption that the
+  //translation file may still assign to it
+  DelOptionBtn.Caption:='';
 end;
 
 procedure TEditorDatatypeForm.FormClose(Sender: TObject;

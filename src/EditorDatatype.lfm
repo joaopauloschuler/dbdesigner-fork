@@ -187,7 +187,6 @@ object EditorDatatypeForm: TEditorDatatypeForm
       Top = 34
       Width = 13
       Height = 15
-      Caption = '-'
       Flat = True
       Font.CharSet = 0
       Font.Color = clBlack
