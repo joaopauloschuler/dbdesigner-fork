@@ -537,6 +537,9 @@ procedure TOptionsForm.PageControlTreeViewChange(Sender: TObject;
   Node: TTreeNode);
 begin
   PageControl.ActivePageIndex:=PageControlTreeView.Selected.AbsoluteIndex;
+  // The LCL page control does not fire OnChange when the page is set by
+  // code, so show or hide the tip panel from here
+  PageControlChange(Sender);
   PageControlTitleLbl.Caption:=PageControlTreeView.Selected.Text;
 end;
 

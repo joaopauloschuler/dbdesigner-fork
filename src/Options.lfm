@@ -698,7 +698,7 @@ object OptionsForm: TOptionsForm
       end
       object EditOptionsTipPanel: TPanel
         Left = 380
-        Top = 97
+        Top = 115
         Width = 159
         Height = 114
         Color = clInfoBk
@@ -707,7 +707,8 @@ object OptionsForm: TOptionsForm
         object Label8: TLabel
           Left = 8
           Top = 4
-          AutoSize = True
+          Width = 143
+          Height = 39
           AutoSize = False
           Caption = 
             'These parameters are the default settings when a new model is cr' +
@@ -717,7 +718,8 @@ object OptionsForm: TOptionsForm
         object Label9: TLabel
           Left = 8
           Top = 48
-          AutoSize = True
+          Width = 145
+          Height = 53
           AutoSize = False
           Caption = 
             'They can be turned on/off for each model individually using the ' +
