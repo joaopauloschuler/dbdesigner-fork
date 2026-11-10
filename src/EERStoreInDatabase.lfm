@@ -88,13 +88,6 @@ object EERStoreInDatabaseForm: TEERStoreInDatabaseForm
       Top = 3
       AutoSize = True
       Caption = 'Not connected to a Database.'
-      Font.CharSet = 0
-      Font.Color = clBlack
-      Font.Height = 9
-      Font.Name = 'Sans'
-      Font.Pitch = fpVariable
-      Font.Style = []
-      ParentFont = False
     end
   end
   object Panel1: TPanel

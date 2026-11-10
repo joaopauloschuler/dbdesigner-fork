@@ -331,7 +331,7 @@ object EditorTableDataForm: TEditorTableDataForm
               Color = clBtnFace
               Font.CharSet = 0
               Font.Color = clBlack
-              Font.Height = 11
+              Font.Height = -11
               Font.Name = 'Monospace'
               Font.Pitch = fpVariable
               Font.Style = []
@@ -347,7 +347,7 @@ object EditorTableDataForm: TEditorTableDataForm
               Color = clBtnFace
               Font.CharSet = 0
               Font.Color = clBlack
-              Font.Height = 11
+              Font.Height = -11
               Font.Name = 'Monospace'
               Font.Pitch = fpVariable
               Font.Style = []
@@ -932,20 +932,8 @@ object EditorTableDataForm: TEditorTableDataForm
           Height = 297
           Align = alClient
           DataSource = OutputDataSrc
-          Font.Color = clBlack
-          Font.Height = 11
-          Font.Name = 'Sans'
-          Font.Pitch = fpVariable
-          Font.Style = []
           Options = [dgEditing, dgTitles, dgIndicator, dgColumnResize, dgColLines, dgRowLines, dgTabs, dgAlwaysShowSelection, dgConfirmDelete, dgCancelOnExit]
-          ParentFont = False
           TabOrder = 0
-          TitleFont.CharSet = 0
-          TitleFont.Color = clBlack
-          TitleFont.Height = 9
-          TitleFont.Name = 'Sans'
-          TitleFont.Pitch = fpVariable
-          TitleFont.Style = []
           OnColEnter = DBGridColEnter
           OnDblClick = DBGridDblClick
         end

@@ -50,7 +50,7 @@ object OptionsModelForm: TOptionsModelForm
         Caption = '(Format: Colorname=#RRGGBB)'
         Color = clBtnFace
         Font.Color = clGray
-        Font.Height = 11
+        Font.Height = -11
         Font.Name = 'Sans'
         Font.Pitch = fpVariable
         Font.Style = []
@@ -457,7 +457,7 @@ object OptionsModelForm: TOptionsModelForm
         AutoSize = True
         Caption = '(use Table Prefixes to work with several'
         Font.Color = clGray
-        Font.Height = 11
+        Font.Height = -11
         Font.Name = 'Sans'
         Font.Pitch = fpVariable
         Font.Style = []
@@ -470,7 +470,7 @@ object OptionsModelForm: TOptionsModelForm
         AutoSize = True
         Caption = '(when working with Oracle use the Table'
         Font.Color = clGray
-        Font.Height = 11
+        Font.Height = -11
         Font.Name = 'Sans'
         Font.Pitch = fpVariable
         Font.Style = []
@@ -517,7 +517,7 @@ object OptionsModelForm: TOptionsModelForm
         AutoSize = True
         Caption = 'MySQL-DBs at once, e.g. store.product and'
         Font.Color = clGray
-        Font.Height = 11
+        Font.Height = -11
         Font.Name = 'Sans'
         Font.Pitch = fpVariable
         Font.Style = []
@@ -530,7 +530,7 @@ object OptionsModelForm: TOptionsModelForm
         AutoSize = True
         Caption = 'stock.inventory)'
         Font.Color = clGray
-        Font.Height = 11
+        Font.Height = -11
         Font.Name = 'Sans'
         Font.Pitch = fpVariable
         Font.Style = []
@@ -543,7 +543,7 @@ object OptionsModelForm: TOptionsModelForm
         AutoSize = True
         Caption = 'e.g. scott.product and tom.statistic)'
         Font.Color = clGray
-        Font.Height = 11
+        Font.Height = -11
         Font.Name = 'Sans'
         Font.Pitch = fpVariable
         Font.Style = []
@@ -556,7 +556,7 @@ object OptionsModelForm: TOptionsModelForm
         AutoSize = True
         Caption = 'Prefixes to access tables from different users,'
         Font.Color = clGray
-        Font.Height = 11
+        Font.Height = -11
         Font.Name = 'Sans'
         Font.Pitch = fpVariable
         Font.Style = []

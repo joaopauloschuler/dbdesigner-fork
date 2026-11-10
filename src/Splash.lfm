@@ -28,7 +28,7 @@ object SplashForm: TSplashForm
       'KDE/Gnome.'
     Font.CharSet = 0
     Font.Color = clBlack
-    Font.Height = 9
+    Font.Height = -9
     Font.Name = 'Sans'
     Font.Pitch = fpVariable
     Font.Style = []
@@ -55,7 +55,7 @@ object SplashForm: TSplashForm
       '7 for ODBC,'
     Font.CharSet = 0
     Font.Color = clBlack
-    Font.Height = 9
+    Font.Height = -9
     Font.Name = 'Sans'
     Font.Pitch = fpVariable
     Font.Style = []
@@ -74,7 +74,7 @@ object SplashForm: TSplashForm
       'buted under the'
     Font.CharSet = 0
     Font.Color = clBlack
-    Font.Height = 9
+    Font.Height = -9
     Font.Name = 'Sans'
     Font.Pitch = fpVariable
     Font.Style = []
@@ -91,7 +91,7 @@ object SplashForm: TSplashForm
     Caption = 'Taxacher, Georg Richter, Jens Oberender.'
     Font.CharSet = 0
     Font.Color = clBlack
-    Font.Height = 9
+    Font.Height = -9
     Font.Name = 'Sans'
     Font.Pitch = fpVariable
     Font.Style = []
@@ -110,7 +110,7 @@ object SplashForm: TSplashForm
       'Bayer, Johannes'
     Font.CharSet = 0
     Font.Color = clBlack
-    Font.Height = 9
+    Font.Height = -9
     Font.Name = 'Sans'
     Font.Pitch = fpVariable
     Font.Style = []
@@ -129,7 +129,7 @@ object SplashForm: TSplashForm
       'ite and'
     Font.CharSet = 0
     Font.Color = clBlack
-    Font.Height = 9
+    Font.Height = -9
     Font.Name = 'Sans'
     Font.Pitch = fpVariable
     Font.Style = []
@@ -146,7 +146,7 @@ object SplashForm: TSplashForm
     Caption = 'Stefan Heymann'#39's XML Parser.'
     Font.CharSet = 0
     Font.Color = clBlack
-    Font.Height = 9
+    Font.Height = -9
     Font.Name = 'Sans'
     Font.Pitch = fpVariable
     Font.Style = []

@@ -134,7 +134,7 @@ object DBConnEditorForm: TDBConnEditorForm
         Width = 143
         Height = 21
         Font.Color = clBlack
-        Font.Height = 11
+        Font.Height = -11
         Font.Name = 'Sans'
         Font.Pitch = fpVariable
         Font.Style = [fsBold]

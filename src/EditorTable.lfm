@@ -505,13 +505,6 @@ object EditorTableForm: TEditorTableForm
           Width = 533
           Height = 127
           Align = alClient
-          Font.CharSet = 0
-          Font.Color = clBlack
-          Font.Height = 12
-          Font.Name = 'Sans'
-          Font.Pitch = fpVariable
-          Font.Style = []
-          ParentFont = False
           PopupMenu = StdInsertsPopupMenu
           ScrollBars = ssAutoBoth
           TabOrder = 0

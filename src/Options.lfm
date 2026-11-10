@@ -275,7 +275,7 @@ object OptionsForm: TOptionsForm
         Caption = '(Format: Colorname=#RRGGBB)'
         Color = clBtnFace
         Font.Color = clGray
-        Font.Height = 11
+        Font.Height = -11
         Font.Name = 'Sans'
         Font.Pitch = fpVariable
         Font.Style = []
