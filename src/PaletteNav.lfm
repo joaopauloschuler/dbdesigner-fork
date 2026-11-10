@@ -74,7 +74,7 @@ object PaletteNavForm: TPaletteNavForm
         OnClick = ZoomOutSBtnClick
       end
       object ZoomInSBtn: TSpeedButton
-        Left = 144
+        Left = 141
         Top = 3
         Width = 25
         Height = 16
@@ -103,9 +103,9 @@ object PaletteNavForm: TPaletteNavForm
         OnClick = ZoomInSBtnClick
       end
       object Panel1: TPanel
-        Left = 176
+        Left = 167
         Top = 1
-        Width = 45
+        Width = 54
         Height = 18
         Align = alRight
         BevelOuter = bvNone
@@ -113,13 +113,13 @@ object PaletteNavForm: TPaletteNavForm
         object ZoomShape: TShape
           Left = 2
           Top = 3
-          Width = 39
+          Width = 48
           Height = 14
         end
         object ZoomLbl: TLabel
-          Left = 0
+          Left = 2
           Top = 3
-          Width = 39
+          Width = 48
           Height = 13
           Alignment = taCenter
           AutoSize = False
@@ -130,7 +130,7 @@ object PaletteNavForm: TPaletteNavForm
         object ZoomEd: TEdit
           Left = 22
           Top = 1
-          Width = 39
+          Width = 48
           Height = 20
           TabOrder = 1
           Text = '100%'
