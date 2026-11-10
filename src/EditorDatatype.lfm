@@ -492,13 +492,13 @@ object EditorDatatypeForm: TEditorDatatypeForm
     TabOrder = 11
     object Label5: TLabel
       Left = 31
-      Top = 22
+      Top = 26
       AutoSize = True
       Caption = 'Physical Datatype:'
     end
     object PhysicalDatatypeEd: TEdit
       Left = 130
-      Top = 18
+      Top = 22
       Width = 201
       Height = 21
       TabOrder = 1

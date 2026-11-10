@@ -307,7 +307,7 @@ object EERReverseEngineeringForm: TEERReverseEngineeringForm
       TabOrder = 1
       object BuildRelPrimKeyRBtn: TRadioButton
         Left = 30
-        Top = 8
+        Top = 18
         Width = 225
         Height = 17
         Caption = 'Build Relations based on Primary Keys'
@@ -316,7 +316,7 @@ object EERReverseEngineeringForm: TEERReverseEngineeringForm
       end
       object BuildRelTblNamesRBtn: TRadioButton
         Left = 30
-        Top = 30
+        Top = 40
         Width = 231
         Height = 17
         Caption = 'Based on Tablenames and ID-Fieldnames'
@@ -325,7 +325,7 @@ object EERReverseEngineeringForm: TEERReverseEngineeringForm
       end
       object UseNativeRelationsRBtn: TRadioButton
         Left = 30
-        Top = 52
+        Top = 62
         Width = 229
         Height = 17
         Caption = 'Use Native Selects to retrive Relations'
@@ -581,7 +581,7 @@ object EERReverseEngineeringForm: TEERReverseEngineeringForm
         TabOrder = 1
         object Label3: TLabel
           Left = 18
-          Top = 4
+          Top = 20
           Width = 209
           Height = 69
           AutoSize = True
