@@ -344,7 +344,7 @@ object EERExportSQLScriptFrom: TEERExportSQLScriptFrom
       Left = 128
       Top = 24
       AutoSize = True
-      Caption = 'Target Data Base:'
+      Caption = 'Target Database:'
     end
     object CBTargetDataBase: TComboBox
       Left = 224
