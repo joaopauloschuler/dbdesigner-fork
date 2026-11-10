@@ -4,13 +4,9 @@ object ImageSelectionForm: TImageSelectionForm
 
   Top = 221
 
-  Width = 701
+  ClientWidth = 701
 
-  Height = 435
-
-  VertScrollBar.Range = 420
-
-  HorzScrollBar.Range = 685
+  ClientHeight = 435
 
   ActiveControl = ImgDrawGrid
 

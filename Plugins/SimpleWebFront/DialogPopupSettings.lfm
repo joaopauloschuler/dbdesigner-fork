@@ -4,13 +4,9 @@ object DialogPopupSettingsForm: TDialogPopupSettingsForm
 
   Top = 195
 
-  Width = 300
+  ClientWidth = 300
 
-  Height = 163
-
-  VertScrollBar.Range = 143
-
-  HorzScrollBar.Range = 277
+  ClientHeight = 163
 
   ActiveControl = WidthEd
 

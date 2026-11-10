@@ -1,10 +1,8 @@
 object TipsForm: TTipsForm
   Left = 484
   Top = 287
-  Width = 456
-  Height = 259
-  VertScrollBar.Range = 233
-  HorzScrollBar.Range = 373
+  ClientWidth = 456
+  ClientHeight = 259
   ActiveControl = TipMemo
   BorderStyle = bsToolWindow
   Caption = 'DBDesigner Fork Tips'

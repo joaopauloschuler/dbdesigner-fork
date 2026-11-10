@@ -4,13 +4,9 @@ object DialogDirectorySelectForm: TDialogDirectorySelectForm
 
   Top = 209
 
-  Width = 311
+  ClientWidth = 311
 
-  Height = 397
-
-  VertScrollBar.Range = 371
-
-  HorzScrollBar.Range = 287
+  ClientHeight = 397
 
   ActiveControl = DirectoryTreeView
 
