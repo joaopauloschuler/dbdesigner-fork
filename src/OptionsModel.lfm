@@ -139,7 +139,7 @@ object OptionsModelForm: TOptionsModelForm
         Left = 490
         Top = 22
         Width = 190
-        Height = 90
+        Height = 83
         Caption = ' '
         TabOrder = 0
         object GridWidthLbl: TLabel
@@ -198,9 +198,9 @@ object OptionsModelForm: TOptionsModelForm
       end
       object GroupBox2: TGroupBox
         Left = 4
-        Top = 170
+        Top = 154
         Width = 470
-        Height = 60
+        Height = 55
         Caption = 'Default Table Settings (MySql only)'
         TabOrder = 2
         object Label18: TLabel
@@ -211,7 +211,7 @@ object OptionsModelForm: TOptionsModelForm
         end
         object DefaultTableTypeCBox: TComboBox
           Left = 140
-          Top = 24
+          Top = 20
           Width = 310
           Height = 25
           Style = csDropDownList
@@ -232,7 +232,7 @@ object OptionsModelForm: TOptionsModelForm
         Left = 4
         Top = 4
         Width = 470
-        Height = 160
+        Height = 145
         Caption = 'Default Relation Settings / Foreign Keys Settings'
         TabOrder = 3
         object Label19: TLabel
@@ -316,9 +316,9 @@ object OptionsModelForm: TOptionsModelForm
       end
       object GroupBox4: TGroupBox
         Left = 490
-        Top = 118
+        Top = 116
         Width = 190
-        Height = 90
+        Height = 85
         Caption = 'Canvas Size'
         TabOrder = 4
         object Label20: TLabel

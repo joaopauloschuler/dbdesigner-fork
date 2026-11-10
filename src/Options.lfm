@@ -87,7 +87,7 @@ object OptionsForm: TOptionsForm
         Left = 236
         Top = 0
         Width = 345
-        Height = 262
+        Height = 255
         Caption = 'Various'
         TabOrder = 1
         object LimitUndoCBox: TCheckBox
@@ -304,7 +304,7 @@ object OptionsForm: TOptionsForm
         Left = 2
         Top = 40
         Width = 263
-        Height = 155
+        Height = 139
         Caption = 'Table Headers'
         TabOrder = 5
         object TblHeaderPreviewPnl: TPanel

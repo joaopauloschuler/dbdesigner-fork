@@ -4,7 +4,7 @@ object EditorDatatypeForm: TEditorDatatypeForm
   ActiveControl = DatatypeNameEd
   BorderStyle = bsToolWindow
   Caption = 'Editor Datatype'
-  ClientHeight = 411
+  ClientHeight = 409
   ClientWidth = 395
   Color = clBtnFace
   FormStyle = fsStayOnTop
@@ -73,7 +73,7 @@ object EditorDatatypeForm: TEditorDatatypeForm
     Left = 20
     Top = 137
     Width = 171
-    Height = 140
+    Height = 126
     Caption = 'Parameter'
     TabOrder = 6
     object AddParamBtn: TSpeedButton
@@ -128,7 +128,7 @@ object EditorDatatypeForm: TEditorDatatypeForm
     end
     object ParamRequiredCBox: TCheckBox
       Left = 14
-      Top = 82
+      Top = 78
       Width = 145
       Height = 19
       Caption = 'Parameters are required'
@@ -143,7 +143,7 @@ object EditorDatatypeForm: TEditorDatatypeForm
     end
     object EditValueAsStringCBox: TCheckBox
       Left = 14
-      Top = 103
+      Top = 97
       Width = 141
       Height = 19
       Caption = 'Edit values as strings'
@@ -154,7 +154,7 @@ object EditorDatatypeForm: TEditorDatatypeForm
     Left = 206
     Top = 137
     Width = 165
-    Height = 140
+    Height = 126
     Caption = 'Options'
     TabOrder = 7
     object AddOptionBtn: TSpeedButton
@@ -211,7 +211,7 @@ object EditorDatatypeForm: TEditorDatatypeForm
       Left = 14
       Top = 20
       Width = 127
-      Height = 105
+      Height = 91
       TabOrder = 0
     end
   end
@@ -485,9 +485,9 @@ object EditorDatatypeForm: TEditorDatatypeForm
   end
   object GroupBox3: TGroupBox
     Left = 20
-    Top = 304
+    Top = 290
     Width = 351
-    Height = 56
+    Height = 59
     Caption = ' '
     TabOrder = 11
     object Label5: TLabel
@@ -506,7 +506,7 @@ object EditorDatatypeForm: TEditorDatatypeForm
   end
   object EnablePhysicalMappingCBox: TCheckBox
     Left = 20
-    Top = 284
+    Top = 270
     Width = 251
     Height = 19
     Caption = 'Enable Physical Datatype Mapping'
