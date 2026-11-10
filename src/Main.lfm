@@ -340,13 +340,6 @@ object MainForm: TMainForm
       Alignment = taCenter
       AutoSize = False
       Caption = '100%'
-      Font.CharSet = 0
-      Font.Color = clBlack
-      Font.Height = 9
-      Font.Name = 'Sans'
-      Font.Pitch = fpVariable
-      Font.Style = []
-      ParentFont = False
       Transparent = True
       OnClick = ZoomLblClick
     end
@@ -357,18 +350,11 @@ object MainForm: TMainForm
       Caption = 
         'Pointer [Q] (Click on a Tables, Note, ... to select this object.' +
         ' Hold Ctrl to select more than one objects.)'
-      Font.CharSet = 0
-      Font.Color = clBlack
-      Font.Height = 9
-      Font.Name = 'Sans'
-      Font.Pitch = fpVariable
-      Font.Style = []
-      ParentFont = False
     end
     object DBConnPnl: TPanel
-      Left = 444
+      Left = 420
       Top = 1
-      Width = 156
+      Width = 180
       Height = 15
       Align = alRight
       BevelOuter = bvNone
@@ -446,13 +432,6 @@ object MainForm: TMainForm
         Top = 2
         AutoSize = True
         Caption = 'Not connected to a Database'
-        Font.CharSet = 0
-        Font.Color = clBlack
-        Font.Height = 9
-        Font.Name = 'Sans'
-        Font.Pitch = fpVariable
-        Font.Style = []
-        ParentFont = False
       end
     end
   end
@@ -2841,7 +2820,7 @@ object MainForm: TMainForm
         BevelOuter = bvNone
         Font.CharSet = 0
         Font.Color = clGray
-        Font.Height = 11
+        Font.Height = -11
         Font.Name = 'Sans'
         Font.Pitch = fpVariable
         Font.Style = [fsBold]
@@ -2894,7 +2873,7 @@ object MainForm: TMainForm
         BevelOuter = bvNone
         Font.CharSet = 0
         Font.Color = clGray
-        Font.Height = 11
+        Font.Height = -11
         Font.Name = 'Sans'
         Font.Pitch = fpVariable
         Font.Style = [fsBold]
@@ -2957,7 +2936,7 @@ object MainForm: TMainForm
         BevelOuter = bvNone
         Font.CharSet = 0
         Font.Color = clGray
-        Font.Height = 11
+        Font.Height = -11
         Font.Name = 'Sans'
         Font.Pitch = fpVariable
         Font.Style = [fsBold]
