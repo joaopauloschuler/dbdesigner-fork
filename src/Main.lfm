@@ -143,7 +143,7 @@ object MainForm: TMainForm
     Color = clBtnFace
     TabOrder = 0
     object NotSavedImg: TImage
-      Left = 54
+      Left = 63
       Top = 2
       Width = 14
       Height = 13
@@ -182,25 +182,25 @@ object MainForm: TMainForm
     object ZoomShape: TShape
       Left = 2
       Top = 2
-      Width = 39
+      Width = 48
       Height = 14
     end
     object Bevel1: TBevel
-      Left = 48
+      Left = 57
       Top = 4
       Width = 3
       Height = 10
       Shape = bsLeftLine
     end
     object Bevel2: TBevel
-      Left = 112
+      Left = 121
       Top = 4
       Width = 3
       Height = 10
       Shape = bsLeftLine
     end
     object SavedImg: TImage
-      Left = 54
+      Left = 63
       Top = 2
       Width = 14
       Height = 13
@@ -228,7 +228,7 @@ object MainForm: TMainForm
         AAAAA9A9AAA9A9A7A6A6A8A5A5BCB9B8E3DFE0E3DFE0E3DFE0E3DFE00000}
     end
     object Save2DiskImg: TImage
-      Left = 74
+      Left = 83
       Top = 2
       Width = 13
       Height = 13
@@ -256,7 +256,7 @@ object MainForm: TMainForm
       OnClick = Save2DiskImgClick
     end
     object Save2DBImg: TImage
-      Left = 94
+      Left = 103
       Top = 2
       Width = 11
       Height = 13
@@ -282,7 +282,7 @@ object MainForm: TMainForm
       OnClick = Save2DBImgClick
     end
     object Save2DiskDisabledImg: TImage
-      Left = 74
+      Left = 83
       Top = 2
       Width = 13
       Height = 13
@@ -309,7 +309,7 @@ object MainForm: TMainForm
         ABABABD9D6D7E3DFE000}
     end
     object Save2DBDisabledImg: TImage
-      Left = 94
+      Left = 103
       Top = 2
       Width = 11
       Height = 13
@@ -336,39 +336,26 @@ object MainForm: TMainForm
     object ZoomLbl: TLabel
       Left = 2
       Top = 2
-      AutoSize = True
+      Width = 48
+      Height = 13
       Alignment = taCenter
       AutoSize = False
       Caption = '100%'
-      Font.CharSet = 0
-      Font.Color = clBlack
-      Font.Height = 9
-      Font.Name = 'Sans'
-      Font.Pitch = fpVariable
-      Font.Style = []
-      ParentFont = False
       Transparent = True
       OnClick = ZoomLblClick
     end
     object StatusCaptionLbl: TLabel
-      Left = 119
+      Left = 128
       Top = 2
       AutoSize = True
       Caption = 
         'Pointer [Q] (Click on a Tables, Note, ... to select this object.' +
         ' Hold Ctrl to select more than one objects.)'
-      Font.CharSet = 0
-      Font.Color = clBlack
-      Font.Height = 9
-      Font.Name = 'Sans'
-      Font.Pitch = fpVariable
-      Font.Style = []
-      ParentFont = False
     end
     object DBConnPnl: TPanel
-      Left = 444
+      Left = 420
       Top = 1
-      Width = 156
+      Width = 180
       Height = 15
       Align = alRight
       BevelOuter = bvNone
@@ -446,13 +433,6 @@ object MainForm: TMainForm
         Top = 2
         AutoSize = True
         Caption = 'Not connected to a Database'
-        Font.CharSet = 0
-        Font.Color = clBlack
-        Font.Height = 9
-        Font.Name = 'Sans'
-        Font.Pitch = fpVariable
-        Font.Style = []
-        ParentFont = False
       end
     end
   end
@@ -2841,7 +2821,7 @@ object MainForm: TMainForm
         BevelOuter = bvNone
         Font.CharSet = 0
         Font.Color = clGray
-        Font.Height = 11
+        Font.Height = -11
         Font.Name = 'Sans'
         Font.Pitch = fpVariable
         Font.Style = [fsBold]
@@ -2894,7 +2874,7 @@ object MainForm: TMainForm
         BevelOuter = bvNone
         Font.CharSet = 0
         Font.Color = clGray
-        Font.Height = 11
+        Font.Height = -11
         Font.Name = 'Sans'
         Font.Pitch = fpVariable
         Font.Style = [fsBold]
@@ -2957,7 +2937,7 @@ object MainForm: TMainForm
         BevelOuter = bvNone
         Font.CharSet = 0
         Font.Color = clGray
-        Font.Height = 11
+        Font.Height = -11
         Font.Name = 'Sans'
         Font.Pitch = fpVariable
         Font.Style = [fsBold]

@@ -111,7 +111,9 @@ object EditorRelationForm: TEditorRelationForm
           Left = 66
           Top = 92
           Width = 71
+          Height = 13
           Alignment = taRightJustify
+          AutoSize = False
           Caption = 'Matching:'
           Visible = False
         end
@@ -134,7 +136,9 @@ object EditorRelationForm: TEditorRelationForm
           Left = 58
           Top = 36
           Width = 79
+          Height = 13
           Alignment = taRightJustify
+          AutoSize = False
           Caption = 'On Delete:'
         end
         object OnDeleteLU: TComboBox
@@ -158,7 +162,9 @@ object EditorRelationForm: TEditorRelationForm
           Left = 58
           Top = 64
           Width = 79
+          Height = 13
           Alignment = taRightJustify
+          AutoSize = False
           Caption = 'On Update:'
         end
         object OnUpdateLU: TComboBox

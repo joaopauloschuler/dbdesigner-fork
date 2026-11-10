@@ -418,7 +418,7 @@ begin
   {$IFDEF MSWINDOWS}
       //On Windows use native Win32 Open Dlg
       theOpenDialog.UseNativeDialog:=True;
-      theOpenDialog.OnShow:=DMMain.OnOpenSaveDlgShow;
+//      theOpenDialog.OnShow:=DMMain.OnOpenSaveDlgShow;
   {$ENDIF}
 
       theOpenDialog.Title:='Open a File ...';
@@ -516,7 +516,7 @@ begin
   {$IFDEF MSWINDOWS}
       //On Windows use native Win32 Open Dlg
       theSaveDialog.UseNativeDialog:=True;
-      theSaveDialog.OnShow:=DMMain.OnOpenSaveDlgShow;
+//      theSaveDialog.OnShow:=DMMain.OnOpenSaveDlgShow;
   {$ENDIF}
 
       theSaveDialog.Title:='Save Field As ...';

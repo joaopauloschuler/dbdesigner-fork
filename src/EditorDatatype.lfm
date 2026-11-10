@@ -84,7 +84,7 @@ object EditorDatatypeForm: TEditorDatatypeForm
       Flat = True
       Font.CharSet = 0
       Font.Color = clBlack
-      Font.Height = 11
+      Font.Height = -11
       Font.Name = 'Sans'
       Font.Pitch = fpVariable
       Font.Style = [fsBold]
@@ -109,7 +109,7 @@ object EditorDatatypeForm: TEditorDatatypeForm
       Flat = True
       Font.CharSet = 0
       Font.Color = clBlack
-      Font.Height = 11
+      Font.Height = -11
       Font.Name = 'Sans'
       Font.Pitch = fpVariable
       Font.Style = [fsBold]
@@ -165,7 +165,7 @@ object EditorDatatypeForm: TEditorDatatypeForm
       Flat = True
       Font.CharSet = 0
       Font.Color = clBlack
-      Font.Height = 11
+      Font.Height = -11
       Font.Name = 'Sans'
       Font.Pitch = fpVariable
       Font.Style = [fsBold]
@@ -187,11 +187,10 @@ object EditorDatatypeForm: TEditorDatatypeForm
       Top = 34
       Width = 13
       Height = 15
-      Caption = '-'
       Flat = True
       Font.CharSet = 0
       Font.Color = clBlack
-      Font.Height = 11
+      Font.Height = -11
       Font.Name = 'Sans'
       Font.Pitch = fpVariable
       Font.Style = [fsBold]

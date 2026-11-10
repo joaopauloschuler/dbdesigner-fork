@@ -74,7 +74,7 @@ object PaletteNavForm: TPaletteNavForm
         OnClick = ZoomOutSBtnClick
       end
       object ZoomInSBtn: TSpeedButton
-        Left = 144
+        Left = 141
         Top = 3
         Width = 25
         Height = 16
@@ -103,9 +103,9 @@ object PaletteNavForm: TPaletteNavForm
         OnClick = ZoomInSBtnClick
       end
       object Panel1: TPanel
-        Left = 176
+        Left = 167
         Top = 1
-        Width = 45
+        Width = 54
         Height = 18
         Align = alRight
         BevelOuter = bvNone
@@ -113,38 +113,25 @@ object PaletteNavForm: TPaletteNavForm
         object ZoomShape: TShape
           Left = 2
           Top = 3
-          Width = 39
+          Width = 48
           Height = 14
         end
         object ZoomLbl: TLabel
-          Left = 0
+          Left = 2
           Top = 3
-          AutoSize = True
+          Width = 48
+          Height = 13
           Alignment = taCenter
           AutoSize = False
           Caption = '100%'
-          Font.CharSet = 0
-          Font.Color = clBlack
-          Font.Height = 9
-          Font.Name = 'Sans'
-          Font.Pitch = fpVariable
-          Font.Style = []
-          ParentFont = False
           Transparent = True
           OnClick = ZoomLblClick
         end
         object ZoomEd: TEdit
           Left = 22
           Top = 1
-          Width = 39
+          Width = 48
           Height = 20
-          Font.CharSet = 0
-          Font.Color = clBlack
-          Font.Height = 9
-          Font.Name = 'Sans'
-          Font.Pitch = fpVariable
-          Font.Style = []
-          ParentFont = False
           TabOrder = 1
           Text = '100%'
           Visible = False
@@ -187,14 +174,18 @@ object PaletteNavForm: TPaletteNavForm
           Left = 0
           Top = 26
           Width = 41
+          Height = 13
           Alignment = taRightJustify
+          AutoSize = False
           Caption = 'Left:'
         end
         object Label2: TLabel
           Left = 7
           Top = 48
           Width = 34
+          Height = 13
           Alignment = taRightJustify
+          AutoSize = False
           Caption = 'Top:'
         end
         object LeftEdit: TEdit
@@ -203,13 +194,6 @@ object PaletteNavForm: TPaletteNavForm
           Width = 37
           Height = 20
           Enabled = False
-          Font.CharSet = 0
-          Font.Color = clBlack
-          Font.Height = 9
-          Font.Name = 'Sans'
-          Font.Pitch = fpVariable
-          Font.Style = []
-          ParentFont = False
           TabOrder = 1
           OnExit = LeftEditExit
           OnKeyDown = LeftEditKeyDown
@@ -220,13 +204,6 @@ object PaletteNavForm: TPaletteNavForm
           Width = 37
           Height = 20
           Enabled = False
-          Font.CharSet = 0
-          Font.Color = clBlack
-          Font.Height = 9
-          Font.Name = 'Sans'
-          Font.Pitch = fpVariable
-          Font.Style = []
-          ParentFont = False
           TabOrder = 2
           OnExit = LeftEditExit
           OnKeyDown = LeftEditKeyDown
@@ -237,13 +214,6 @@ object PaletteNavForm: TPaletteNavForm
           Width = 145
           Height = 20
           Enabled = False
-          Font.CharSet = 0
-          Font.Color = clBlack
-          Font.Height = 9
-          Font.Name = 'Sans'
-          Font.Pitch = fpVariable
-          Font.Style = []
-          ParentFont = False
           TabOrder = 0
           OnExit = NameEditExit
           OnKeyDown = NameEditKeyDown
@@ -252,14 +222,18 @@ object PaletteNavForm: TPaletteNavForm
           Left = 0
           Top = 2
           Width = 41
+          Height = 13
           Alignment = taRightJustify
+          AutoSize = False
           Caption = 'Name:'
         end
         object Label4: TLabel
           Left = 100
           Top = 26
           Width = 49
+          Height = 13
           Alignment = taRightJustify
+          AutoSize = False
           Caption = 'Width:'
         end
         object WidthEd: TEdit
@@ -268,13 +242,6 @@ object PaletteNavForm: TPaletteNavForm
           Width = 37
           Height = 20
           Enabled = False
-          Font.CharSet = 0
-          Font.Color = clBlack
-          Font.Height = 9
-          Font.Name = 'Sans'
-          Font.Pitch = fpVariable
-          Font.Style = []
-          ParentFont = False
           TabOrder = 3
           OnExit = WidthEdExit
           OnKeyDown = WidthEdKeyDown
@@ -283,7 +250,9 @@ object PaletteNavForm: TPaletteNavForm
           Left = 93
           Top = 48
           Width = 56
+          Height = 13
           Alignment = taRightJustify
+          AutoSize = False
           Caption = 'Height:'
         end
         object HeightEd: TEdit
@@ -292,13 +261,6 @@ object PaletteNavForm: TPaletteNavForm
           Width = 37
           Height = 20
           Enabled = False
-          Font.CharSet = 0
-          Font.Color = clBlack
-          Font.Height = 9
-          Font.Name = 'Sans'
-          Font.Pitch = fpVariable
-          Font.Style = []
-          ParentFont = False
           TabOrder = 4
           OnExit = WidthEdExit
           OnKeyDown = WidthEdKeyDown
@@ -307,7 +269,9 @@ object PaletteNavForm: TPaletteNavForm
           Left = 0
           Top = 88
           Width = 41
+          Height = 13
           Alignment = taRightJustify
+          AutoSize = False
           Caption = 'Linked:'
         end
         object LinkEd: TEdit
@@ -316,13 +280,6 @@ object PaletteNavForm: TPaletteNavForm
           Width = 145
           Height = 20
           Enabled = False
-          Font.CharSet = 0
-          Font.Color = clBlack
-          Font.Height = 9
-          Font.Name = 'Sans'
-          Font.Pitch = fpVariable
-          Font.Style = []
-          ParentFont = False
           TabOrder = 11
           OnExit = NameEditExit
           OnKeyDown = NameEditKeyDown

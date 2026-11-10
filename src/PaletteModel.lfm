@@ -942,11 +942,6 @@ object PaletteModelFrom: TPaletteModelFrom
           Height = 200
           BorderStyle = bsNone
           Color = clWhite
-          Font.Color = clBlack
-          Font.Height = 11
-          Font.Name = 'Sans'
-          Font.Pitch = fpVariable
-          Font.Style = []
           Images = ModelImgList
           Items.Data = {
             03000000250000000000000000000000803B3402010000000000000003000000
@@ -964,7 +959,6 @@ object PaletteModelFrom: TPaletteModelFrom
             64707269636567726F75701D0000000100000001000000803B34020000000000
             00000000000000046E616D65}
           Indent = 18
-          ParentFont = False
           ScrollBars = ssAutoBoth
           TabOrder = 0
           OnCustomDrawItem = ModelTVCustomDrawItem
@@ -991,11 +985,6 @@ object PaletteModelFrom: TPaletteModelFrom
           Align = alClient
           BorderStyle = bsNone
           Color = clWhite
-          Font.Color = clBlack
-          Font.Height = 9
-          Font.Name = 'Sans'
-          Font.Pitch = fpVariable
-          Font.Style = []
           Images = ModelImgList
           Items.Data = {
             03000000280000000000000000000000803B3402010000000000000002000000
@@ -1014,7 +1003,6 @@ object PaletteModelFrom: TPaletteModelFrom
             000000000000057072696365}
           Indent = 18
           MultiSelect = True
-          ParentFont = False
           PopupMenu = TablesPopupMenu
           ReadOnly = True
           ScrollBars = ssAutoBoth

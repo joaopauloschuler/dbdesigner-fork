@@ -93,13 +93,6 @@ object EERReverseEngineeringForm: TEERReverseEngineeringForm
       Top = 3
       AutoSize = True
       Caption = 'Not connected to a Database.'
-      Font.CharSet = 0
-      Font.Color = clBlack
-      Font.Height = 9
-      Font.Name = 'Sans'
-      Font.Pitch = fpVariable
-      Font.Style = []
-      ParentFont = False
     end
   end
   object OptionPnl: TPanel
@@ -580,7 +573,7 @@ object EERReverseEngineeringForm: TEERReverseEngineeringForm
         Height = 93
         Caption = 'Important'
         Font.Color = clGray
-        Font.Height = 11
+        Font.Height = -11
         Font.Name = 'Sans'
         Font.Pitch = fpVariable
         Font.Style = []
@@ -588,7 +581,9 @@ object EERReverseEngineeringForm: TEERReverseEngineeringForm
         TabOrder = 1
         object Label3: TLabel
           Left = 18
-          Top = 20
+          Top = 4
+          Width = 209
+          Height = 69
           AutoSize = True
           AutoSize = False
           Caption = 
@@ -597,7 +592,7 @@ object EERReverseEngineeringForm: TEERReverseEngineeringForm
             'ubt connect as DBA Users: SYSTEM (Oracle) or sa (MS SQL).'
           Font.CharSet = 0
           Font.Color = clGray
-          Font.Height = 11
+          Font.Height = -11
           Font.Name = 'Sans'
           Font.Pitch = fpVariable
           Font.Style = []

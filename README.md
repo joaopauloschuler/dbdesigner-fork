@@ -154,10 +154,11 @@ The routine runs without a person at the keyboard. It connects with the given pa
 | `tests/TestMSSQLRevEngUtils.pas` | MS SQL Server reverse engineering conversions with literal inputs (type names, defaults, referential actions); no connection needed |
 | `tests/TestSQLExprShim.pas` | The `sqlexpr` shim against SQLite: transactions, DML commit, idle lock release |
 | `tests/TestMySQLShim.pas` | The shim's MySQL schema queries against a live MySQL 8 server |
+| `tests/TestSQLExport.pas` | Loads `bin/Examples/order.xml` into the model and prints the CREATE TABLE statement of every table; needs the LCL, no database |
 | `tests/sqlite-roundtrip.sh` | Loads an exported SQL script into sqlite3 and prints a schema summary |
 | `tests/mysql-roundtrip.sh` | Same for MySQL (drops and recreates the given database) |
 
-The Pascal tests compile with plain `fpc` (see the header of each file). `TestSQLExport.pas` needs the full application infrastructure and is not run standalone.
+The Pascal tests compile with plain `fpc` (see the header of each file). `TestSQLExport.pas` uses the model classes of the application: build it with `lazbuild tests/TestSQLExport.lpi` and run `bin/TestSQLExport` from the repository root. It reads the default settings in `bin/Data`, writes no settings, shows no dialog and exits with code 1 on failure.
 
 ### Bug catalogs
 

@@ -74,7 +74,9 @@ object DBConnLoginForm: TDBConnLoginForm
       Left = 5
       Top = 30
       Width = 71
+      Height = 13
       Alignment = taRightJustify
+      AutoSize = False
       Caption = 'Username:'
     end
     object UsernameEd: TEdit
@@ -88,7 +90,9 @@ object DBConnLoginForm: TDBConnLoginForm
       Left = 5
       Top = 60
       Width = 71
+      Height = 13
       Alignment = taRightJustify
+      AutoSize = False
       Caption = 'Password:'
     end
     object PwdEd: TEdit

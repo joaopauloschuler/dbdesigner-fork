@@ -13955,7 +13955,7 @@ begin
 {$IFDEF MSWINDOWS}
     //On Windows use native Win32 Open Dlg
 //    theOpenDialog.UseNativeDialog:=True;
-    theOpenDialog.OnShow:=DMMain.OnOpenSaveDlgShow;
+//    theOpenDialog.OnShow:=DMMain.OnOpenSaveDlgShow;
 {$ENDIF}
 
     //Get last dir

@@ -125,7 +125,9 @@ object DBConnEditorForm: TDBConnEditorForm
         Left = 0
         Top = 24
         Width = 106
+        Height = 13
         Alignment = taRightJustify
+        AutoSize = False
         Caption = 'Connection Name:'
       end
       object DBConnEd: TEdit
@@ -134,7 +136,7 @@ object DBConnEditorForm: TDBConnEditorForm
         Width = 143
         Height = 21
         Font.Color = clBlack
-        Font.Height = 11
+        Font.Height = -11
         Font.Name = 'Sans'
         Font.Pitch = fpVariable
         Font.Style = [fsBold]
@@ -167,14 +169,18 @@ object DBConnEditorForm: TDBConnEditorForm
           Left = 20
           Top = 30
           Width = 71
+          Height = 13
           Alignment = taRightJustify
+          AutoSize = False
           Caption = 'Hostname:'
         end
         object DatabaseLbl: TLabel
           Left = 0
           Top = 80
           Width = 92
+          Height = 13
           Alignment = taRightJustify
+          AutoSize = False
           Caption = 'Database Name:'
         end
         object DBEd: TEdit
@@ -189,7 +195,9 @@ object DBConnEditorForm: TDBConnEditorForm
           Left = 0
           Top = 158
           Width = 91
+          Height = 13
           Alignment = taRightJustify
+          AutoSize = False
           Caption = 'Description:'
         end
         object CommentEd: TMemo
@@ -204,7 +212,9 @@ object DBConnEditorForm: TDBConnEditorForm
           Left = 21
           Top = 114
           Width = 71
+          Height = 13
           Alignment = taRightJustify
+          AutoSize = False
           Caption = 'Username:'
         end
         object UserNameEd: TEdit
@@ -228,14 +238,18 @@ object DBConnEditorForm: TDBConnEditorForm
           Left = 191
           Top = 114
           Width = 71
+          Height = 13
           Alignment = taRightJustify
+          AutoSize = False
           Caption = 'Password:'
         end
         object PortLbl: TLabel
           Left = 276
           Top = 30
           Width = 37
+          Height = 13
           Alignment = taRightJustify
+          AutoSize = False
           Caption = 'Port:'
           Enabled = False
         end
@@ -270,7 +284,9 @@ object DBConnEditorForm: TDBConnEditorForm
         Left = 254
         Top = 24
         Width = 56
+        Height = 13
         Alignment = taRightJustify
+        AutoSize = False
         Caption = 'Driver:'
       end
     end

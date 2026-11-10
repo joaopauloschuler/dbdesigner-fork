@@ -88,11 +88,6 @@ object PaletteDataTypesForm: TPaletteDataTypesForm
           Height = 227
           BorderStyle = bsSingle
           Color = clBtnFace
-          Font.Color = clBlack
-          Font.Height = 11
-          Font.Name = 'Sans'
-          Font.Pitch = fpVariable
-          Font.Style = []
           Images = DatatypesImgList
           Items.Data = {
             05000000260000000000000000000000C0BE9AB6000000000000000005000000
@@ -124,7 +119,6 @@ object PaletteDataTypesForm: TPaletteDataTypesForm
             29250000000400000004000000C0BE9AB60000000000000000000000000C5661
             72636861722832353529}
           Indent = 18
-          ParentFont = False
           PopupMenu = DatatypesPopupMenu
           ReadOnly = True
           ScrollBars = ssAutoBoth

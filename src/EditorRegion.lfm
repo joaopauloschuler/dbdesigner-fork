@@ -69,7 +69,9 @@ object EditorRegionForm: TEditorRegionForm
       Left = 4
       Top = 30
       Width = 71
+      Height = 13
       Alignment = taRightJustify
+      AutoSize = False
       Caption = 'Database:'
     end
     object TableDBCBox: TComboBox
@@ -89,7 +91,9 @@ object EditorRegionForm: TEditorRegionForm
       Left = 0
       Top = 62
       Width = 75
+      Height = 13
       Alignment = taRightJustify
+      AutoSize = False
       Caption = 'Table Type:'
     end
     object TableTypeCBox: TComboBox

@@ -48,7 +48,9 @@ object OptionsForm: TOptionsForm
           Left = 0
           Top = 26
           Width = 123
+          Height = 13
           Alignment = taRightJustify
+          AutoSize = False
           Caption = 'Splash Screen Delay:'
         end
         object SplashScreenDelayEd: TEdit
@@ -275,7 +277,7 @@ object OptionsForm: TOptionsForm
         Caption = '(Format: Colorname=#RRGGBB)'
         Color = clBtnFace
         Font.Color = clGray
-        Font.Height = 11
+        Font.Height = -11
         Font.Name = 'Sans'
         Font.Pitch = fpVariable
         Font.Style = []
@@ -286,7 +288,9 @@ object OptionsForm: TOptionsForm
         Left = 0
         Top = 12
         Width = 83
+        Height = 13
         Alignment = taRightJustify
+        AutoSize = False
         Caption = 'Application Font:'
       end
       object FontEdit: TEdit
@@ -300,7 +304,7 @@ object OptionsForm: TOptionsForm
         Left = 2
         Top = 40
         Width = 263
-        Height = 139
+        Height = 155
         Caption = 'Table Headers'
         TabOrder = 5
         object TblHeaderPreviewPnl: TPanel
@@ -365,7 +369,9 @@ object OptionsForm: TOptionsForm
           Left = 47
           Top = 28
           Width = 49
+          Height = 13
           Alignment = taRightJustify
+          AutoSize = False
           Caption = 'Style:'
         end
         object TblHeaderLU: TComboBox
@@ -387,7 +393,9 @@ object OptionsForm: TOptionsForm
         Left = 0
         Top = 212
         Width = 115
+        Height = 13
         Alignment = taRightJustify
+        AutoSize = False
         Caption = 'Default Database Type:'
         Visible = False
       end
@@ -415,7 +423,9 @@ object OptionsForm: TOptionsForm
         Left = 0
         Top = 10
         Width = 115
+        Height = 13
         Alignment = taRightJustify
+        AutoSize = False
         Caption = 'Reserved Words:'
       end
       object GroupBox6: TGroupBox
@@ -636,7 +646,9 @@ object OptionsForm: TOptionsForm
           Left = 0
           Top = 24
           Width = 67
+          Height = 13
           Alignment = taRightJustify
+          AutoSize = False
           Caption = 'Grid width:'
         end
         object GridXEd: TEdit
@@ -650,7 +662,9 @@ object OptionsForm: TOptionsForm
           Left = 0
           Top = 52
           Width = 67
+          Height = 13
           Alignment = taRightJustify
+          AutoSize = False
           Caption = 'Grid height:'
         end
         object GridYEd: TEdit
@@ -684,7 +698,7 @@ object OptionsForm: TOptionsForm
       end
       object EditOptionsTipPanel: TPanel
         Left = 380
-        Top = 97
+        Top = 115
         Width = 159
         Height = 114
         Color = clInfoBk
@@ -693,7 +707,8 @@ object OptionsForm: TOptionsForm
         object Label8: TLabel
           Left = 8
           Top = 4
-          AutoSize = True
+          Width = 143
+          Height = 39
           AutoSize = False
           Caption = 
             'These parameters are the default settings when a new model is cr' +
@@ -703,7 +718,8 @@ object OptionsForm: TOptionsForm
         object Label9: TLabel
           Left = 8
           Top = 48
-          AutoSize = True
+          Width = 145
+          Height = 53
           AutoSize = False
           Caption = 
             'They can be turned on/off for each model individually using the ' +
