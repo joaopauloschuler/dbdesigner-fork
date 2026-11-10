@@ -65,7 +65,7 @@ All binaries are output to the `bin/` directory (they are not tracked in git). N
 | SimpleWebFront Plugin | 40,096 | `bin/DBDplugin_SimpleWebFront` |
 | **Total** | **~150,000** | |
 
-The line counts were measured on Linux. On Windows the main application and the Demo and DataImporter plugins compile; HTMLReport and SimpleWebFront do not (`UseNativeDialog` in HTMLReport's `Main.pas`, a `QWord` to `TBitmap` type error in SimpleWebFront's `Weboutput.pas`).
+The line counts were measured on Linux. On Windows the main application and all four plugins compile.
 
 **Runtime requirements (Linux):**
 - GTK2 libraries
