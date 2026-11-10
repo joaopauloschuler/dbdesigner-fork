@@ -103,7 +103,6 @@ object EditorQueryForm: TEditorQueryForm
     object Label1: TLabel
       Left = 428
       Top = 18
-      Anchors = [akTop, akRight]
       AutoSize = True
       Caption = 'Database Connection'
     end
