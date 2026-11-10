@@ -119,7 +119,8 @@ object PaletteNavForm: TPaletteNavForm
         object ZoomLbl: TLabel
           Left = 0
           Top = 3
-          AutoSize = True
+          Width = 39
+          Height = 13
           Alignment = taCenter
           AutoSize = False
           Caption = '100%'

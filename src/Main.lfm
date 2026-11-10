@@ -336,7 +336,8 @@ object MainForm: TMainForm
     object ZoomLbl: TLabel
       Left = 2
       Top = 2
-      AutoSize = True
+      Width = 39
+      Height = 13
       Alignment = taCenter
       AutoSize = False
       Caption = '100%'
