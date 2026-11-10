@@ -228,7 +228,9 @@ object DBConnEditorForm: TDBConnEditorForm
           Left = 191
           Top = 114
           Width = 71
+          Height = 13
           Alignment = taRightJustify
+          AutoSize = False
           Caption = 'Password:'
         end
         object PortLbl: TLabel
@@ -270,7 +272,9 @@ object DBConnEditorForm: TDBConnEditorForm
         Left = 254
         Top = 24
         Width = 56
+        Height = 13
         Alignment = taRightJustify
+        AutoSize = False
         Caption = 'Driver:'
       end
     end
