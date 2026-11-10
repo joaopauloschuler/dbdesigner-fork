@@ -385,6 +385,10 @@ begin
   //Get the global Settings Path
   SettingsPath:=GetGlobalSettingsPath;
 
+  //Read the language here, so every program that creates this module
+  //(the plugins do not call LoadLanguageFromIniFile) knows the setting
+  LoadLanguageFromIniFile;
+
   for i:=0 to 5 do
     WinPosCorrection[i]:=Point(0, 0);
 
@@ -1459,9 +1463,18 @@ begin
   //Open IniFile
   theIni:=TMemIniFile.Create(SettingsPath+'Language.ini');
   try
-    theIni.WriteString('GeneralSettings', 'Language', LanguageCode);
+    //theIni.WriteString('GeneralSettings', 'Language', LanguageCode);
+    //UpdateIniFile(theIni);
+    //Old lines above wrote unconditionally: a program that never loaded the
+    //language replaced the stored setting with a blank one. Never store a
+    //blank language and do not touch the file when nothing changed.
+    if(LanguageCode<>'')and
+      (theIni.ReadString('GeneralSettings', 'Language', '')<>LanguageCode)then
+    begin
+      theIni.WriteString('GeneralSettings', 'Language', LanguageCode);
 
-    UpdateIniFile(theIni);
+      UpdateIniFile(theIni);
+    end;
   finally
     theIni.Free;
   end;
