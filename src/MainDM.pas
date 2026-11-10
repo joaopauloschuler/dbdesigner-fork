@@ -99,6 +99,8 @@ type
     procedure LoadLanguageFromIniFile;
     procedure SaveLanguageToIniFile;
 
+    //Loads a translation file as UTF-8, whatever encoding it is stored in
+    procedure LoadTranslationFile(filename: string; theStrings: TStrings);
     //Reads a section from a text file that is organized like an ini file
     procedure GetSectionFromTxtFile(filename, section: string; theStringList: TStringList; GetOnlyValues: Boolean = False);
     //Translate Form
@@ -339,7 +341,9 @@ implementation
 
 uses {$IFDEF LINUX}BaseUnix, Unix, {$ENDIF}
   {$IFDEF LCLGTK2}glib2, gdk2, {$ENDIF}
-  EditorString, StrUtils;
+  //EditorString, StrUtils;
+  //LazUTF8 and LConvEncoding added for LoadTranslationFile
+  EditorString, StrUtils, LazUTF8, LConvEncoding;
 
 var
   WMChecked: Boolean = False;
@@ -1480,6 +1484,27 @@ begin
   end;
 end;
 
+procedure TDMMain.LoadTranslationFile(filename: string; theStrings: TStrings);
+var s: string;
+begin
+  //The LCL expects UTF-8 but the shipped translation files are stored in a
+  //single byte Western code page: umlauts, accents and sharp s were shown
+  //as question marks. Text that is not valid UTF-8 is converted, the
+  //decision is taken for the whole file so that it is never converted twice.
+  theStrings.LoadFromFile(filename);
+  s:=theStrings.Text;
+
+  //Remove a UTF-8 byte order mark, it would hide the first section
+  if(Length(s)>=3)and(s[1]=#$EF)and(s[2]=#$BB)and(s[3]=#$BF)then
+  begin
+    Delete(s, 1, 3);
+    theStrings.Text:=s;
+  end;
+
+  if(FindInvalidUTF8Codepoint(PChar(s), Length(s))>=0)then
+    theStrings.Text:=CP1252ToUTF8(s);
+end;
+
 procedure TDMMain.GetSectionFromTxtFile(filename, section: string; theStringList: TStringList; GetOnlyValues: Boolean = False);
 var tmpStringList: TStringList;
   i: integer;
@@ -1489,7 +1514,9 @@ begin
 
   tmpStringList:=TStringList.Create;
   try
-    tmpStringList.LoadFromFile(filename);
+    //tmpStringList.LoadFromFile(filename);
+    //Old line above loaded the raw bytes, the translations have to be UTF-8
+    LoadTranslationFile(filename, tmpStringList);
     i:=0;
     SectionReached:=False;
     while(i<tmpStringList.Count)do
