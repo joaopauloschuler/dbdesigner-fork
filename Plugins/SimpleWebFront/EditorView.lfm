@@ -22,6 +22,8 @@ object EditorViewForm: TEditorViewForm
 
   OnCreate = FormCreate
 
+  OnDestroy = FormDestroy
+
   PixelsPerInch = 96
 
   object OKBtn: TSpeedButton

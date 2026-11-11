@@ -1655,7 +1655,10 @@ end;
 function TDMMain.GetTranslatedMessage(OriginalMsg: string; MsgNr: integer; StrToInsert: string = ''; StrToInsert2: string = ''): string;
 var s: string;
 begin
-  if(MsgNr>=0)and(MsgNr<=MessageCaptions.Count)then
+  //if(MsgNr>=0)and(MsgNr<=MessageCaptions.Count)then
+  //Old line above accepted 0 and then read MessageCaptions[-1]: the
+  //message numbers start at 1
+  if(MsgNr>=1)and(MsgNr<=MessageCaptions.Count)then
     s:=MessageCaptions[MsgNr-1]
   else
     s:=OriginalMsg;
