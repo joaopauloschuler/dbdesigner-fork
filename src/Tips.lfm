@@ -19,7 +19,7 @@ object TipsForm: TTipsForm
   object Bevel1: TBevel
     Left = 28
     Top = 192
-    Width = 345
+    Width = 392
     Height = 7
     Anchors = [akLeft, akRight, akBottom]
     Shape = bsTopLine
@@ -66,7 +66,7 @@ object TipsForm: TTipsForm
   object TipMemo: TMemo
     Left = 28
     Top = 40
-    Width = 343
+    Width = 390
     Height = 141
     Anchors = [akTop, akLeft, akRight, akBottom]
     Color = 16056319
