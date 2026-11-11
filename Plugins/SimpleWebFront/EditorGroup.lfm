@@ -4,13 +4,9 @@ object EditorGroupForm: TEditorGroupForm
 
   Top = 304
 
-  Width = 340
+  ClientWidth = 340
 
-  Height = 236
-
-  VertScrollBar.Range = 213
-
-  HorzScrollBar.Range = 318
+  ClientHeight = 236
 
   ActiveControl = GrpnameEd
 

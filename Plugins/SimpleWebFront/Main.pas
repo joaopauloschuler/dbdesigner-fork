@@ -628,6 +628,26 @@ begin
 
 
 
+  //Complete the caption: the model name follows the separator,
+
+  //without a model the separator is removed
+
+  if(Pos('|', Caption)>0)then
+
+  begin
+
+    if(FileExists(xmlFilename))and(EERModel.GetModelName<>'')then
+
+      Caption:=Copy(Caption, 1, Pos('|', Caption))+' '+EERModel.GetModelName
+
+    else
+
+      Caption:=Trim(Copy(Caption, 1, Pos('|', Caption)-1));
+
+  end;
+
+
+
   Model := SW_Model.Create(EERModel);
 
   Output := TPHPOutput.Create;  //at the moment only PHP is supported

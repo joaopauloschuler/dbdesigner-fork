@@ -439,10 +439,24 @@ end;
 procedure TDMEER.LoadWorkToolLabelTextsFromIniFile;
 var theIni: TMemIniFile;
   i: integer;
+  theLines: TStringList;
 begin
   //Read IniFile
   theIni:=TMemIniFile.Create(DMMain.SettingsPath+DMMain.ProgName+'_Translations.ini');
   try
+    //The file is not stored as UTF-8: replace the raw lines with the
+    //converted ones. The ini file is only read here, never written back.
+    if(FileExists(theIni.FileName))then
+    begin
+      theLines:=TStringList.Create;
+      try
+        DMMain.LoadTranslationFile(theIni.FileName, theLines);
+        theIni.SetStrings(theLines);
+      finally
+        theLines.Free;
+      end;
+    end;
+
     theIni.ReadSectionValues('Worktool_Infos', WorkToolLabelTexts);
 
     i:=0;

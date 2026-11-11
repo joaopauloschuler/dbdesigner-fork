@@ -4,13 +4,9 @@ object DialogPopupSettingsForm: TDialogPopupSettingsForm
 
   Top = 195
 
-  Width = 300
+  ClientWidth = 300
 
-  Height = 163
-
-  VertScrollBar.Range = 143
-
-  HorzScrollBar.Range = 277
+  ClientHeight = 163
 
   ActiveControl = WidthEd
 
@@ -232,6 +228,8 @@ object DialogPopupSettingsForm: TDialogPopupSettingsForm
 
       Alignment = taRightJustify
 
+      AutoSize = False
+
       Caption = 'Width:'
 
     end
@@ -275,6 +273,8 @@ object DialogPopupSettingsForm: TDialogPopupSettingsForm
       Height = 13
 
       Alignment = taRightJustify
+
+      AutoSize = False
 
       Caption = 'Y-Position:'
 
@@ -320,6 +320,8 @@ object DialogPopupSettingsForm: TDialogPopupSettingsForm
 
       Alignment = taRightJustify
 
+      AutoSize = False
+
       Caption = 'X-Position:'
 
     end
@@ -335,6 +337,8 @@ object DialogPopupSettingsForm: TDialogPopupSettingsForm
       Height = 13
 
       Alignment = taRightJustify
+
+      AutoSize = False
 
       Caption = 'Height:'
 

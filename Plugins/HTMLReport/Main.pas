@@ -158,6 +158,16 @@ begin
     end;
   end;
 
+  //Complete the caption: the model name follows the separator,
+  //without a model the separator is removed
+  if(Pos('|', Caption)>0)then
+  begin
+    if(EERModel<>nil)and(EERModel.GetModelName<>'')then
+      Caption:=Copy(Caption, 1, Pos('|', Caption))+' '+EERModel.GetModelName
+    else
+      Caption:=Trim(Copy(Caption, 1, Pos('|', Caption)-1));
+  end;
+
   lastFileName:='';
 end;
 
@@ -381,8 +391,9 @@ begin
     try
   {$IFDEF MSWINDOWS}
       //On Windows use native Win32 Open Dlg
-      theSaveDialog.UseNativeDialog:=True;
-      theSaveDialog.OnShow:=DMMain.OnOpenSaveDlgShow;
+      //The LCL always uses the native dialog and has no dialog position hook
+//      theSaveDialog.UseNativeDialog:=True;
+//      theSaveDialog.OnShow:=DMMain.OnOpenSaveDlgShow;
   {$ENDIF}
 
       theSaveDialog.Title:='Save File As ...';

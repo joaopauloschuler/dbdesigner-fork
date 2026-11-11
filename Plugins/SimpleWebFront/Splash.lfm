@@ -63,7 +63,7 @@ object SplashForm: TSplashForm
 
     Font.Color = clBlack
 
-    Font.Height = 9
+    Font.Height = -9
 
     Font.Name = 'Sans'
 
@@ -103,7 +103,7 @@ object SplashForm: TSplashForm
 
     Font.Color = clBlack
 
-    Font.Height = 9
+    Font.Height = -9
 
     Font.Name = 'Sans'
 
@@ -160,7 +160,7 @@ object SplashForm: TSplashForm
 
     Font.Color = clBlack
 
-    Font.Height = 9
+    Font.Height = -9
 
     Font.Name = 'Sans'
 
@@ -202,7 +202,7 @@ object SplashForm: TSplashForm
 
     Font.Color = clBlack
 
-    Font.Height = 9
+    Font.Height = -9
 
     Font.Name = 'Sans'
 

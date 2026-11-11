@@ -720,6 +720,8 @@ object MainForm: TMainForm
 
           Alignment = taRightJustify
 
+          AutoSize = False
+
           Caption = 'Username:'
 
         end
@@ -736,6 +738,8 @@ object MainForm: TMainForm
 
           Alignment = taRightJustify
 
+          AutoSize = False
+
           Caption = 'Password:'
 
         end
@@ -751,6 +755,8 @@ object MainForm: TMainForm
           Height = 13
 
           Alignment = taRightJustify
+
+          AutoSize = False
 
           Caption = 'Database:'
 
@@ -785,6 +791,8 @@ object MainForm: TMainForm
           Height = 13
 
           Alignment = taRightJustify
+
+          AutoSize = False
 
           Caption = 'Hostname:'
 
@@ -910,6 +918,8 @@ object MainForm: TMainForm
 
           Alignment = taRightJustify
 
+          AutoSize = False
+
           Caption = 'Web Title:'
 
         end
@@ -925,6 +935,8 @@ object MainForm: TMainForm
           Height = 13
 
           Alignment = taRightJustify
+
+          AutoSize = False
 
           Caption = 'Script Language:'
 
@@ -995,6 +1007,8 @@ object MainForm: TMainForm
           Height = 13
 
           Alignment = taRightJustify
+
+          AutoSize = False
 
           Caption = 'Layout:'
 
@@ -1072,6 +1086,8 @@ object MainForm: TMainForm
 
           Alignment = taRightJustify
 
+          AutoSize = False
+
           Caption = 'View-Name:'
 
         end
@@ -1087,6 +1103,8 @@ object MainForm: TMainForm
           Height = 13
 
           Alignment = taRightJustify
+
+          AutoSize = False
 
           Caption = 'Table-Name:'
 
@@ -1118,6 +1136,8 @@ object MainForm: TMainForm
 
           Alignment = taRightJustify
 
+          AutoSize = False
+
           Caption = 'Join-Table Names:'
 
         end
@@ -1133,6 +1153,8 @@ object MainForm: TMainForm
           Height = 13
 
           Alignment = taRightJustify
+
+          AutoSize = False
 
           Caption = 'N:M Table Names:'
 
@@ -1603,6 +1625,8 @@ object MainForm: TMainForm
           Height = 13
 
           Alignment = taRightJustify
+
+          AutoSize = False
 
           Caption = 'All Views'
 
@@ -2418,6 +2442,8 @@ object MainForm: TMainForm
 
         Alignment = taRightJustify
 
+        AutoSize = False
+
         Caption = 'Group:'
 
       end
@@ -2453,6 +2479,8 @@ object MainForm: TMainForm
         Height = 13
 
         Alignment = taRightJustify
+
+        AutoSize = False
 
         Caption = 'View:'
 
@@ -2517,6 +2545,8 @@ object MainForm: TMainForm
           Height = 13
 
           Alignment = taRightJustify
+
+          AutoSize = False
 
           Caption = 'Column Caption:'
 
@@ -2756,6 +2786,8 @@ object MainForm: TMainForm
 
           Alignment = taRightJustify
 
+          AutoSize = False
+
           Caption = 'Rows per page:'
 
         end
@@ -2952,6 +2984,8 @@ object MainForm: TMainForm
 
         Alignment = taRightJustify
 
+        AutoSize = False
+
         Caption = 'Group:'
 
       end
@@ -2967,6 +3001,8 @@ object MainForm: TMainForm
         Height = 13
 
         Alignment = taRightJustify
+
+        AutoSize = False
 
         Caption = 'View:'
 
@@ -2998,6 +3034,8 @@ object MainForm: TMainForm
 
           Alignment = taRightJustify
 
+          AutoSize = False
+
           Caption = 'X-Position:'
 
         end
@@ -3014,6 +3052,8 @@ object MainForm: TMainForm
 
           Alignment = taRightJustify
 
+          AutoSize = False
+
           Caption = 'Width:'
 
         end
@@ -3029,6 +3069,8 @@ object MainForm: TMainForm
           Height = 13
 
           Alignment = taRightJustify
+
+          AutoSize = False
 
           Caption = 'Y-Position:'
 
@@ -3118,6 +3160,8 @@ object MainForm: TMainForm
 
           Alignment = taRightJustify
 
+          AutoSize = False
+
           Caption = 'Height:'
 
         end
@@ -3205,6 +3249,8 @@ object MainForm: TMainForm
           Height = 13
 
           Alignment = taRightJustify
+
+          AutoSize = False
 
           Caption = 'Input-Field Caption:'
 
@@ -3296,18 +3342,6 @@ object MainForm: TMainForm
 
     Height = 242
 
-
-    Font.Color = clBlack
-
-    Font.Height = 11
-
-    Font.Name = 'Sans'
-
-    Font.Pitch = fpVariable
-
-    Font.Style = []
-
-
     Items.Data = {
 
       0500000028000000FFFFFFFFFFFFFFFF50A07141000000000000000000000000
@@ -3323,8 +3357,6 @@ object MainForm: TMainForm
       0000FFFFFFFFFFFFFFFF50A071410000000000000000000000000C466F726D20
 
       4F7074696F6E73}
-
-    ParentFont = False
 
     ReadOnly = True
 

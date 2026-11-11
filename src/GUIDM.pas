@@ -459,6 +459,11 @@ var theStringList: TStringList;
 begin
   LoadTip:='';
 
+  //Without the translations file there are no tips. Loading a missing
+  //file raised an exception in the middle of the program start
+  if(Not(FileExists(DMMain.SettingsPath+DMMain.ProgName+'_Translations.ini')))then
+    Exit;
+
   theStringList:=TStringList.Create;
   try
     DMMain.GetSectionFromTxtFile(DMMain.SettingsPath+DMMain.ProgName+'_Translations.ini',

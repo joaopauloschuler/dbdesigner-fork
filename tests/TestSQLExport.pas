@@ -95,6 +95,14 @@ begin
     end;
     DMMain.LoadLanguageFromIniFile;
     DMMain.LoadTranslatedMessages;
+    // Message numbers start at 1: 0 and a number above the last message
+    // give the original text
+    if (DMMain.GetTranslatedMessage('original', 0) <> 'original') or
+       (DMMain.GetTranslatedMessage('original', MaxInt) <> 'original') then
+    begin
+      WriteLn('FAILED: no original text for an unknown message number');
+      Halt(1);
+    end;
     DMEER := TDMEER.Create(Application);
 
     // Create a parent form (TEERModel inherits from TPanel, needs a parent)

@@ -2836,7 +2836,11 @@ begin
 
       saveFilename := IncludeTrailingPathDelimiter(saveDir)+'images'+PathDelim+'icons'+PathDelim+TmpView.IconFilename;
 
-      DMMain.SaveBitmap(TmpView.Icon.Bitmap.Handle, saveFilename, ExtractFileExt(saveFilename));
+      //SaveBitmap takes the bitmap itself under the LCL, not its handle
+
+//      DMMain.SaveBitmap(TmpView.Icon.Bitmap.Handle, saveFilename, ExtractFileExt(saveFilename));
+
+      DMMain.SaveBitmap(TmpView.Icon.Bitmap, saveFilename, ExtractFileExt(saveFilename));
 
 
 

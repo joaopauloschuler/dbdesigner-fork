@@ -77,12 +77,30 @@ type
     //Initialze a form by setting the default font
     procedure InitForm(theForm: TForm; SetFloatOnTop: Boolean = False; Translate: Boolean = True);
 
+    (** Moves the controls inside every group box of a form to the place they
+      were designed for. The forms were designed with a toolkit that measures
+      the position of a control in a group box from the top left corner of the
+      box, caption and frame included. The LCL measures it from the client
+      area, which begins below the caption and inside the frame, so without
+      this correction every control sits too low and too far right and the
+      bottom row is cut off. The size of the frame depends on the widgetset,
+      the theme and the font of the box, so it is measured at run time.
+      Controls with Align other than alNone are left alone. The routine may be
+      called again for the same form (InitForm is, after the application font
+      was changed): only the difference to the offset already applied is
+      applied then. The first call for a form has to come before the form gets
+      its handle, which is the case in FormCreate.
+      @param theForm The form whose group boxes are corrected. *)
+    procedure AdjustGroupBoxChildren(theForm: TForm);
+
     procedure LoadApplicationFont;
 
     //Get language
     procedure LoadLanguageFromIniFile;
     procedure SaveLanguageToIniFile;
 
+    //Loads a translation file as UTF-8, whatever encoding it is stored in
+    procedure LoadTranslationFile(filename: string; theStrings: TStrings);
     //Reads a section from a text file that is organized like an ini file
     procedure GetSectionFromTxtFile(filename, section: string; theStringList: TStringList; GetOnlyValues: Boolean = False);
     //Translate Form
@@ -323,7 +341,9 @@ implementation
 
 uses {$IFDEF LINUX}BaseUnix, Unix, {$ENDIF}
   {$IFDEF LCLGTK2}glib2, gdk2, {$ENDIF}
-  EditorString, StrUtils;
+  //EditorString, StrUtils;
+  //LazUTF8 and LConvEncoding added for LoadTranslationFile
+  EditorString, StrUtils, LazUTF8, LConvEncoding;
 
 var
   WMChecked: Boolean = False;
@@ -368,6 +388,10 @@ begin
 
   //Get the global Settings Path
   SettingsPath:=GetGlobalSettingsPath;
+
+  //Read the language here, so every program that creates this module
+  //(the plugins do not call LoadLanguageFromIniFile) knows the setting
+  LoadLanguageFromIniFile;
 
   for i:=0 to 5 do
     WinPosCorrection[i]:=Point(0, 0);
@@ -1244,6 +1268,183 @@ begin
   //Make Translation
   if(Translate)then
     TranslateForm(theForm);
+
+  //Put the controls inside group boxes at their design position
+  AdjustGroupBoxChildren(theForm);
+end;
+
+type
+  // Kept on a group box by AdjustGroupBoxChildren: the frame its children
+  // have already been corrected for
+  TGroupBoxFrameMark = class(TComponent)
+  public
+    OffsetX, OffsetY: Integer;         // left and top frame taken off the children
+    FrameWidth, FrameHeight: Integer;  // Width-ClientWidth and Height-ClientHeight
+  end;
+
+(** Measures the frame of a group box with the given font as the widgetset
+  reports it. A group box that has no handle yet may report no frame at all,
+  so the measurement is made on a group box with a handle, on a form that is
+  never shown.
+  @param AFont The font of the group box.
+  @param OffsetX Width of the left frame.
+  @param OffsetY Height of the top frame, the caption included.
+  @param FrameWidth Width of the box minus the width of its client area.
+  @param FrameHeight Height of the box minus the height of its client area.
+  @returns False when the widgetset reports values that cannot be used. *)
+function MeasureGroupBoxFrame(AFont: TFont; out OffsetX, OffsetY, FrameWidth, FrameHeight: Integer): Boolean;
+var theForm: TForm;
+  theBox: TGroupBox;
+begin
+  Result:=False;
+  OffsetX:=0;
+  OffsetY:=0;
+  FrameWidth:=0;
+  FrameHeight:=0;
+
+  theForm:=TForm.CreateNew(nil);
+  try
+    theBox:=TGroupBox.Create(theForm);
+    theBox.SetBounds(0, 0, 200, 200);
+    theBox.Caption:='Xg';
+    theBox.Parent:=theForm;
+    theBox.Font.Assign(AFont);
+    theBox.HandleNeeded;
+
+    if(theBox.ClientWidth>0)and(theBox.ClientHeight>0)then
+    begin
+      FrameWidth:=theBox.Width-theBox.ClientWidth;
+      FrameHeight:=theBox.Height-theBox.ClientHeight;
+      //the frame is as wide at the bottom as at the sides, the rest is the caption
+      OffsetX:=FrameWidth div 2;
+      OffsetY:=FrameHeight-OffsetX;
+
+      Result:=(FrameWidth>=0)and(FrameHeight>=0)and(OffsetY>=0);
+    end;
+  finally
+    theForm.Free;
+  end;
+end;
+
+procedure TDMMain.AdjustGroupBoxChildren(theForm: TForm);
+var i, j: integer;
+  theBox: TGroupBox;
+  theCtrl: TControl;
+  theMark: TGroupBoxFrameMark;
+  FontKey, MeasuredFontKey: string;
+  Measured, HasChildToMove: Boolean;
+  OffsetX, OffsetY, FrameWidth, FrameHeight,
+  OldOffsetX, OldOffsetY, OldClientWidth, OldClientHeight,
+  MoveX, MoveY, GrowX, GrowY,
+  l, t, w, h: integer;
+begin
+  MeasuredFontKey:='';
+  Measured:=False;
+  OffsetX:=0;
+  OffsetY:=0;
+  FrameWidth:=0;
+  FrameHeight:=0;
+
+  for i:=0 to theForm.ComponentCount-1 do
+    if(theForm.Components[i] is TGroupBox)then
+    begin
+      theBox:=TGroupBox(theForm.Components[i]);
+
+      HasChildToMove:=False;
+      for j:=0 to theBox.ControlCount-1 do
+        if(theBox.Controls[j].Align=alNone)then
+          HasChildToMove:=True;
+      if(Not(HasChildToMove))then
+        continue;
+
+      //Measure the frame once for each font, a box may have a font of its own
+      FontKey:=theBox.Font.Name+'|'+IntToStr(theBox.Font.Height)+'|'+
+        IntToStr(theBox.Font.Size)+'|'+IntToStr(Integer(theBox.Font.Style));
+      if(FontKey<>MeasuredFontKey)or(MeasuredFontKey='')then
+      begin
+        Measured:=MeasureGroupBoxFrame(theBox.Font, OffsetX, OffsetY, FrameWidth, FrameHeight);
+        MeasuredFontKey:=FontKey;
+      end;
+      //Leave the box as it is when the measurement cannot be used
+      if(Not(Measured))or
+        (theBox.Width-FrameWidth<=0)or(theBox.Height-FrameHeight<=0)then
+        continue;
+
+      theMark:=nil;
+      for j:=0 to theBox.ComponentCount-1 do
+        if(theBox.Components[j] is TGroupBoxFrameMark)then
+          theMark:=TGroupBoxFrameMark(theBox.Components[j]);
+
+      if(theMark=nil)then
+      begin
+        //first call: nothing applied yet, the children are where the form file
+        //put them, for the client area the box reports now
+        OldOffsetX:=0;
+        OldOffsetY:=0;
+        OldClientWidth:=theBox.ClientWidth;
+        OldClientHeight:=theBox.ClientHeight;
+
+        theMark:=TGroupBoxFrameMark.Create(theBox);
+      end
+      else
+      begin
+        OldOffsetX:=theMark.OffsetX;
+        OldOffsetY:=theMark.OffsetY;
+        OldClientWidth:=theBox.Width-theMark.FrameWidth;
+        OldClientHeight:=theBox.Height-theMark.FrameHeight;
+      end;
+
+      MoveX:=OldOffsetX-OffsetX;
+      MoveY:=OldOffsetY-OffsetY;
+      //A control anchored to the right or bottom follows the client area by
+      //itself when it takes its final size; this is what the anchor does not
+      //make up for
+      GrowX:=OldClientWidth-(theBox.Width-FrameWidth);
+      GrowY:=OldClientHeight-(theBox.Height-FrameHeight);
+
+      if(MoveX<>0)or(MoveY<>0)or(GrowX<>0)or(GrowY<>0)then
+      begin
+        theBox.DisableAlign;
+        try
+          for j:=0 to theBox.ControlCount-1 do
+          begin
+            theCtrl:=theBox.Controls[j];
+            if(theCtrl.Align<>alNone)then
+              continue;
+
+            l:=theCtrl.Left+MoveX;
+            t:=theCtrl.Top+MoveY;
+            w:=theCtrl.Width;
+            h:=theCtrl.Height;
+
+            if(akRight in theCtrl.Anchors)then
+            begin
+              if(akLeft in theCtrl.Anchors)then
+                w:=w+GrowX
+              else
+                l:=l+GrowX;
+            end;
+
+            if(akBottom in theCtrl.Anchors)then
+            begin
+              if(akTop in theCtrl.Anchors)then
+                h:=h+GrowY
+              else
+                t:=t+GrowY;
+            end;
+
+            theCtrl.SetBounds(l, t, w, h);
+          end;
+        finally
+          theBox.EnableAlign;
+        end;
+      end;
+
+      theMark.OffsetX:=OffsetX;
+      theMark.OffsetY:=OffsetY;
+      theMark.FrameWidth:=FrameWidth;
+      theMark.FrameHeight:=FrameHeight;
+    end;
 end;
 
 procedure TDMMain.LoadLanguageFromIniFile;
@@ -1266,12 +1467,42 @@ begin
   //Open IniFile
   theIni:=TMemIniFile.Create(SettingsPath+'Language.ini');
   try
-    theIni.WriteString('GeneralSettings', 'Language', LanguageCode);
+    //theIni.WriteString('GeneralSettings', 'Language', LanguageCode);
+    //UpdateIniFile(theIni);
+    //Old lines above wrote unconditionally: a program that never loaded the
+    //language replaced the stored setting with a blank one. Never store a
+    //blank language and do not touch the file when nothing changed.
+    if(LanguageCode<>'')and
+      (theIni.ReadString('GeneralSettings', 'Language', '')<>LanguageCode)then
+    begin
+      theIni.WriteString('GeneralSettings', 'Language', LanguageCode);
 
-    UpdateIniFile(theIni);
+      UpdateIniFile(theIni);
+    end;
   finally
     theIni.Free;
   end;
+end;
+
+procedure TDMMain.LoadTranslationFile(filename: string; theStrings: TStrings);
+var s: string;
+begin
+  //The LCL expects UTF-8 but the shipped translation files are stored in a
+  //single byte Western code page: umlauts, accents and sharp s were shown
+  //as question marks. Text that is not valid UTF-8 is converted, the
+  //decision is taken for the whole file so that it is never converted twice.
+  theStrings.LoadFromFile(filename);
+  s:=theStrings.Text;
+
+  //Remove a UTF-8 byte order mark, it would hide the first section
+  if(Length(s)>=3)and(s[1]=#$EF)and(s[2]=#$BB)and(s[3]=#$BF)then
+  begin
+    Delete(s, 1, 3);
+    theStrings.Text:=s;
+  end;
+
+  if(FindInvalidUTF8Codepoint(PChar(s), Length(s))>=0)then
+    theStrings.Text:=CP1252ToUTF8(s);
 end;
 
 procedure TDMMain.GetSectionFromTxtFile(filename, section: string; theStringList: TStringList; GetOnlyValues: Boolean = False);
@@ -1283,7 +1514,9 @@ begin
 
   tmpStringList:=TStringList.Create;
   try
-    tmpStringList.LoadFromFile(filename);
+    //tmpStringList.LoadFromFile(filename);
+    //Old line above loaded the raw bytes, the translations have to be UTF-8
+    LoadTranslationFile(filename, tmpStringList);
     i:=0;
     SectionReached:=False;
     while(i<tmpStringList.Count)do
@@ -1422,7 +1655,10 @@ end;
 function TDMMain.GetTranslatedMessage(OriginalMsg: string; MsgNr: integer; StrToInsert: string = ''; StrToInsert2: string = ''): string;
 var s: string;
 begin
-  if(MsgNr>=0)and(MsgNr<=MessageCaptions.Count)then
+  //if(MsgNr>=0)and(MsgNr<=MessageCaptions.Count)then
+  //Old line above accepted 0 and then read MessageCaptions[-1]: the
+  //message numbers start at 1
+  if(MsgNr>=1)and(MsgNr<=MessageCaptions.Count)then
     s:=MessageCaptions[MsgNr-1]
   else
     s:=OriginalMsg;

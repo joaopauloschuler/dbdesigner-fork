@@ -1,10 +1,8 @@
 object MainForm: TMainForm
   Left = 285
   Top = 215
-  Width = 603
-  Height = 318
-  VertScrollBar.Range = 275
-  HorzScrollBar.Range = 583
+  ClientWidth = 603
+  ClientHeight = 295
   ActiveControl = SortOrderPosRBtn
   Caption = 'HTML Report Plugin |'
   Color = clBtnFace

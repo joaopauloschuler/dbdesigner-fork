@@ -210,6 +210,11 @@ end;
 
 procedure TDBImportDataForm.FormCreate(Sender: TObject);
 begin
+  //Application font, translation and group box layout. This has to come
+  //first: the controls inside the group boxes are moved to their design
+  //position before the form gets its handle
+  DMMain.InitForm(self);
+
   Version:='1.0.0.24';
 
   SourceDir:='';
@@ -459,9 +464,27 @@ end;
 
 procedure TDBImportDataForm.DirEdKeyDown(Sender: TObject; var Key: Word;
   Shift: TShiftState);
+var s: string;
 begin
   if(key=Key_Return)or(key=Key_Enter)then
-    RefreshFileList;
+  begin
+    //RefreshFileList; // old: listed SourceDir again, the typed text was ignored
+    s:=Trim(DirEd.Text);
+    if(FileExists(s))then
+      //A file: same as selecting it in the dialog
+      SetDirectoryOrFilename(s)
+    else if(DirectoryExists(s))then
+      //A directory: same as selecting it in the dialog
+      SetDirectoryOrFilename(IncludeTrailingPathDelimiter(s))
+    else
+    begin
+      //Not found: the file list is shown empty,
+      //without text the current directory is listed again
+      if(s<>'')then
+        SourceDir:=s;
+      RefreshFileList;
+    end;
+  end;
 end;
 
 procedure TDBImportDataForm.SourceLBoxClick(Sender: TObject);

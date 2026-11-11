@@ -26,8 +26,8 @@ DBDesigner Fork provides a full-featured graphical environment for designing and
 
 - **Visual database modeling** — Design Entity-Relationship (EER) diagrams with tables, fields, relations (1:1, 1:n, n:m), regions, notes, and images.
 - **SQL script export** — Generate CREATE TABLE scripts (and drop / optimize / repair scripts) from the visual model.
-- **Reverse engineering** — Import existing MySQL or SQLite schemas into visual models, including relations from foreign keys.
-- **Database connectivity** — MySQL 8 and SQLite 3 through FPC's SQLDB, behind a DBExpress-compatible shim.
+- **Reverse engineering** — Import existing MySQL or SQLite schemas into visual models, including relations from foreign keys; MS SQL Server schemas over ODBC, see [`docs/mssql-odbc.md`](docs/mssql-odbc.md).
+- **Database connectivity** — MySQL 8 and SQLite 3 through FPC's SQLDB, behind a DBExpress-compatible shim; MS SQL Server over ODBC for reverse engineering.
 - **XML model storage** — Models are saved as XML files; ERwin 4.1 import exists but is untested.
 - **Query editor** — Visual SQL query builder with drag-and-drop and a result grid.
 - **Synchronization** — Sync models with live MySQL databases.
@@ -65,7 +65,7 @@ All binaries are output to the `bin/` directory (they are not tracked in git). N
 | SimpleWebFront Plugin | 40,096 | `bin/DBDplugin_SimpleWebFront` |
 | **Total** | **~150,000** | |
 
-The line counts were measured on Linux. On Windows the main application and the Demo and DataImporter plugins compile; HTMLReport and SimpleWebFront do not (`UseNativeDialog` in HTMLReport's `Main.pas`, a `QWord` to `TBitmap` type error in SimpleWebFront's `Weboutput.pas`).
+The line counts were measured on Linux. On Windows the main application and all four plugins compile.
 
 **Runtime requirements (Linux):**
 - GTK2 libraries
@@ -93,7 +93,7 @@ An automated **UI Test Runner** ([`src/UITestRunner.pas`](src/UITestRunner.pas))
 xvfb-run -a ./bin/DBDesignerFork --selftest
 ```
 
-**A correct run reports 0 FAIL.** The PASS and SKIP counts depend on how many plugin executables are in `bin/`: on Windows 94 PASS, 72 SKIP with none, 93 PASS, 74 SKIP with one and 93 PASS, 75 SKIP with two; a Linux build gives 93 PASS, 78 SKIP. The skips are the deliberately unsafe items (exit, save, open, print, database operations, browser links), separators, submenu parents and items that are disabled without a model. The self-test never opens a database connection and leaves the user's settings and `DBConn.ini` untouched.
+**A correct run reports 0 FAIL.** The PASS and SKIP counts depend on how many plugin executables are in `bin/`: on Windows 96 PASS, 73 SKIP with none and 95 PASS with one or more, where the SKIP count is 75 with one plugin and one more for each further plugin (78 with all four); a Linux build gives 93 PASS, 78 SKIP. The skips are the deliberately unsafe items (exit, save, open, print, database operations, browser links), separators, submenu parents and items that are disabled without a model. The self-test never opens a database connection and leaves the user's settings and `DBConn.ini` untouched.
 
 On Windows, where `/tmp` usually does not exist, the log is written as `UITestResults.log` in the working directory and the SQL export and model save phases log "Invalid filename" without counting as failures.
 
@@ -125,25 +125,6 @@ Areas still requiring manual or integration testing:
 - The general ODBC reverse-engineering method and an ODBC-type connection
 - The connection and Reverse Engineering dialogs with MS SQL Server, and SQL Server logins with `User_Name` and `Password`
 - Run-and-click testing on Windows, and macOS builds
-
-### MS SQL Server over ODBC
-
-MS SQL Server connections use FPC's ODBC connector, so a SQL Server ODBC driver must be installed. A connection of the type `MSSQL` has these parameters:
-
-| Parameter | Meaning |
-|---|---|
-| `HostName` | Leave empty to use `Database` as an ODBC data source name; otherwise the server, and a connection is made without a data source |
-| `Database` | The ODBC data source name, or the database name when a host name is given |
-| `ODBC Driver` | The installed ODBC driver used when a host name is given (default `SQL Server`) |
-| `OS Authentication` | `True` logs in with the Windows user (`Trusted_Connection=Yes`). SQL Server logins with `User_Name` and `Password` have not been run |
-
-The reverse engineering routine for MS SQL Server reads tables, columns, datatypes, NOT NULL, identity, defaults, primary and other indexes and declared foreign keys, including their actions. It only reads the catalog and does not change the database. It maps SQL Server types to the model's MySQL-style datatypes; see [`docs/mssql-bug-catalog.md`](docs/mssql-bug-catalog.md) for the mapping and what was run. What has been run is the unattended form below, against a SQL Server 2008 R2 database on Windows; the connection and Reverse Engineering dialogs have not been exercised with MS SQL Server. Database Synchronisation is MySQL-oriented and has not been run against SQL Server.
-
-The routine runs without a person at the keyboard. It connects with the given parameters, saves the model and reopens it with the application's loader, writing object counts to `<file.xml>.log`:
-
-```bash
-./bin/DBDesignerFork "--reveng-mssql=Database=MyDataSource;OS Authentication=True" "--reveng-out=file.xml"
-```
 
 ### Standalone tests and round-trip scripts
 
@@ -257,7 +238,7 @@ The port builds, launches and has been through eleven rounds of run-and-click te
 
 **Known limitations:**
 
-- The **MySQL**, **SQLite** and **ODBC** connectors are linked; **MS SQL Server** goes through ODBC (reverse engineering only so far). Oracle still appears in the driver list but cannot connect.
+- The **MySQL**, **SQLite** and **ODBC** connectors are linked; **MS SQL Server** goes through ODBC (reverse engineering only so far, see [`docs/mssql-odbc.md`](docs/mssql-odbc.md)). It has been run in its unattended form against a SQL Server 2008 R2 database on Windows; the connection and Reverse Engineering dialogs have not been exercised with MS SQL Server, and Database Synchronisation is MySQL-oriented and has not been run against it. Oracle still appears in the driver list but cannot connect.
 - **Synchronisation against SQLite** is not implemented (SQLite has no ALTER COLUMN); it now stops cleanly with a message on top of a closable dialog. Reverse engineering and export work.
 - Dragging a datatype from the palette onto the Table Editor grid does nothing while the editor is modal (it would need a non-modal Table Editor); use the "Set Datatype" popup submenu of the column grid instead.
 - SQL export writes no `ENGINE` clause for MyISAM tables (MySQL's default engine applies).
