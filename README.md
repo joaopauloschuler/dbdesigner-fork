@@ -93,7 +93,7 @@ An automated **UI Test Runner** ([`src/UITestRunner.pas`](src/UITestRunner.pas))
 xvfb-run -a ./bin/DBDesignerFork --selftest
 ```
 
-**A correct run reports 0 FAIL.** The PASS and SKIP counts depend on how many plugin executables are in `bin/`: on Windows 94 PASS, 72 SKIP with none, 93 PASS, 74 SKIP with one and 93 PASS, 75 SKIP with two; a Linux build gives 93 PASS, 78 SKIP. The skips are the deliberately unsafe items (exit, save, open, print, database operations, browser links), separators, submenu parents and items that are disabled without a model. The self-test never opens a database connection and leaves the user's settings and `DBConn.ini` untouched.
+**A correct run reports 0 FAIL.** The PASS and SKIP counts depend on how many plugin executables are in `bin/`: on Windows 96 PASS, 73 SKIP with none and 95 PASS with one or more, where the SKIP count is 75 with one plugin and one more for each further plugin (78 with all four); a Linux build gives 93 PASS, 78 SKIP. The skips are the deliberately unsafe items (exit, save, open, print, database operations, browser links), separators, submenu parents and items that are disabled without a model. The self-test never opens a database connection and leaves the user's settings and `DBConn.ini` untouched.
 
 On Windows, where `/tmp` usually does not exist, the log is written as `UITestResults.log` in the working directory and the SQL export and model save phases log "Invalid filename" without counting as failures.
 
