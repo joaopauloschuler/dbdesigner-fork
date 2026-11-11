@@ -8,6 +8,7 @@ object EERReverseEngineeringForm: TEERReverseEngineeringForm
   ClientWidth = 573
   Color = clBtnFace
   Constraints.MaxWidth = 573
+  Constraints.MinHeight = 627
   Constraints.MinWidth = 573
   FormStyle = fsStayOnTop
   KeyPreview = True
